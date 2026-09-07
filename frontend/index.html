@@ -1,0 +1,1137 @@
+<!DOCTYPE html>
+<html lang="uk">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>fino</title>
+  <link rel="icon" type="image/png" href="/assets/fino-logo.png" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+
+<body>
+  <div class="app-shell" id="investments-app">
+    <aside class="sidebar">
+      <button class="brand app-switch" id="open-wallet" type="button" title="Open Wallet">
+        <div class="brand-mark"><img src="/assets/fino-logo.png" alt="fino" /></div>
+        <div>
+          <strong>Investment</strong>
+        </div>
+      </button>
+
+      <nav class="nav">
+        <button class="nav-item active" data-section="dashboard">Dashboard</button>
+        <button class="nav-item" data-section="portfolio">Portfolio</button>
+        <button class="nav-item" data-section="transactions">Transactions</button>
+        <button class="nav-item" data-section="calendar">Calendar</button>
+        <button class="nav-item" data-section="analytics">Analytics</button>
+        <button class="nav-item" data-section="rebalance">Rebalance</button>
+        <button class="nav-item" data-section="market">Market</button>
+        <button class="nav-item" data-section="macroeconomics">Macroeconomics</button>
+      </nav>
+
+      <button class="sidebar-settings-button" type="button" data-open-settings><svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M7.07095 0.650238C6.67391 0.650238 6.32977 0.925096 6.24198 1.31231L6.0039 2.36247C5.6249 2.47269 5.26335 2.62363 4.92436 2.81013L4.01335 2.23585C3.67748 2.02413 3.23978 2.07312 2.95903 2.35386L2.35294 2.95996C2.0722 3.2407 2.0232 3.6784 2.23493 4.01427L2.80942 4.92561C2.62307 5.2645 2.47227 5.62594 2.36216 6.00481L1.31209 6.24287C0.924883 6.33065 0.650024 6.6748 0.650024 7.07183V7.92897C0.650024 8.32601 0.924883 8.67015 1.31209 8.75794L2.36228 8.99603C2.47246 9.375 2.62335 9.73652 2.80979 10.0755L2.2354 10.9867C2.02367 11.3225 2.07267 11.7602 2.35341 12.041L2.95951 12.6471C3.24025 12.9278 3.67795 12.9768 4.01382 12.7651L4.92506 12.1907C5.26384 12.377 5.62516 12.5278 6.0039 12.6379L6.24198 13.6881C6.32977 14.0753 6.67391 14.3502 7.07095 14.3502H7.92809C8.32512 14.3502 8.66927 14.0753 8.75705 13.6881L8.99505 12.6383C9.37411 12.5282 9.73573 12.3773 10.0748 12.1909L10.986 12.7653C11.3218 12.977 11.7595 12.928 12.0403 12.6473L12.6464 12.0412C12.9271 11.7604 12.9761 11.3227 12.7644 10.9869L12.1902 10.076C12.3768 9.73688 12.5278 9.37515 12.638 8.99596L13.6879 8.75794C14.0751 8.67015 14.35 8.32601 14.35 7.92897V7.07183C14.35 6.6748 14.0751 6.33065 13.6879 6.24287L12.6381 6.00488C12.528 5.62578 12.3771 5.26414 12.1906 4.92507L12.7648 4.01407C12.9766 3.6782 12.9276 3.2405 12.6468 2.95975L12.0407 2.35366C11.76 2.07292 11.3223 2.02392 10.9864 2.23565L10.0755 2.80989C9.73622 2.62328 9.37437 2.47229 8.99505 2.36209L8.75705 1.31231C8.66927 0.925096 8.32512 0.650238 7.92809 0.650238H7.07095ZM4.92053 3.81251C5.44724 3.44339 6.05665 3.18424 6.71543 3.06839L7.07095 1.50024H7.92809L8.28355 3.06816C8.94267 3.18387 9.5524 3.44302 10.0794 3.81224L11.4397 2.9547L12.0458 3.56079L11.1882 4.92117C11.5573 5.44798 11.8164 6.0575 11.9321 6.71638L13.5 7.07183V7.92897L11.932 8.28444C11.8162 8.94342 11.557 9.55301 11.1878 10.0798L12.0453 11.4402L11.4392 12.0462L10.0787 11.1886C9.55192 11.5576 8.94241 11.8166 8.28355 11.9323L7.92809 13.5002H7.07095L6.71543 11.932C6.0569 11.8162 5.44772 11.5572 4.92116 11.1883L3.56055 12.046L2.95445 11.4399L3.81213 10.0794C3.4431 9.55266 3.18403 8.94326 3.06825 8.2845L1.50002 7.92897V7.07183L3.06818 6.71632C3.18388 6.05765 3.44283 5.44833 3.81171 4.92165L2.95398 3.561L3.56008 2.95491L4.92053 3.81251ZM9.02496 7.50008C9.02496 8.34226 8.34223 9.02499 7.50005 9.02499C6.65786 9.02499 5.97513 8.34226 5.97513 7.50008C5.97513 6.65789 6.65786 5.97516 7.50005 5.97516C8.34223 5.97516 9.02496 6.65789 9.02496 7.50008ZM9.92496 7.50008C9.92496 8.83932 8.83929 9.92499 7.50005 9.92499C6.1608 9.92499 5.07513 8.83932 5.07513 7.50008C5.07513 6.16084 6.1608 5.07516 7.50005 5.07516C8.83929 5.07516 9.92496 6.16084 9.92496 7.50008Z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"></path></svg><span>Settings</span></button>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h1 id="page-title">Dashboard</h1>
+        </div>
+        <div class="topbar-actions">
+          <button class="primary-btn" id="add-asset-btn">+ Add asset</button>
+        </div>
+      </header>
+
+      <section id="dashboard-section" class="page-section active">
+        <div class="stats-grid">
+          <article class="stat-card">
+            <span>Total invested</span>
+            <strong id="stat-invested">0 ₴</strong>
+          </article>
+          <article class="stat-card">
+            <span>Portfolio value today</span>
+            <strong id="stat-value">0 ₴</strong>
+          </article>
+          <article class="stat-card">
+            <span>Profit</span>
+            <strong id="stat-profit">0 ₴</strong>
+          </article>
+          <article class="stat-card">
+            <span id="stat-return-label">Return</span>
+            <strong id="stat-return">0%</strong>
+          </article>
+          <article class="stat-card reinvestment-stat-card">
+            <span>Additional investment for $1,000/month</span>
+            <strong id="stat-reinvestment">—</strong>
+            <small id="stat-average-monthly-profit">Average monthly profit: —</small>
+            <small>This is only an approximate forecast; the actual amount may differ.</small>
+          </article>
+        </div>
+
+        <div class="content-grid">
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Portfolio</h2>
+              </div>
+            </div>
+            <div id="dashboard-assets" class="asset-list empty-state">
+              No assets yet.
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Upcoming payments</h2>
+                <p>Next expected cash flows</p>
+              </div>
+            </div>
+            <div id="dashboard-payments" class="payment-list empty-state">
+              No payments yet.
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="macroeconomics-section" class="page-section">
+        <div id="macro-state" class="macro-state">Loading official macroeconomic data…</div>
+        <div id="macro-content" hidden>
+          <div id="macro-fx-cards" class="macro-fx-grid"></div>
+          <div class="macro-section-heading"><div><p class="market-kicker">NBU</p><h2>Inflation</h2></div><p>Percent change</p></div>
+          <div class="macro-chart-grid">
+            <article class="panel macro-chart-card"><h3>Annual inflation</h3><div><canvas id="macro-inflation-annual"></canvas></div></article>
+            <article class="panel macro-chart-card"><h3>Monthly inflation</h3><div><canvas id="macro-inflation-monthly"></canvas></div></article>
+            <article class="panel macro-chart-card"><h3>Core inflation</h3><div><canvas id="macro-inflation-core"></canvas></div></article>
+            <article class="panel macro-chart-card"><h3>Producer price index (PPI)</h3><div><canvas id="macro-inflation-ppi"></canvas></div></article>
+          </div>
+          <div class="macro-chart-grid macro-chart-grid-wide">
+            <article class="panel macro-chart-card"><h3>Gross domestic product</h3><p class="macro-source">State Statistics Service of Ukraine</p><div><canvas id="macro-gdp-chart"></canvas></div></article>
+          </div>
+          <p id="macro-errors" class="macro-errors" hidden></p>
+        </div>
+      </section>
+
+      <section id="portfolio-section" class="page-section">
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Portfolio</h2>
+              <p>All current assets</p>
+            </div>
+            <div class="portfolio-controls">
+              <label for="portfolio-sort">Sort by</label>
+              <select id="portfolio-sort">
+                <option value="purchase-date">Purchase date</option>
+                <option value="next-payment">Next payment date</option>
+                <option value="invested">Invested amount</option>
+              </select>
+              <button class="secondary-btn" id="sync-inzhur-btn" type="button">Sync API</button>
+              <button class="secondary-btn" id="portfolio-sell-btn">Sell asset</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Asset</th>
+                  <th>Type</th>
+                  <th>Instrument</th>
+                  <th>Quantity</th>
+                  <th>Buy price</th>
+                  <th>Current price</th>
+                  <th>Invested</th>
+                  <th>Purchase date</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="portfolio-table"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section id="transactions-section" class="page-section">
+
+        <article class="panel">
+
+          <div class="panel-header">
+            <div>
+              <h2>Transactions</h2>
+              <p>Purchases and sales history</p>
+            </div>
+
+            <button class="primary-btn" id="sell-asset-btn">
+              Sell asset
+            </button>
+          </div>
+
+          <div class="table-wrapper">
+
+            <table>
+
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Asset</th>
+                  <th>Type</th>
+                  <th>Quantity</th>
+                  <th>Amount</th>
+                  <th>Profit</th>
+                  <th>ROI</th>
+                </tr>
+              </thead>
+
+              <tbody id="transactions-table"></tbody>
+
+            </table>
+
+          </div>
+
+        </article>
+
+      </section>
+
+      <section id="calendar-section" class="page-section">
+        <article class="panel calendar-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Calendar</h2>
+              <p>Payments and planned purchases</p>
+            </div>
+
+            <button class="primary-btn" id="add-note-btn">
+              + Add note
+            </button>
+          </div>
+
+          <div class="calendar-toolbar">
+            <button class="secondary-btn calendar-nav-btn" id="previous-month" type="button">
+              ←
+            </button>
+
+            <h3 id="calendar-month-title"></h3>
+
+            <button class="secondary-btn calendar-nav-btn" id="next-month" type="button">
+              →
+            </button>
+
+            <button class="secondary-btn" id="today-btn" type="button">
+              Today
+            </button>
+          </div>
+
+          <div class="calendar-weekdays">
+            <div>Mon</div>
+            <div>Tue</div>
+            <div>Wed</div>
+            <div>Thu</div>
+            <div>Fri</div>
+            <div>Sat</div>
+            <div>Sun</div>
+          </div>
+
+          <div id="calendar-grid" class="calendar-grid"></div>
+
+          <div class="calendar-legend">
+            <span>
+              <i class="legend-dot dividend"></i>
+              Dividend
+            </span>
+
+            <span>
+              <i class="legend-dot coupon"></i>
+              Coupon
+            </span>
+
+            <span>
+              <i class="legend-dot maturity"></i>
+              Maturity
+            </span>
+
+            <span>
+              <i class="legend-dot note"></i>
+              Planned purchase
+            </span>
+          </div>
+        </article>
+      </section>
+
+      <section id="analytics-section" class="page-section">
+
+        <div class="analytics-card">
+
+          <div class="asset-allocation-chart">
+            <canvas id="asset-allocation-chart"></canvas>
+          </div>
+        </div>
+
+        <article class="analytics-panel">
+
+          <div class="analytics-filters">
+
+            <label class="analytics-filters-input">
+              <span>From</span>
+              <input type="date" id="profit-from" />
+            </label>
+
+            <label class="analytics-filters-input">
+              <span>To</span>
+              <input type="date" id="profit-to" />
+            </label>
+
+            <button type="button" class="primary-btn" id="calculate-profit">
+              Calculate
+            </button>
+
+            <button type="button" class="secondary-btn" id="profit-all-time">
+              All time
+            </button>
+
+          </div>
+
+        </article>
+
+
+        <div class="stats-grid analytics-stats">
+
+          <article class="stat-card">
+            <span>Dividends</span>
+            <strong id="profit-dividends">
+              0 ₴
+            </strong>
+          </article>
+
+          <article class="stat-card">
+            <span>Coupons</span>
+            <strong id="profit-coupons">
+              0 ₴
+            </strong>
+          </article>
+
+          <article class="stat-card">
+            <span>Maturity</span>
+            <strong id="profit-maturity">
+              0 ₴
+            </strong>
+          </article>
+
+          <article class="stat-card">
+            <span>Sales profit (after taxes)</span>
+            <strong id="profit-sales">
+              0 ₴
+            </strong>
+          </article>
+
+          <article class="stat-card">
+            <span>Price growth (after taxes)</span>
+            <strong id="profit-price-growth">0 ₴</strong>
+          </article>
+
+          <article class="stat-card">
+            <span>Total profit</span>
+            <strong id="profit-total">
+              0 ₴
+            </strong>
+          </article>
+
+          <article class="stat-card">
+            <span>ROI</span>
+            <strong id="profit-roi">
+              0%
+            </strong>
+          </article>
+
+        </div>
+
+
+        <article class="panel">
+
+          <div class="panel-header">
+            <div>
+              <h2>Profit by asset</h2>
+              <p>Received income, sales, and price changes</p>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+
+            <table>
+
+              <thead>
+                <tr>
+                  <th>Asset</th>
+                  <th>Invested</th>
+                  <th>Dividends</th>
+                  <th>Coupons</th>
+                  <th>Maturity</th>
+                  <th>Sales profit</th>
+                  <th>Price growth</th>
+                  <th>Total profit</th>
+                  <th>ROI</th>
+                </tr>
+              </thead>
+
+              <tbody id="profit-assets-table"></tbody>
+
+            </table>
+
+          </div>
+
+        </article>
+
+        <article class="panel portfolio-history-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Portfolio investment dynamics</h2>
+              <p>Total invested capital by month</p>
+            </div>
+          </div>
+          <div class="portfolio-history-chart">
+            <canvas id="portfolio-history-chart"></canvas>
+          </div>
+        </article>
+
+      </section>
+
+      <section id="rebalance-section" class="page-section">
+        <article class="panel rebalance-panel" aria-labelledby="rebalance-title">
+          <div class="panel-header">
+            <div>
+              <h2 id="rebalance-title">Portfolio rebalance</h2>
+              <p>Enter target shares. Removed positions are ignored; recommendations contain purchases only.</p>
+            </div>
+          </div>
+          <form id="rebalance-form">
+            <div id="rebalance-targets" class="rebalance-targets"></div>
+            <button type="button" class="secondary-btn" id="add-rebalance-asset">+ Add planned asset</button>
+            <div class="rebalance-total">Target total: <strong id="rebalance-total">0%</strong></div>
+            <button type="submit" class="primary-btn">Calculate rebalance</button>
+          </form>
+          <div id="rebalance-results" class="rebalance-results" aria-live="polite"></div>
+        </article>
+      </section>
+
+      <section id="market-section" class="page-section">
+        <article class="market-card" aria-labelledby="market-symbol-title">
+          <div class="market-heading">
+            <div class="market-quote">
+              <p class="market-kicker">MARKET</p>
+              <h2 id="market-symbol-title">USD/UAH</h2>
+              <div class="market-price-row">
+                <strong id="market-last-price">—</strong>
+                <span id="market-change">—</span>
+              </div>
+              <p id="market-last-date" class="market-date">Select a ticker to load its price history</p>
+            </div>
+            <form id="market-symbol-form" class="market-search" autocomplete="off">
+              <label for="market-symbol-input">Ticker or currency</label>
+              <div class="market-search-row">
+                <input id="market-symbol-input" name="symbol" list="market-symbols" value="USD" placeholder="Type USD, EUR, AAPL…" spellcheck="false" />
+                <datalist id="market-symbols"></datalist>
+                <button class="primary-btn" type="submit">Show</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="market-toolbar">
+            <span>Area chart</span>
+            <span id="market-meta">Historical price · Twelve Data</span>
+          </div>
+          <div class="market-chart-wrap">
+            <canvas id="market-price-chart" aria-label="Historical market price chart"></canvas>
+            <div id="market-chart-state" class="market-chart-state">Enter a ticker to view the chart.</div>
+          </div>
+          <div class="market-ranges" id="market-ranges" aria-label="Chart period">
+            <button type="button" data-market-range="1D">1D</button>
+            <button type="button" data-market-range="5D">5D</button>
+            <button type="button" data-market-range="1M" class="active">1M</button>
+            <button type="button" data-market-range="6M">6M</button>
+            <button type="button" data-market-range="YTD">YTD</button>
+            <button type="button" data-market-range="1Y">1Y</button>
+            <button type="button" data-market-range="5Y">5Y</button>
+            <button type="button" data-market-range="MAX">Max</button>
+            <form id="market-custom-range" class="market-custom-range">
+              <label><span>From</span><input type="date" id="market-date-from" required /></label>
+              <label><span>To</span><input type="date" id="market-date-to" required /></label>
+              <button type="submit" class="secondary-btn">Apply</button>
+            </form>
+          </div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <div class="app-shell wallet-shell" id="wallet-app" hidden>
+    <aside class="sidebar">
+      <button class="brand app-switch" id="open-investments" type="button" title="Open Investments">
+        <div class="brand-mark"><img src="/assets/fino-logo.png" alt="fino" /></div>
+        <div><strong>Wallet</strong></div>
+      </button>
+      <nav class="nav">
+        <button class="nav-item wallet-tab active" data-wallet-tab="current">Current</button>
+        <button class="nav-item wallet-tab" data-wallet-tab="archive">Archive</button>
+        <button class="nav-item wallet-tab" data-wallet-tab="expenses">Recorded expenses</button>
+        <button class="nav-item wallet-tab" data-wallet-tab="charts">Charts</button>
+        <button class="nav-item wallet-tab" data-wallet-tab="loans">Loans</button>
+      </nav>
+      <button class="sidebar-settings-button" type="button" data-open-settings><svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M7.07095 0.650238C6.67391 0.650238 6.32977 0.925096 6.24198 1.31231L6.0039 2.36247C5.6249 2.47269 5.26335 2.62363 4.92436 2.81013L4.01335 2.23585C3.67748 2.02413 3.23978 2.07312 2.95903 2.35386L2.35294 2.95996C2.0722 3.2407 2.0232 3.6784 2.23493 4.01427L2.80942 4.92561C2.62307 5.2645 2.47227 5.62594 2.36216 6.00481L1.31209 6.24287C0.924883 6.33065 0.650024 6.6748 0.650024 7.07183V7.92897C0.650024 8.32601 0.924883 8.67015 1.31209 8.75794L2.36228 8.99603C2.47246 9.375 2.62335 9.73652 2.80979 10.0755L2.2354 10.9867C2.02367 11.3225 2.07267 11.7602 2.35341 12.041L2.95951 12.6471C3.24025 12.9278 3.67795 12.9768 4.01382 12.7651L4.92506 12.1907C5.26384 12.377 5.62516 12.5278 6.0039 12.6379L6.24198 13.6881C6.32977 14.0753 6.67391 14.3502 7.07095 14.3502H7.92809C8.32512 14.3502 8.66927 14.0753 8.75705 13.6881L8.99505 12.6383C9.37411 12.5282 9.73573 12.3773 10.0748 12.1909L10.986 12.7653C11.3218 12.977 11.7595 12.928 12.0403 12.6473L12.6464 12.0412C12.9271 11.7604 12.9761 11.3227 12.7644 10.9869L12.1902 10.076C12.3768 9.73688 12.5278 9.37515 12.638 8.99596L13.6879 8.75794C14.0751 8.67015 14.35 8.32601 14.35 7.92897V7.07183C14.35 6.6748 14.0751 6.33065 13.6879 6.24287L12.6381 6.00488C12.528 5.62578 12.3771 5.26414 12.1906 4.92507L12.7648 4.01407C12.9766 3.6782 12.9276 3.2405 12.6468 2.95975L12.0407 2.35366C11.76 2.07292 11.3223 2.02392 10.9864 2.23565L10.0755 2.80989C9.73622 2.62328 9.37437 2.47229 8.99505 2.36209L8.75705 1.31231C8.66927 0.925096 8.32512 0.650238 7.92809 0.650238H7.07095ZM4.92053 3.81251C5.44724 3.44339 6.05665 3.18424 6.71543 3.06839L7.07095 1.50024H7.92809L8.28355 3.06816C8.94267 3.18387 9.5524 3.44302 10.0794 3.81224L11.4397 2.9547L12.0458 3.56079L11.1882 4.92117C11.5573 5.44798 11.8164 6.0575 11.9321 6.71638L13.5 7.07183V7.92897L11.932 8.28444C11.8162 8.94342 11.557 9.55301 11.1878 10.0798L12.0453 11.4402L11.4392 12.0462L10.0787 11.1886C9.55192 11.5576 8.94241 11.8166 8.28355 11.9323L7.92809 13.5002H7.07095L6.71543 11.932C6.0569 11.8162 5.44772 11.5572 4.92116 11.1883L3.56055 12.046L2.95445 11.4399L3.81213 10.0794C3.4431 9.55266 3.18403 8.94326 3.06825 8.2845L1.50002 7.92897V7.07183L3.06818 6.71632C3.18388 6.05765 3.44283 5.44833 3.81171 4.92165L2.95398 3.561L3.56008 2.95491L4.92053 3.81251ZM9.02496 7.50008C9.02496 8.34226 8.34223 9.02499 7.50005 9.02499C6.65786 9.02499 5.97513 8.34226 5.97513 7.50008C5.97513 6.65789 6.65786 5.97516 7.50005 5.97516C8.34223 5.97516 9.02496 6.65789 9.02496 7.50008ZM9.92496 7.50008C9.92496 8.83932 8.83929 9.92499 7.50005 9.92499C6.1608 9.92499 5.07513 8.83932 5.07513 7.50008C5.07513 6.16084 6.1608 5.07516 7.50005 5.07516C8.83929 5.07516 9.92496 6.16084 9.92496 7.50008Z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"></path></svg><span>Settings</span></button>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <div><h1 id="wallet-title">Personal expenses</h1></div>
+        <div class="topbar-actions">
+          <button class="primary-btn" id="add-expense-btn">Record expense</button>
+        </div>
+      </header>
+
+      <section id="wallet-current" class="wallet-page active">
+        <article class="panel">
+          <div class="panel-header">
+            <div><h2 id="wallet-month-title">Budget</h2><p>Planned and actual spending for the selected month</p></div>
+            <input type="month" id="wallet-current-month" lang="en" />
+          </div>
+          <div class="table-wrap">
+            <table class="wallet-table">
+              <thead><tr><th>Expense category</th><th>Plan</th><th>Percentage</th><th>Actual amount</th><th>Balance</th><th>Actual percentage</th><th></th></tr></thead>
+              <tbody id="wallet-current-body"></tbody>
+            </table>
+          </div>
+          <section class="budget-progress-card" id="budget-progress-card" aria-label="Monthly budget usage">
+            <div class="budget-progress-header">
+              <div class="budget-progress-identity">
+                <span class="budget-progress-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7.5h14a2 2 0 0 1 2 2v8.25a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6.25a2 2 0 0 1 2-2h12.5M16 12h5v4h-5a2 2 0 0 1 0-4Z"/></svg></span>
+                <div><h3>Expenses</h3><p id="budget-progress-values">0 / 0 ₴</p></div>
+              </div>
+              <div class="budget-progress-summary"><strong id="budget-progress-percent">0%</strong><span id="budget-progress-remaining">0 ₴ remaining</span></div>
+            </div>
+            <div class="wave-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <svg class="wave-progress-ghost" viewBox="0 0 600 60" preserveAspectRatio="none" aria-hidden="true"><path d="M0 13 C25 3 50 23 75 13 S125 3 150 13 S200 23 225 13 S275 3 300 13 S350 23 375 13 S425 3 450 13 S500 23 525 13 S575 3 600 13"/></svg>
+              <div class="wave-progress-fill" id="budget-progress-fill">
+                <svg viewBox="0 0 600 60" preserveAspectRatio="none" aria-hidden="true">
+                  <defs><linearGradient id="budget-liquid-gradient" x1="0" y1="0" x2="0" y2="1"><stop class="wave-stop-light" offset="0%"/><stop class="wave-stop-mid" offset="48%"/><stop class="wave-stop-dark" offset="100%"/></linearGradient></defs>
+                  <path class="wave-liquid" d="M0 13 C25 3 50 23 75 13 S125 3 150 13 S200 23 225 13 S275 3 300 13 S350 23 375 13 S425 3 450 13 S500 23 525 13 S575 3 600 13 L600 60 L0 60 Z"/>
+                  <path class="wave-highlight" d="M0 13 C25 3 50 23 75 13 S125 3 150 13 S200 23 225 13 S275 3 300 13 S350 23 375 13 S425 3 450 13 S500 23 525 13 S575 3 600 13"/>
+                </svg>
+                <span class="bubble bubble-1"></span><span class="bubble bubble-2"></span><span class="bubble bubble-3"></span><span class="bubble bubble-4"></span><span class="bubble bubble-5"></span><span class="bubble bubble-6"></span>
+              </div>
+            </div>
+          </section>
+        </article>
+        <article class="panel wallet-notes-panel">
+          <div class="panel-header"><div><h2>Notes</h2><p id="wallet-notes-description">Notes for the current month</p></div></div>
+          <form id="wallet-note-form" class="wallet-note-form">
+            <textarea id="wallet-note-text" rows="3" required placeholder="Add a note for this month"></textarea>
+            <button type="submit" class="primary-btn">Add note</button>
+          </form>
+          <div id="wallet-notes-list" class="wallet-notes-list"></div>
+        </article>
+      </section>
+
+      <section id="wallet-archive" class="wallet-page">
+        <article class="panel">
+          <div class="panel-header">
+            <div><h2>Expense archive</h2><p>Daily spending for the selected month</p></div>
+            <input type="month" id="wallet-archive-month" lang="en" />
+          </div>
+          <div class="table-wrap"><table id="wallet-archive-table"></table></div>
+        </article>
+      </section>
+
+      <section id="wallet-expenses" class="wallet-page">
+        <article class="panel wallet-expense-list-panel">
+          <div class="panel-header"><div><h2>Recorded expenses</h2><p>Edit or delete individual entries</p></div><input type="month" id="wallet-expenses-month" lang="en" /></div>
+          <div class="table-wrap"><table><thead><tr><th>Date</th><th>Category</th><th>Amount</th><th>Note</th><th></th></tr></thead><tbody id="wallet-expense-list"></tbody></table></div>
+        </article>
+      </section>
+
+      <section id="wallet-charts" class="wallet-page">
+        <article class="panel">
+          <div class="panel-header"><div><h2>Expense charts</h2><p>Distribution and spending dynamics</p></div><input type="month" id="wallet-chart-month" lang="en" /></div>
+          <div class="wallet-charts-grid">
+            <div class="wallet-chart"><canvas id="wallet-category-chart"></canvas></div>
+            <div class="wallet-chart"><canvas id="wallet-daily-chart"></canvas></div>
+            <div class="wallet-chart wallet-chart-wide">
+              <label class="wallet-chart-filter"><span>Monthly series</span><select id="wallet-monthly-category"><option value="__total__">Total</option></select></label>
+              <canvas id="wallet-monthly-chart"></canvas>
+            </div>
+          </div>
+          <div class="wallet-period-chart-block">
+            <div class="wallet-period-chart-header">
+              <div>
+                <p class="eyebrow">SELECTED PERIOD</p>
+                <h3>Total expenses</h3>
+                <strong id="wallet-period-total" class="wallet-period-total">0 ₴</strong>
+              </div>
+              <div class="wallet-period-controls">
+                <label><span>Period</span><select id="wallet-period-preset">
+                  <option value="all">All time</option>
+                  <option value="7d">Last 7 days</option>
+                  <option value="30d">Last 30 days</option>
+                  <option value="3m">Last 3 months</option>
+                  <option value="ytd">Year to date</option>
+                  <option value="1y">Last year</option>
+                  <option value="custom">Custom period</option>
+                </select></label>
+                <label><span>From</span><input type="date" id="wallet-period-from" lang="en" /></label>
+                <label><span>To</span><input type="date" id="wallet-period-to" lang="en" /></label>
+              </div>
+            </div>
+            <div class="wallet-period-chart"><canvas id="wallet-period-chart"></canvas></div>
+            <p class="wallet-period-caption">Cumulative recorded expenses by day. Salary is excluded.</p>
+          </div>
+        </article>
+      </section>
+
+      <section id="wallet-loans" class="wallet-page">
+        <article class="panel loans-panel">
+          <div class="panel-header"><div><h2>Loans</h2><p>Balances and upcoming repayments</p></div><button class="primary-btn" id="add-loan-btn">Add loan</button></div>
+          <div id="loans-list"></div>
+          <div class="panel-header loan-calendar-header"><div><h3>Upcoming loan payments</h3></div></div>
+          <div id="loan-calendar"></div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="loan-modal">
+    <div class="modal"><div class="modal-header"><div><p class="eyebrow">WALLET</p><h2>Add loan</h2></div><button class="icon-btn" id="close-loan-modal">×</button></div>
+      <form id="loan-form"><div class="form-grid">
+        <label><span>Name</span><input name="name" required /></label>
+        <label><span>Amount</span><input name="amount" type="number" min="0.01" step="0.01" required /></label>
+        <label><span>Repayment method</span><select name="method" id="loan-method"><option value="once">One-time full payment</option><option value="flexible">Any amount by due date</option><option value="monthly">Fixed monthly payment</option><option value="manual">Manual schedule</option></select></label>
+        <label><span>Institution</span><input name="institution" /></label>
+        <label><span>Due date / first payment</span><input name="dueDate" type="date" required /></label>
+        <label id="loan-monthly-payment-field" hidden><span>Monthly payment</span><input name="monthlyPayment" type="number" min="0" step="0.01" /></label>
+        <label id="loan-payment-day-field" hidden><span>Payment day</span><input name="paymentDay" type="number" min="1" max="31" /></label>
+        <label id="loan-last-payment-field" hidden><span>Last payment</span><input name="lastPaymentDate" type="date" /></label>
+        <label id="loan-manual-schedule-field" hidden><span>Manual schedule</span><textarea name="manualSchedule" rows="3" placeholder="2026-10-15, 1500&#10;2026-11-15, 1500"></textarea></label>
+        <label><span>Comment</span><input name="comment" /></label>
+      </div><div class="modal-actions"><button type="button" class="secondary-btn" id="cancel-loan">Cancel</button><button type="submit" class="primary-btn">Save loan</button></div></form>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="asset-transactions-modal">
+    <div class="modal modal-wide"><div class="modal-header"><div><p class="eyebrow">ASSET</p><h2 id="asset-transactions-title">Transactions</h2></div><button class="icon-btn" id="close-asset-transactions">×</button></div>
+      <div class="transaction-filters"><label><input type="checkbox" id="asset-hide-sales" /> Hide sales</label><label><input type="checkbox" id="asset-only-current" /> Show current holdings only</label></div>
+      <div class="table-wrap"><table><thead><tr><th>Date</th><th>Instrument</th><th>Type</th><th>Quantity</th><th>Amount</th><th></th></tr></thead><tbody id="asset-transactions-body"></tbody></table></div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="notice-modal">
+    <div class="modal notice-modal"><div class="modal-header"><h2 id="notice-title">Message</h2><button class="icon-btn" id="close-notice-modal">×</button></div><p id="notice-message"></p><div class="modal-actions"><button class="secondary-btn" id="notice-cancel" hidden>Cancel</button><button class="primary-btn" id="notice-ok">OK</button></div></div>
+  </div>
+
+  <div class="modal-backdrop" id="settings-modal">
+    <div class="modal settings-modal">
+      <div class="modal-header">
+        <div><p class="eyebrow">FINO</p><h2>Settings</h2></div>
+        <button class="icon-btn" id="close-settings-modal" type="button" aria-label="Close">×</button>
+      </div>
+      <section class="settings-section">
+        <div><h3>Appearance</h3><p>Visual preferences for investments and wallet</p></div>
+        <button class="settings-row-button" id="settings-theme-toggle" type="button"><span>Color theme</span><strong data-theme-label>Dark</strong></button>
+      </section>
+      <section class="settings-section">
+        <div><h3>Server &amp; Google Drive</h3><p>Data synchronization and backups</p></div>
+        <div class="drive-sync-panel settings-drive-panel">
+          <div class="drive-sync-heading"><span class="status-dot" data-drive-dot></span><strong data-drive-connection>Google Drive: Checking…</strong></div>
+          <span data-drive-last-sync>Last sync: —</span>
+          <span class="drive-sync-state" data-drive-state>Syncing</span>
+          <div class="drive-sync-actions">
+            <button type="button" data-drive-action="sync">Sync now</button>
+            <button type="button" data-drive-action="download">Download from Drive</button>
+            <button type="button" data-drive-action="upload">Upload to Drive</button>
+            <button type="button" data-drive-action="reconnect">Reconnect</button>
+            <button type="button" data-drive-action="backup">Create backup</button>
+          </div>
+        </div>
+      </section>
+      <section class="settings-section settings-account-section">
+        <div><h3>Account</h3><p>Account controls will be available later</p></div>
+        <button class="settings-row-button settings-logout" id="settings-logout" type="button">Log out</button>
+      </section>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="expense-modal">
+    <div class="modal">
+      <div class="modal-header"><div><p class="eyebrow">WALLET</p><h2 id="expense-modal-title">Record expense</h2></div><button class="icon-btn" id="close-expense-modal">×</button></div>
+      <form id="expense-form">
+        <div class="form-grid">
+          <label><span>Date</span><input type="date" name="date" lang="en" required /></label>
+          <label><span>Expense category</span><select name="category" id="expense-category" required></select></label>
+          <label><span>Amount</span><input type="number" name="amount" min="0.01" step="0.01" required /></label>
+          <label><span>Note</span><input name="note" /></label>
+        </div>
+        <label class="wallet-new-category custom-checkbox">
+          <input type="checkbox" id="use-new-category" />
+          <span class="custom-checkbox-mark" aria-hidden="true"></span>
+          <span>Add a new category for this month</span>
+        </label>
+        <label id="new-category-field" hidden><span>New category name</span><input id="new-expense-category" /></label>
+        <div class="modal-actions"><button type="button" class="secondary-btn" id="cancel-expense">Cancel</button><button type="submit" class="primary-btn">Save</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="asset-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <div>
+          <p class="eyebrow">PORTFOLIO</p>
+          <h2>Add asset</h2>
+        </div>
+        <button class="icon-btn" id="close-modal">×</button>
+      </div>
+
+      <form id="asset-form">
+        <div class="form-grid">
+          <label>
+            <span>Asset name</span>
+            <input name="name" required placeholder="e.g. OVDP 236624" />
+          </label>
+
+          <label>
+            <span>Type</span>
+            <select name="type" id="asset-type" required>
+              <option value="ovdp">OVDP</option>
+              <option value="inzhur_reit">Inzhur REIT</option>
+              <option value="s1_reit">S1 REIT</option>
+              <option value="inzhur_miltech">Inzhur MilTech</option>
+              <option value="etf">ETF</option>
+              <option value="stock">Stock</option>
+              <option value="savings">Savings</option>
+              <option value="novapay">NovaPay bond</option>
+              <option value="deposit">Bank deposit</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Instrument</span>
+            <select name="instrumentSelection" id="asset-instrument"></select>
+          </label>
+          <label id="new-instrument-name-field" hidden><span>New instrument name</span><input name="newInstrumentName" /></label>
+          <label id="new-instrument-type-field" hidden><span>Instrument type</span><input name="newInstrumentType" placeholder="Bank, broker, exchange..." /></label>
+
+          <label id="market-ticker-field" hidden>
+            <span>Ticker</span>
+            <input name="ticker" id="asset-ticker" placeholder="e.g. VWCE or AAPL" />
+          </label>
+
+          <label id="market-current-price-field" hidden>
+            <span>Current price</span>
+            <input name="marketCurrentPrice" type="number" step="0.000001" min="0" placeholder="Price today" />
+          </label>
+
+          <label>
+            <span>Quantity</span>
+            <input name="quantity" type="number" step="1" min="1" required />
+          </label>
+
+          <label>
+            <span>Price per unit</span>
+            <input name="purchasePrice" type="number" step="0.000001" min="0" required />
+          </label>
+
+          <label><span>Currency</span><select name="currency"><option value="UAH">UAH — ₴</option><option value="USD">USD — $</option><option value="EUR">EUR — €</option></select></label>
+
+          <label>
+            <span>Purchase date</span>
+            <input name="purchaseDate" type="date" required />
+          </label>
+        </div>
+
+        <div id="novapay-settings" class="dynamic-settings">
+          <div class="form-section"><h3>NovaPay fixed payout</h3><div class="form-grid">
+            <label><span>Term (months)</span><input name="termMonths" type="number" min="1" max="12" step="1" value="1" /></label>
+            <label><span>Payout date</span><input name="novapayMaturityDate" type="date" /></label>
+            <label><span>Fixed payout</span><input name="maturityAmount" type="number" min="0" step="0.01" placeholder="1010" /></label>
+          </div><p class="form-hint">Early withdrawal is not available.</p></div>
+        </div>
+
+        <div id="deposit-settings" class="dynamic-settings">
+          <div class="form-section"><h3>Deposit terms</h3><div class="form-grid">
+            <label><span>Annual interest, %</span><input name="annualRate" type="number" min="0" step="0.01" /></label>
+            <label><span>Maturity date</span><input name="depositMaturityDate" type="date" /></label>
+            <label class="wallet-new-category"><input name="earlyWithdrawal" type="checkbox" /> Allow early withdrawal</label>
+          </div></div>
+        </div>
+
+        <!-- REIT settings -->
+        <div id="reit-settings" class="dynamic-settings">
+          <div class="form-section">
+            <h3>Dividend settings</h3>
+
+            <div class="form-grid">
+              <label>
+                <span>Dividend per unit</span>
+                <input name="dividendPerUnit" id="dividend-per-unit" type="number" step="0.000001" min="0"
+                  placeholder="e.g. 0.09" />
+              </label>
+
+              <label>
+                <span>First dividend date</span>
+                <input name="firstDividendDate" id="first-dividend-date" type="date" />
+              </label>
+
+              <label id="s1-current-price-field" hidden>
+                <span>Current price</span>
+                <input name="currentPrice" id="s1-current-price" type="number" step="0.000001" min="0" placeholder="Price today" />
+              </label>
+            </div>
+
+            <p class="form-hint">
+              Dividends will be generated automatically on the 10th of each month.
+            </p>
+          </div>
+        </div>
+
+        <!-- OVDP settings -->
+        <div id="ovdp-settings" class="dynamic-settings">
+          <div class="form-section">
+            <h3>Bond schedule</h3>
+
+            <div class="form-grid">
+              <label>
+                <span>ISIN</span>
+                <input name="isin" id="asset-isin" type="text" maxlength="12" placeholder="UA4000230262" />
+              </label>
+              <label>
+                <span>Maturity / redemption date</span>
+                <input name="maturityDate" id="maturity-date" type="date" />
+              </label>
+              <label>
+                <span>Redemption value per bond</span>
+                <input name="redemptionValue" type="number" min="0" step="0.01" value="1000" />
+              </label>
+            </div>
+
+            <div class="coupon-header">
+              <h3>Coupon payments</h3>
+              <button type="button" class="secondary-btn" id="add-coupon-btn">
+                + Add coupon
+              </button>
+            </div>
+
+            <div id="coupon-list"></div>
+          </div>
+        </div>
+
+        <!-- Capitalization -->
+        <div id="capitalization-settings" class="dynamic-settings">
+          <div class="form-section">
+            <h3>Payment method</h3>
+
+            <label class="radio-card single-card">
+              <input type="radio" name="paymentMethod" value="capitalization" checked />
+              <span>
+                <strong>Capitalization</strong>
+                <small>
+                  Income is reinvested into the asset.
+                </small>
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="secondary-btn" id="cancel-modal">
+            Cancel
+          </button>
+
+          <button type="submit" class="primary-btn">
+            Save asset
+          </button>
+        </div>
+      </form>
+
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="delete-holding-modal">
+    <div class="modal small-modal">
+      <div class="modal-header">
+        <div><p class="eyebrow">PORTFOLIO</p><h2 id="holding-selection-title">Delete holding</h2></div>
+        <button class="icon-btn" id="close-delete-holding-modal" type="button" aria-label="Close">×</button>
+      </div>
+      <form id="delete-holding-form">
+        <label><span>Instrument</span><select id="delete-holding-asset" required></select></label>
+        <p class="form-hint">The selected holding and all related records will be deleted.</p>
+        <div class="modal-actions">
+          <button type="button" class="secondary-btn" id="cancel-delete-holding">Cancel</button>
+          <button type="submit" class="danger-btn" id="holding-selection-submit">Delete</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Sell asset modal -->
+  <div class="modal-backdrop" id="sell-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <div>
+          <p class="eyebrow">TRANSACTION</p>
+          <h2>Sell asset</h2>
+        </div>
+
+        <button class="icon-btn" id="close-sell-modal" type="button">
+          ×
+        </button>
+      </div>
+
+      <form id="sell-form">
+        <input name="currency" type="hidden" value="UAH" />
+
+        <div class="form-grid">
+
+          <label>
+            <span>Asset</span>
+
+            <select name="assetId" id="sell-asset" required>
+              <option value="">
+                Select asset
+              </option>
+            </select>
+          </label>
+
+          <label>
+            <span>Available quantity</span>
+
+            <input type="text" id="sell-available" value="0" readonly />
+          </label>
+
+          <label>
+            <span>Quantity to sell</span>
+
+            <input name="quantity" id="sell-quantity" type="number" min="1" step="1" required />
+          </label>
+
+          <label>
+            <span>Sell price per unit</span>
+
+            <input name="sellPrice" id="sell-price" type="number" min="0" step="0.000001" required />
+          </label>
+
+          <label>
+            <span>Sell date</span>
+
+            <input name="sellDate" id="sell-date" type="date" required />
+          </label>
+
+        </div>
+
+        <div class="form-section">
+
+          <div class="sell-preview">
+
+            <div>
+              <span>Purchase price</span>
+              <strong id="sell-purchase-price">
+                0
+              </strong>
+            </div>
+
+            <div>
+              <span>Cost basis</span>
+              <strong id="sell-cost-basis">
+                0
+              </strong>
+            </div>
+
+            <div>
+              <span>Sale proceeds</span>
+              <strong id="sell-proceeds">
+                0
+              </strong>
+            </div>
+
+            <div>
+              <span>Estimated profit</span>
+              <strong id="sell-profit">
+                0
+              </strong>
+            </div>
+
+            <div>
+              <span>ROI</span>
+              <strong id="sell-roi">
+                0%
+              </strong>
+            </div>
+
+          </div>
+
+        </div>
+
+        <div class="modal-actions">
+
+          <button type="button" class="secondary-btn" id="cancel-sell-modal">
+            Cancel
+          </button>
+
+          <button type="submit" class="primary-btn">
+            Sell asset
+          </button>
+
+        </div>
+
+      </form>
+    </div>
+  </div>
+
+  <!-- Buy more asset modal -->
+  <div class="modal-backdrop" id="buy-more-modal">
+    <div class="modal small-modal">
+      <div class="modal-header">
+        <div>
+          <p class="eyebrow">PORTFOLIO</p>
+          <h2>Buy</h2>
+        </div>
+
+        <button type="button" class="icon-btn" id="close-buy-more-modal" aria-label="Close">×</button>
+      </div>
+
+      <form id="buy-more-form">
+        <div class="form-grid">
+          <label>
+            <span>Asset</span>
+            <input id="buy-more-asset-name" type="text" readonly />
+          </label>
+
+          <label>
+            <span>Quantity</span>
+            <input name="quantity" type="number" min="1" step="1" required />
+          </label>
+
+          <label>
+            <span>Price per unit</span>
+            <input name="purchasePrice" type="number" min="0" step="0.000001" required />
+          </label>
+
+          <label>
+            <span>Currency</span>
+            <input id="buy-currency" type="text" readonly />
+          </label>
+
+          <label>
+            <span>Purchase date</span>
+            <input id="buy-more-date" name="purchaseDate" type="date" required />
+          </label>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="secondary-btn" id="cancel-buy-more">Cancel</button>
+          <button type="submit" class="primary-btn">Buy</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Calendar event modal -->
+  <div class="modal-backdrop" id="event-modal">
+    <div class="modal small-modal">
+      <div class="modal-header">
+        <div>
+          <p class="eyebrow">CALENDAR EVENT</p>
+          <h2 id="event-modal-title">Event</h2>
+        </div>
+
+        <button class="icon-btn" id="close-event-modal">
+          ×
+        </button>
+      </div>
+
+      <div id="event-modal-content"></div>
+
+      <div class="modal-actions">
+        <button type="button" class="secondary-btn" id="event-modal-close-btn">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add calendar note modal -->
+  <div class="modal-backdrop" id="note-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <div>
+          <p class="eyebrow">CALENDAR</p>
+          <h2>Add note</h2>
+        </div>
+
+        <button class="icon-btn" id="close-note-modal">
+          ×
+        </button>
+      </div>
+
+      <form id="note-form">
+        <div class="form-grid">
+          <label>
+            <span>Date</span>
+            <input type="date" name="date" id="note-date" required />
+          </label>
+
+          <label>
+            <span>Asset</span>
+            <select name="assetId" id="note-asset" required>
+              <option value="">Select asset</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="form-section">
+          <label>
+            <span>Note</span>
+            <textarea name="text" id="note-text" rows="4" placeholder="e.g. Buy Inzhur REIT for 20 000 ₴"
+              required></textarea>
+          </label>
+        </div>
+
+        <div class="form-section">
+          <label>
+            <span>Planned amount</span>
+            <input type="number" name="amount" min="0" step="0.01" placeholder="20000" />
+          </label>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="secondary-btn" id="cancel-note">
+            Cancel
+          </button>
+
+          <button type="submit" class="primary-btn">
+            Save note
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="rebalance-asset-modal">
+    <div class="modal small-modal">
+      <div class="modal-header">
+        <div><p class="eyebrow">REBALANCE</p><h2>Add planned asset</h2></div>
+        <button class="icon-btn" id="close-rebalance-asset-modal" type="button" aria-label="Close">×</button>
+      </div>
+      <form id="rebalance-asset-form">
+        <label>
+          <span>Asset name</span>
+          <input name="name" required autocomplete="off" placeholder="e.g. VWCE ETF" />
+        </label>
+        <div class="modal-actions">
+          <button type="button" class="secondary-btn" id="cancel-rebalance-asset">Cancel</button>
+          <button type="submit" class="primary-btn">Add asset</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/app.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</body>
+
+</html>
