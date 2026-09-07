@@ -2,6 +2,7 @@
 .env.*
 !.env.example
 node_modules/
+.idea/
 backend/config/google-credentials.json
 backend/config/google-token.json
 backend/config/google-drive-state.json
