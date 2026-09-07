@@ -1653,12 +1653,7 @@ async function markPaymentAsReceived(paymentIds, button = null) {
 
     for (const payment of payments) {
       if (payment.status === "received" || payment.status === "paid") continue;
-      const response = await fetch(`/api/payments/${payment.id}/received`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || "Failed to mark payment as received.");
+      await api.markPaymentReceived(payment.id);
     }
 
     /*
