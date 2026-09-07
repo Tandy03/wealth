@@ -128,6 +128,37 @@
     async getMarketTimeSeries(parameters) { return proxy("twelve", parameters); },
     async getIndexHistory(parameters) { return proxy("fred", parameters); },
     async getBinanceEquityPrice(symbol) { return proxy("binance", { symbol }); },
+    async syncApiAssets() {
+      await loadLocal();
+      const binanceSynced = [];
+      const binanceSkipped = [];
+      const symbolMap = { SPYB: "SPY", SMHB: "SMH", AAPLB: "AAPL" };
+      const holdings = data.assets.filter((asset) => {
+        const code = String(asset.ticker || asset.symbol || asset.name || "").trim().toUpperCase();
+        return String(asset.instrumentName || "").trim().toLowerCase() === "binance" || /^[A-Z0-9.-]+B$/.test(code);
+      });
+      for (const asset of holdings) {
+        const assetCode = String(asset.ticker || asset.symbol || asset.name || "").trim().toUpperCase();
+        const underlyingSymbol = symbolMap[assetCode] || assetCode.replace(/B$/, "");
+        try {
+          const series = await proxy("twelve", { symbol: underlyingSymbol, interval: "1day", outputsize: 1 });
+          const latest = series.values?.[series.values.length - 1];
+          if (!(Number(latest?.close) > 0)) throw new Error("No current market price is available.");
+          asset.currentPrice = Number(latest.close);
+          asset.currency = "USD";
+          asset.provider = "twelve-data";
+          asset.lastPriceUpdate = series.fetchedAt || new Date().toISOString();
+          binanceSynced.push({ id: asset.id, name: asset.name, symbol: assetCode, underlyingSymbol, price: asset.currentPrice, currency: "USD" });
+        } catch (error) {
+          binanceSkipped.push({ id: asset.id, name: asset.name, symbol: assetCode, error: "TWELVE_DATA_ERROR", message: error.message });
+        }
+      }
+      if (binanceSynced.length) {
+        await saveLocal();
+        uploadDrive().catch(() => {});
+      }
+      return { synced: [], skipped: [], binanceSynced, binanceSkipped };
+    },
     async createAsset(asset) { return mutate((state) => { const created = { ...asset, id: id("asset") }; state.assets.push(created); state.transactions.push({ id: id("tx"), assetId: created.id, assetName: created.name, type: "BUY", quantity: Number(created.quantity || 0), price: Number(created.purchasePrice || 0), amount: Number(created.quantity || 0) * Number(created.purchasePrice || 0), currency: created.currency || "UAH", date: created.purchaseDate }); return created; }); },
     async updateAsset(assetId, patch) { return mutate((state) => { const asset = state.assets.find((item) => item.id === assetId); if (!asset) throw new Error("Asset not found."); Object.assign(asset, patch, { id: assetId }); return asset; }); },
     async mergeAssets(assetIds) { return mutate((state) => { const items = state.assets.filter((item) => assetIds.includes(item.id)); if (items.length < 2) throw new Error("At least two holdings are required to merge."); const primary = items[0]; primary.quantity = items.reduce((sum, item) => sum + Number(item.quantity || 0), 0); state.assets = state.assets.filter((item) => !assetIds.slice(1).includes(item.id)); state.transactions.forEach((tx) => { if (assetIds.includes(tx.assetId)) tx.assetId = primary.id; }); return primary; }); },

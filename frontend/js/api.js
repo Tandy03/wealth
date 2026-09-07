@@ -98,7 +98,7 @@ const api = {
   },
 
   async syncInzhurAssets() {
-    if (window.mobileApi) throw new Error("API price sync requires the desktop backend.");
+    if (window.mobileApi) return window.mobileApi.syncApiAssets();
     const response = await fetch("/api/assets/sync-inzhur", {
       method: "POST",
     });
