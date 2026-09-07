@@ -34,6 +34,7 @@ const api = {
   },
 
   async getMarketTimeSeries(params) {
+    if (window.mobileApi) return window.mobileApi.getMarketTimeSeries(params);
     const query = new URLSearchParams(params);
     const response = await fetch(`/api/market-data/time-series?${query}`);
     return readApiJson(response, "Failed to load market prices.");
@@ -57,6 +58,7 @@ const api = {
   },
 
   async getIndexHistory(params) {
+    if (window.mobileApi) return window.mobileApi.getIndexHistory(params);
     const query = new URLSearchParams(params);
     const response = await fetch(`/api/market-data/index-history?${query}`);
     return readApiJson(response, "Failed to load index history from FRED.");

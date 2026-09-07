@@ -3,6 +3,7 @@
   if (!isNative) return;
 
   const FILE_ID = "1FFYfJIenSPjVbZz2rcvJ9fWMMpXH1ZB7";
+  const proxyConfig = window.FINO_MOBILE_CONFIG || {};
   const STORAGE_KEY = "fino-data-v1";
   const emptyData = () => ({
     sync: { revision: 0, updatedAt: new Date().toISOString(), deviceId: "android-phone" },
@@ -77,6 +78,18 @@
     return clone(result);
   }
 
+  async function proxy(action, parameters = {}) {
+    if (!proxyConfig.proxyUrl || !proxyConfig.proxyToken) throw new Error("The market-data proxy is not configured in this APK.");
+    const response = await fetch(proxyConfig.proxyUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: proxyConfig.proxyToken, action, ...parameters }),
+    });
+    const payload = await response.json();
+    if (!payload?.ok) throw new Error(payload?.error?.message || "Market-data proxy request failed.");
+    return payload.data;
+  }
+
   window.mobileApi = {
     isNative: true,
     async getData() {
@@ -112,6 +125,9 @@
         return { success: true, action, status: await this.getGoogleDriveStatus() };
       } finally { syncing = false; }
     },
+    async getMarketTimeSeries(parameters) { return proxy("twelve", parameters); },
+    async getIndexHistory(parameters) { return proxy("fred", parameters); },
+    async getBinanceEquityPrice(symbol) { return proxy("binance", { symbol }); },
     async createAsset(asset) { return mutate((state) => { const created = { ...asset, id: id("asset") }; state.assets.push(created); state.transactions.push({ id: id("tx"), assetId: created.id, assetName: created.name, type: "BUY", quantity: Number(created.quantity || 0), price: Number(created.purchasePrice || 0), amount: Number(created.quantity || 0) * Number(created.purchasePrice || 0), currency: created.currency || "UAH", date: created.purchaseDate }); return created; }); },
     async updateAsset(assetId, patch) { return mutate((state) => { const asset = state.assets.find((item) => item.id === assetId); if (!asset) throw new Error("Asset not found."); Object.assign(asset, patch, { id: assetId }); return asset; }); },
     async mergeAssets(assetIds) { return mutate((state) => { const items = state.assets.filter((item) => assetIds.includes(item.id)); if (items.length < 2) throw new Error("At least two holdings are required to merge."); const primary = items[0]; primary.quantity = items.reduce((sum, item) => sum + Number(item.quantity || 0), 0); state.assets = state.assets.filter((item) => !assetIds.slice(1).includes(item.id)); state.transactions.forEach((tx) => { if (assetIds.includes(tx.assetId)) tx.assetId = primary.id; }); return primary; }); },

@@ -8,7 +8,8 @@
     "dev": "node --watch backend/server.js",
     "google-auth": "node backend/scripts/googleAuth.js",
     "test": "node --test backend/tests/*.test.js",
-    "mobile:sync": "npx cap sync android",
+    "mobile:config": "node backend/scripts/generateMobileConfig.js",
+    "mobile:sync": "npm run mobile:config && npx cap sync android",
     "mobile:open": "npx cap open android",
     "mobile:build": "npm run mobile:sync && cd android && gradlew.bat assembleDebug",
     "mobile:apk": "npm run mobile:build"
