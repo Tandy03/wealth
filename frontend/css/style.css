@@ -1743,6 +1743,15 @@ textarea:focus {
   .mobile-compact-table .icon-btn { max-width: 100%; padding: 5px 2px; font-size: inherit; white-space: normal; }
   .recorded-expenses-table { font-size: clamp(8px, 2.5vw, 11px); }
   .transactions-table { font-size: clamp(7px, 2.2vw, 10px); }
+  .transactions-table th,
+  .transactions-table td { padding-inline: 4px; overflow: hidden; }
+  .transactions-table th:nth-child(1), .transactions-table td:nth-child(1) { width: 19%; text-align: left; white-space: nowrap; }
+  .transactions-table th:nth-child(2), .transactions-table td:nth-child(2) { width: 16%; text-align: left; }
+  .transactions-table th:nth-child(3), .transactions-table td:nth-child(3) { width: 13%; }
+  .transactions-table th:nth-child(4), .transactions-table td:nth-child(4) { width: 10%; }
+  .transactions-table th:nth-child(5), .transactions-table td:nth-child(5) { width: 18%; }
+  .transactions-table th:nth-child(6), .transactions-table td:nth-child(6) { width: 15%; }
+  .transactions-table th:nth-child(7), .transactions-table td:nth-child(7) { width: 9%; }
   .profit-table-wrap { overflow-x: auto; overscroll-behavior-inline: contain; -webkit-overflow-scrolling: touch; }
   .profit-table { width: 720px; min-width: 720px; table-layout: fixed; font-size: 10px; }
   .profit-table th,
