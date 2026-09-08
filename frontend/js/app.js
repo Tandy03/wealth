@@ -3945,6 +3945,11 @@ function setupRebalanceCalculator() {
 function setupThemeToggle() {
   const themeSelect = document.querySelector("#settings-theme-select");
   const fontSelect = document.querySelector("#settings-font-select");
+  const biometricControl = document.querySelector("#settings-biometric-control");
+  const biometricToggle = document.querySelector("#settings-biometric-toggle");
+  const biometricStatus = document.querySelector("#settings-biometric-status");
+  const isNative = Boolean(window.Capacitor?.isNativePlatform?.());
+  const appLock = isNative ? window.Capacitor?.Plugins?.AppLock : null;
   const themes = ["dark", "light", "monochromatic", "analog"];
   const fonts = ["inter", "montserrat", "roboto", "mono", "oswald", "comic-relief", "dm-sans"];
   const savedTheme = localStorage.getItem("investment-tracker-theme") || "dark";
@@ -3956,16 +3961,34 @@ function setupThemeToggle() {
   localStorage.removeItem("investment-tracker-text-size");
   if (themeSelect) themeSelect.value = document.documentElement.dataset.theme;
   if (fontSelect) fontSelect.value = document.documentElement.dataset.font;
+  if (appLock) {
+    biometricControl.hidden = false;
+    appLock.setTheme({ theme: document.documentElement.dataset.theme }).catch(() => {});
+    appLock.getSettings().then((settings) => {
+      biometricToggle.checked = Boolean(settings.biometricEnabled && settings.biometricAvailable);
+      biometricToggle.disabled = !settings.biometricAvailable;
+      if (!settings.biometricAvailable) biometricStatus.textContent = "Biometric authentication is not available on this device";
+    }).catch(() => {
+      biometricToggle.disabled = true;
+      biometricStatus.textContent = "Biometric settings are unavailable";
+    });
+  }
 
   themeSelect?.addEventListener("change", () => {
     document.documentElement.dataset.theme = themeSelect.value;
     localStorage.setItem("investment-tracker-theme", themeSelect.value);
+    appLock?.setTheme({ theme: themeSelect.value }).catch(() => {});
     renderProfitCalculator();
     if (document.querySelector("#wallet-charts")?.classList.contains("active")) renderWalletCharts();
   });
   fontSelect?.addEventListener("change", () => {
     document.documentElement.dataset.font = fontSelect.value;
     localStorage.setItem("investment-tracker-font", fontSelect.value);
+  });
+  biometricToggle?.addEventListener("change", () => {
+    appLock?.setBiometricEnabled({ enabled: biometricToggle.checked }).catch(() => {
+      biometricToggle.checked = !biometricToggle.checked;
+    });
   });
 }
 
