@@ -931,10 +931,10 @@ function renderAssetTransactionsModal() {
   }
   let transactions = (state.data.transactions || []).filter((transaction) => ids.includes(transaction.assetId));
   if (hideSales) transactions = transactions.filter((transaction) => transaction.type === "BUY");
-  transactions.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  transactions.sort((a, b) => String(getTransactionEffectiveDate(b) || "").localeCompare(String(getTransactionEffectiveDate(a) || "")));
   body.innerHTML = transactions.length ? transactions.map((transaction) => {
     const asset = state.data.assets.find((item) => item.id === transaction.assetId);
-    return `<tr><td>${formatDate(transaction.date)}</td><td>${escapeHtml(asset?.instrumentName || "—")}</td><td>${escapeHtml(transaction.type)}</td><td>${transaction.quantity ?? "—"}</td><td>${money(transaction.amount, transaction.currency || asset?.currency)}</td><td></td></tr>`;
+    return `<tr><td>${formatDate(getTransactionEffectiveDate(transaction))}</td><td>${escapeHtml(asset?.instrumentName || "—")}</td><td>${escapeHtml(transaction.type)}</td><td>${transaction.quantity ?? "—"}</td><td>${money(transaction.amount, transaction.currency || asset?.currency)}</td><td></td></tr>`;
   }).join("") : '<tr><td colspan="6" class="empty-state">No matching transactions.</td></tr>';
 }
 
@@ -1036,6 +1036,12 @@ function setupDeleteHoldingModal() {
    TRANSACTIONS
    ============================================================ */
 
+function getTransactionEffectiveDate(transaction) {
+  if (!transaction?.paymentId) return transaction?.date;
+  const payment = (state.data.payments || []).find((item) => item.id === transaction.paymentId);
+  return payment?.receivedDate || String(payment?.receivedAt || "").slice(0, 10) || transaction.date;
+}
+
 function renderTransactions() {
   const tbody = document.querySelector("#transactions-table");
 
@@ -1058,7 +1064,7 @@ function renderTransactions() {
     .map((payment) => ({
       id: `payment-transaction-${payment.id}`,
       paymentId: payment.id,
-      date: payment.date,
+      date: payment.receivedDate || String(payment.receivedAt || "").slice(0, 10) || payment.date,
       assetId: payment.assetId,
       assetName: payment.assetName,
       type: payment.type,
@@ -1072,7 +1078,7 @@ function renderTransactions() {
     ...(state.data.transactions || []),
     ...receivedPaymentTransactions,
   ].sort((a, b) =>
-    String(b.date || "").localeCompare(String(a.date || "")),
+    String(getTransactionEffectiveDate(b) || "").localeCompare(String(getTransactionEffectiveDate(a) || "")),
   );
 
   if (!transactions.length) {
@@ -1112,7 +1118,7 @@ function renderTransactions() {
                     <tr>
 
                         <td>
-                            ${formatDate(tx.date)}
+                            ${formatDate(getTransactionEffectiveDate(tx))}
                         </td>
 
                         <td>
@@ -3937,32 +3943,29 @@ function setupRebalanceCalculator() {
 }
 
 function setupThemeToggle() {
-  const toggles = [document.querySelector("#settings-theme-toggle")].filter(Boolean);
-  const savedTheme = localStorage.getItem("investment-tracker-theme");
+  const themeSelect = document.querySelector("#settings-theme-select");
+  const fontSelect = document.querySelector("#settings-font-select");
+  const themes = ["dark", "light", "monochromatic", "analog"];
+  const fonts = ["inter", "montserrat", "roboto", "mono", "oswald", "comic-relief", "dm-sans"];
+  const savedTheme = localStorage.getItem("investment-tracker-theme") || "dark";
+  const savedFont = localStorage.getItem("investment-tracker-font") || "inter";
 
-  if (savedTheme === "light") {
-    document.documentElement.dataset.theme = "light";
-  }
+  document.documentElement.dataset.theme = themes.includes(savedTheme) ? savedTheme : "dark";
+  document.documentElement.dataset.font = fonts.includes(savedFont) ? savedFont : "inter";
+  delete document.documentElement.dataset.textSize;
+  localStorage.removeItem("investment-tracker-text-size");
+  if (themeSelect) themeSelect.value = document.documentElement.dataset.theme;
+  if (fontSelect) fontSelect.value = document.documentElement.dataset.font;
 
-  const refreshToggle = () => {
-    toggles.forEach((toggle) => {
-      const light = document.documentElement.dataset.theme === "light";
-      const label = toggle.querySelector("[data-theme-label]");
-      if (label) label.textContent = light ? "Light" : "Dark";
-      toggle.setAttribute("aria-label", light ? "Enable dark theme" : "Enable light theme");
-    });
-  };
-
-  refreshToggle();
-
-  toggles.forEach((toggle) => {
-    toggle.addEventListener("click", () => {
-      const light = document.documentElement.dataset.theme !== "light";
-      document.documentElement.dataset.theme = light ? "light" : "dark";
-      localStorage.setItem("investment-tracker-theme", light ? "light" : "dark");
-      refreshToggle();
-      renderProfitCalculator();
-    });
+  themeSelect?.addEventListener("change", () => {
+    document.documentElement.dataset.theme = themeSelect.value;
+    localStorage.setItem("investment-tracker-theme", themeSelect.value);
+    renderProfitCalculator();
+    if (document.querySelector("#wallet-charts")?.classList.contains("active")) renderWalletCharts();
+  });
+  fontSelect?.addEventListener("change", () => {
+    document.documentElement.dataset.font = fontSelect.value;
+    localStorage.setItem("investment-tracker-font", fontSelect.value);
   });
 }
 
@@ -4404,6 +4407,37 @@ function disableNumberInputWheelChanges() {
   }, { capture: true });
 }
 
+function applyResponsiveTableLabels() {
+  document.querySelectorAll(".table-wrap table:not(.wallet-table):not(.mobile-compact-table), .table-wrapper table:not(.wallet-table):not(.mobile-compact-table)").forEach((table) => {
+    table.classList.add("responsive-card-table");
+    const headers = [...table.querySelectorAll("thead th")].map((cell) => cell.textContent.trim());
+    table.querySelectorAll("tbody tr, tfoot tr").forEach((row) => {
+      let columnIndex = 0;
+      [...row.children].forEach((cell) => {
+        const colspan = Math.max(1, Number(cell.getAttribute("colspan")) || 1);
+        const label = headers[columnIndex] || "Actions";
+        cell.dataset.label = label;
+        cell.classList.toggle("empty-value", cell.textContent.trim() === "—");
+        columnIndex += colspan;
+      });
+    });
+  });
+}
+
+function setupResponsiveTables() {
+  let queued = false;
+  const refresh = () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => {
+      queued = false;
+      applyResponsiveTableLabels();
+    });
+  };
+  applyResponsiveTableLabels();
+  new MutationObserver(refresh).observe(document.body, { childList: true, subtree: true });
+}
+
 /* ============================================================
    INIT
    ============================================================ */
@@ -4426,6 +4460,7 @@ async function init() {
     disableNumberInputWheelChanges();
     setupGoogleDriveSync();
     setupSettingsModal();
+    setupResponsiveTables();
   } catch (error) {
     console.error("Global error setup failed:", error);
   }
@@ -4517,6 +4552,41 @@ async function init() {
 
 let assetAllocationChart = null;
 
+const stackedDoughnutLegendPlugin = {
+  id: "stackedDoughnutLegend",
+  afterUpdate(chart, _args, options) {
+    const container = document.getElementById(options.containerId);
+    if (!container) return;
+
+    const list = document.createElement("ul");
+    const items = chart.options.plugins.legend.labels.generateLabels(chart);
+
+    items.forEach((item) => {
+      const row = document.createElement("li");
+      const button = document.createElement("button");
+      const marker = document.createElement("span");
+      const label = document.createElement("span");
+
+      button.type = "button";
+      button.classList.toggle("is-hidden", item.hidden);
+      button.setAttribute("aria-pressed", String(!item.hidden));
+      marker.className = "doughnut-legend-marker";
+      marker.style.background = item.fillStyle;
+      label.textContent = item.text;
+
+      button.append(marker, label);
+      button.addEventListener("click", () => {
+        chart.toggleDataVisibility(item.index);
+        chart.update();
+      });
+      row.append(button);
+      list.append(row);
+    });
+
+    container.replaceChildren(list);
+  },
+};
+
 function renderAssetAllocationChart() {
   const canvas = document.querySelector("#asset-allocation-chart");
 
@@ -4585,6 +4655,8 @@ function renderAssetAllocationChart() {
       ],
     },
 
+    plugins: [stackedDoughnutLegendPlugin],
+
     options: {
       responsive: true,
 
@@ -4594,19 +4666,9 @@ function renderAssetAllocationChart() {
 
       plugins: {
         legend: {
-          position: "bottom",
+          display: false,
 
           labels: {
-            color: "#f2f4f7",
-            padding: 20,
-
-            usePointStyle: true,
-            pointStyle: "circle",
-
-            font: {
-              size: 14,
-            },
-
             generateLabels: function (chart) {
               const data = chart.data.datasets[0].data;
 
@@ -4640,6 +4702,8 @@ function renderAssetAllocationChart() {
             },
           },
         },
+
+        stackedDoughnutLegend: { containerId: "asset-allocation-legend" },
 
         tooltip: {
           callbacks: {
@@ -4746,7 +4810,7 @@ function renderPortfolioHistoryChart() {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { labels: { color: chartText } },
+        legend: { display: false },
         tooltip: { callbacks: { label: (context) => `Total invested: ${money(context.raw)}` } },
       },
       scales: {
@@ -5076,7 +5140,7 @@ function renderWalletCurrent() {
   const totalActual = expenseCategories.reduce((sum, category) => sum + walletCategoryTotal(key, category), 0);
   const spendingActual = totalActual - walletCategoryTotal(key, "Savings") - walletCategoryTotal(key, "Tithe");
   const monthName = new Date(`${key}-01T00:00:00`).toLocaleDateString("en-US", { month: "long", year: "numeric" });
-  document.querySelector("#wallet-month-title").textContent = `Budget for ${monthName}`;
+  document.querySelector("#wallet-month-title").innerHTML = `Budget<span>${escapeHtml(monthName)}</span>`;
 
   const row = (category) => {
     const plan = normalizeNumber(month.plans[category]);
@@ -5084,11 +5148,11 @@ function renderWalletCurrent() {
     const percent = totalPlan > 0 ? plan / totalPlan * 100 : 0;
     const actualPercent = totalActual > 0 ? actual / totalActual * 100 : 0;
     const balance = plan - actual;
-    return `<tr><td>${escapeHtml(category)}</td><td><input type="number" min="0" step="0.01" value="${plan || ""}" data-wallet-plan="${escapeHtml(category)}" aria-label="Plan: ${escapeHtml(category)}"></td><td>${percent.toFixed(1)}%</td><td>${walletMoney(actual)}</td><td class="wallet-balance ${balance < 0 ? "negative-balance" : balance > 0 ? "positive-balance" : ""}">${walletMoney(balance)}</td><td>${actualPercent.toFixed(1)}%</td><td>${month.customCategories.includes(category) && actual === 0 ? `<button class="icon-btn" data-remove-wallet-category="${escapeHtml(category)}">×</button>` : ""}</td></tr>`;
+    return `<tr><td>${escapeHtml(category)}</td><td><input type="number" min="0" step="0.01" enterkeyhint="done" value="${plan || ""}" data-wallet-plan="${escapeHtml(category)}" aria-label="Plan: ${escapeHtml(category)}"></td><td>${percent.toFixed(1)}%</td><td>${walletMoney(actual)}</td><td class="wallet-balance ${balance < 0 ? "negative-balance" : balance > 0 ? "positive-balance" : ""}">${walletMoney(balance)}</td><td>${actualPercent.toFixed(1)}%</td><td>${month.customCategories.includes(category) && actual === 0 ? `<button class="icon-btn" data-remove-wallet-category="${escapeHtml(category)}">×</button>` : ""}</td></tr>`;
   };
 
   const remainder = totalPlan - totalActual;
-  body.innerHTML = `<tr class="wallet-summary-row"><td>Budget for ${escapeHtml(monthName)}</td><td>${walletMoney(totalPlan)}</td><td>100%</td><td>${walletMoney(totalActual)}</td><td class="wallet-balance ${remainder < 0 ? "negative-balance" : remainder > 0 ? "positive-balance" : ""}">${walletMoney(remainder)}</td><td>${totalPlan > 0 ? (totalActual / totalPlan * 100).toFixed(1) : "0.0"}%</td><td></td></tr>`
+  body.innerHTML = `<tr class="wallet-summary-row"><td>Budget<br>${escapeHtml(monthName)}</td><td>${walletMoney(totalPlan)}</td><td>100%</td><td>${walletMoney(totalActual)}</td><td class="wallet-balance ${remainder < 0 ? "negative-balance" : remainder > 0 ? "positive-balance" : ""}">${walletMoney(remainder)}</td><td>${totalPlan > 0 ? (totalActual / totalPlan * 100).toFixed(1) : "0.0"}%</td><td></td></tr>`
     + expenseCategories.map(row).join("")
     + `<tr class="wallet-summary-row"><td>Total</td><td>${walletMoney(totalPlan)}</td><td>100%</td><td>${walletMoney(totalActual)}</td><td class="wallet-balance ${remainder < 0 ? "negative-balance" : remainder > 0 ? "positive-balance" : ""}">${walletMoney(remainder)}</td><td>${totalPlan > 0 ? (totalActual / totalPlan * 100).toFixed(1) : "0.0"}%</td><td></td></tr>`
     + `<tr class="wallet-summary-row"><td>Expenses for ${escapeHtml(monthName)}</td><td colspan="5">${walletMoney(spendingActual)}</td><td></td></tr>`;
@@ -5099,6 +5163,11 @@ function renderWalletCurrent() {
     month.plans[input.dataset.walletPlan] = normalizeNumber(input.value);
     await api.saveWallet(state.data.wallet);
     renderWalletCurrent();
+  }));
+  body.querySelectorAll("[data-wallet-plan]").forEach((input) => input.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    input.blur();
   }));
   body.querySelectorAll("[data-remove-wallet-category]").forEach((button) => button.addEventListener("click", async () => {
     month.customCategories = month.customCategories.filter((name) => name !== button.dataset.removeWalletCategory);
@@ -5186,6 +5255,20 @@ let walletDailyChart = null;
 let walletMonthlyChart = null;
 let walletPeriodChart = null;
 
+function walletMonthAxisTicks() {
+  return {
+    autoSkip: true,
+    maxTicksLimit: window.innerWidth <= 700 ? 4 : 8,
+    minRotation: 0,
+    maxRotation: 0,
+    callback(value) {
+      const label = String(this.getLabelForValue(value) || "");
+      const month = label.slice(0, 7);
+      return /^\d{4}-\d{2}$/.test(month) ? month : label;
+    },
+  };
+}
+
 function walletExpenseDateBounds() {
   const dates = (state.data.wallet.expenses || [])
     .filter((expense) => expense.category !== "Salary" && /^\d{4}-\d{2}-\d{2}$/.test(String(expense.date)))
@@ -5269,32 +5352,50 @@ function renderWalletPeriodChart() {
         tooltip: { callbacks: { label: (item) => walletMoney(item.parsed.y) } },
       },
       scales: {
-        x: { ticks: { maxTicksLimit: 9, maxRotation: 0 } },
+        x: { ticks: walletMonthAxisTicks() },
         y: { beginAtZero: true, ticks: { callback: (value) => walletMoney(value) } },
       },
     },
   });
 }
 
-function renderWalletCharts() {
-  if (typeof Chart === "undefined") return;
-  const input = document.querySelector("#wallet-chart-month");
-  if (!input) return;
-  input.value ||= walletMonthKey();
-  const key = input.value;
+function renderWalletCategoryChart(key) {
   const expenses = walletExpenses(key).filter((expense) => expense.category !== "Salary");
   const categories = [...new Set(expenses.map((expense) => expense.category))];
   const categoryValues = categories.map((category) => expenses.filter((expense) => expense.category === category).reduce((sum, expense) => sum + normalizeNumber(expense.amount), 0));
   const chartColors = ["#7395DD", "#F587F0", "#32A328", "#e9a23b", "#7c8cff", "#2bb3a3", "#c76dd8", "#FDBDBA"];
   walletCategoryChart?.destroy();
-  walletCategoryChart = new Chart(document.querySelector("#wallet-category-chart"), { type: "doughnut", data: { labels: categories, datasets: [{ data: categoryValues, backgroundColor: chartColors }] }, options: { responsive: true, maintainAspectRatio: false, circumference: 180, rotation: 270, cutout: "55%", plugins: { title: { display: true, text: "Spending by category" }, legend: { position: "bottom" } } } });
+  walletCategoryChart = new Chart(document.querySelector("#wallet-category-chart"), {
+    type: "doughnut",
+    data: { labels: categories, datasets: [{ data: categoryValues, backgroundColor: chartColors }] },
+    plugins: [stackedDoughnutLegendPlugin],
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      circumference: 180,
+      rotation: 270,
+      cutout: "55%",
+      plugins: {
+        title: { display: true, text: "Spending by category" },
+        legend: {
+          display: false,
+        },
+        stackedDoughnutLegend: { containerId: "wallet-category-legend" },
+      },
+    },
+  });
+}
 
+function renderWalletDailyChart(key) {
+  const expenses = walletExpenses(key).filter((expense) => expense.category !== "Salary");
   const dayCount = new Date(Number(key.slice(0, 4)), Number(key.slice(5, 7)), 0).getDate();
   const days = Array.from({ length: dayCount }, (_, index) => index + 1);
   const dailyValues = days.map((day) => expenses.filter((expense) => Number(expense.date.slice(8, 10)) === day).reduce((sum, expense) => sum + normalizeNumber(expense.amount), 0));
   walletDailyChart?.destroy();
-  walletDailyChart = new Chart(document.querySelector("#wallet-daily-chart"), { type: "line", data: { labels: days, datasets: [{ label: "Daily expenses", data: dailyValues, borderColor: "#7395DD", backgroundColor: "rgba(115,149,221,.18)", fill: true, tension: .25 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: "Spending during the selected month" } } } });
+  walletDailyChart = new Chart(document.querySelector("#wallet-daily-chart"), { type: "line", data: { labels: days, datasets: [{ label: "Daily expenses", data: dailyValues, borderColor: "#7395DD", backgroundColor: "rgba(115,149,221,.18)", fill: true, tension: .25 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, title: { display: false } }, scales: { x: { ticks: { autoSkip: true, maxTicksLimit: window.innerWidth <= 700 ? 6 : 10, maxRotation: 0 } } } } });
+}
 
+function renderWalletMonthlyChart() {
   const allExpenses = (state.data.wallet.expenses || []).filter((expense) => expense.category !== "Salary");
   const monthlyCategorySelect = document.querySelector("#wallet-monthly-category");
   const previousSelection = monthlyCategorySelect?.value || "__total__";
@@ -5315,7 +5416,18 @@ function renderWalletCharts() {
   const months = Object.keys(monthTotals).sort();
   const seriesLabel = selectedCategory === "__total__" ? "Total expenses" : selectedCategory;
   walletMonthlyChart?.destroy();
-  walletMonthlyChart = new Chart(document.querySelector("#wallet-monthly-chart"), { type: "line", data: { labels: months, datasets: [{ label: seriesLabel, data: months.map((month) => monthTotals[month]), borderColor: "#7c8cff", backgroundColor: "rgba(124,140,255,.18)", fill: true, tension: .3, pointRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: `${seriesLabel} by month` } } } });
+  walletMonthlyChart = new Chart(document.querySelector("#wallet-monthly-chart"), { type: "line", data: { labels: months, datasets: [{ label: seriesLabel, data: months.map((month) => monthTotals[month]), borderColor: "#7c8cff", backgroundColor: "rgba(124,140,255,.18)", fill: true, tension: .3, pointRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, title: { display: true, text: `${seriesLabel} by month` } }, scales: { x: { ticks: walletMonthAxisTicks() } } } });
+}
+
+function renderWalletCharts() {
+  if (typeof Chart === "undefined") return;
+  const input = document.querySelector("#wallet-chart-month");
+  if (!input) return;
+  input.value ||= walletMonthKey();
+  const key = input.value;
+  renderWalletCategoryChart(key);
+  renderWalletDailyChart(key);
+  renderWalletMonthlyChart();
   renderWalletPeriodChart();
 }
 
@@ -5454,8 +5566,10 @@ function openExpenseModal(expenseId = null) {
   form.reset();
   form.elements.date.value = expense?.date || getDateString();
   const key = String(form.elements.date.value).slice(0, 7);
-  document.querySelector("#expense-category").innerHTML = walletCategories(key).map((category) => `<option>${escapeHtml(category)}</option>`).join("");
-  form.elements.category.value = expense?.category || form.elements.category.value;
+  const categories = walletCategories(key);
+  document.querySelector("#expense-category").innerHTML = categories.map((category) => `<option>${escapeHtml(category)}</option>`).join("");
+  const groceries = categories.find((category) => category === "Groceries + household") || categories.find((category) => category.toLowerCase().startsWith("groceries"));
+  form.elements.category.value = expense?.category || groceries || form.elements.category.value;
   form.elements.amount.value = expense?.amount || "";
   form.elements.note.value = expense?.note || "";
   document.querySelector("#expense-modal-title").textContent = expense ? "Edit expense" : "Record expense";
@@ -5494,7 +5608,7 @@ function setupWallet() {
   document.querySelector("#wallet-current-month")?.addEventListener("change", () => { renderWalletCurrent(); renderWalletNotes(); });
   document.querySelector("#wallet-expenses-month")?.addEventListener("change", renderWalletExpenseList);
   document.querySelector("#wallet-chart-month")?.addEventListener("change", renderWalletCharts);
-  document.querySelector("#wallet-monthly-category")?.addEventListener("change", renderWalletCharts);
+  document.querySelector("#wallet-monthly-category")?.addEventListener("change", renderWalletMonthlyChart);
   document.querySelector("#wallet-period-preset")?.addEventListener("change", () => {
     applyWalletPeriodPreset();
     renderWalletPeriodChart();

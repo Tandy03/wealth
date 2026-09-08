@@ -10,7 +10,7 @@ const CONFIG = Object.freeze({
   binanceBaseUrl: "https://api.binance.com",
   maxOutputSize: 5000,
   cacheLimitBytes: 90000,
-  cacheSeconds: Object.freeze({ twelve: 300, fred: 900, binance: 30, binanceCatalog: 600 }),
+  cacheSeconds: Object.freeze({ twelve: 300, fred: 900, binance: 30, binanceCatalog: 600, inzhur: 900 }),
 });
 
 const ALLOWED_INTERVALS = Object.freeze([
@@ -40,12 +40,136 @@ function doPost(event) {
       case "fred": return responseOk(getFredIndexHistory(request));
       case "binance": return responseOk(getBinanceEquityPrice(request));
       case "binanceCatalog": return responseOk(getBinanceCatalog());
+      case "inzhurCatalog": return responseOk(getInzhurCatalog());
+      case "macroeconomics": return responseOk(getMacroeconomics());
       default: throw apiError("Unknown proxy action.", "UNKNOWN_ACTION", 400);
     }
   } catch (error) {
     console.error(String(error && error.stack || error));
     return responseError(error.message || "Proxy request failed.", error.code || "PROXY_ERROR", error.status || 500);
   }
+}
+
+function getInzhurCatalog() {
+  const cacheKey = "inzhur-catalog-v1";
+  const cached = readCache(cacheKey);
+  if (cached) return withCached(cached);
+  const fetched = fetchJson("https://www.inzhur.reit/_api/assets", { headers: { Accept: "application/json" } }, "Inzhur");
+  if (fetched.status < 200 || fetched.status >= 300 || !Array.isArray(fetched.data)) {
+    throw apiError("Could not load the Inzhur asset catalog.", "INZHUR_API_ERROR", fetched.status || 502);
+  }
+  const result = {
+    provider: "Inzhur",
+    assets: fetched.data.map(function (asset) {
+      const details = asset.assetDetails || {};
+      return {
+        id: asset.id,
+        slug: asset.slug,
+        type: asset.type,
+        status: asset.status,
+        title: asset.title,
+        isin: details.isin || null,
+        maturityDate: details.maturityDate || null,
+        prices: details.prices || null,
+        paymentSchedule: details.paymentSchedule || [],
+      };
+    }),
+    cached: false,
+    fetchedAt: new Date().toISOString(),
+  };
+  writeCache(cacheKey, result, CONFIG.cacheSeconds.inzhur);
+  return result;
+}
+
+function getMacroeconomics() {
+  const cacheKey = "macroeconomics-v1";
+  const cached = readCache(cacheKey);
+  if (cached) return withCached(cached);
+
+  const now = new Date();
+  const start = new Date(Date.UTC(now.getUTCFullYear() - 8, 0, 1));
+  const dateToken = function (date) {
+    return date.getUTCFullYear() + String(date.getUTCMonth() + 1).padStart(2, "0") + String(date.getUTCDate()).padStart(2, "0");
+  };
+  const nbuBase = "https://bank.gov.ua/NBUStatService/v1/statdirectory";
+  const result = {
+    updatedAt: new Date().toISOString(),
+    sources: { nbu: "NBU", gdp: "State Statistics Service of Ukraine" },
+    errors: {},
+    exchangeRates: [],
+    inflation: { annual: [], monthly: [], core: [], ppi: [] },
+    gdp: { nominal: [], realIndex: [] },
+  };
+
+  try {
+    const rates = fetchJson(nbuBase + "/exchange?json", { headers: { Accept: "application/json" } }, "NBU");
+    const inflation = fetchJson(nbuBase + "/inflation?period=m&start=" + dateToken(start) + "&end=" + dateToken(now) + "&json", { headers: { Accept: "application/json" } }, "NBU");
+    if (rates.status < 200 || rates.status >= 300 || !Array.isArray(rates.data)) throw apiError("NBU exchange rates are unavailable.", "NBU_ERROR", rates.status || 502);
+    if (inflation.status < 200 || inflation.status >= 300 || !Array.isArray(inflation.data)) throw apiError("NBU inflation data is unavailable.", "NBU_ERROR", inflation.status || 502);
+
+    const wanted = { USD: true, EUR: true, GBP: true };
+    result.exchangeRates = rates.data.filter(function (row) { return wanted[String(row.cc || "").toUpperCase()]; }).map(function (row) {
+      return { code: row.cc, name: row.txten || row.txt, rate: Number(row.rate), date: normalizeMacroDate(row.exchangedate) };
+    });
+    const national = inflation.data.filter(function (row) { return row.mcrd081 === "Total" && (row.ku == null || row.ku === ""); });
+    const pick = function (id, measure) {
+      return national.filter(function (row) { return row.id_api === id && row.tzep === measure; }).map(macroInflationPoint).filter(validMacroPoint);
+    };
+    result.inflation.annual = pick("prices_price_cpi_", "PCCM_");
+    result.inflation.monthly = pick("prices_price_cpi_", "PCPM_");
+    result.inflation.core = pick("prices_price_ci_", "PCCM_");
+    result.inflation.ppi = national.filter(function (row) { return row.id_api === "prices_price_ppi_" && row.tzep === "PCCM_" && row.mcrk110 === "BCDE"; }).map(macroInflationPoint).filter(validMacroPoint);
+  } catch (error) {
+    result.errors.nbu = error.message || "Could not load NBU data.";
+  }
+
+  try {
+    const gdpUrl = "https://stat.gov.ua/sdmx/workspaces/default:integration/registry/sdmx/3.0/data/dataflow/SSSU/DF_ANNUAL_NATIONAL_ACCOUNTS/latest/*?startPeriod=2010";
+    const response = UrlFetchApp.fetch(gdpUrl, { muteHttpExceptions: true, followRedirects: true, headers: { Accept: "text/csv" } });
+    if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) throw apiError("State Statistics Service returned " + response.getResponseCode() + ".", "SSSU_ERROR", response.getResponseCode());
+    const rows = parseMacroCsv(response.getContentText().replace(/^\uFEFF/, ""));
+    const headers = rows.shift() || [];
+    const objects = rows.map(function (values) { const item = {}; headers.forEach(function (key, index) { item[key] = values[index]; }); return item; });
+    const select = function (priceType) {
+      return objects.filter(function (row) {
+        return row.INDICATOR === "GDP_CUR_PRC" && row.PRICE_TYPE === priceType && row.REGION === "UA00000000000000000" && row.BREAKDOWN_CATEGORY === "_T" && row.BREAKDOWN === "_T" && row.SECTOR_ECONOMY === "S_1" && row.FREQ === "A";
+      }).map(function (row) { return { date: row.TIME_PERIOD, value: Number(row.OBS_VALUE) }; }).filter(validMacroPoint);
+    };
+    result.gdp.nominal = select("CURR_PRICES");
+    result.gdp.realIndex = select("IDX_VOL_PY");
+  } catch (error) {
+    result.errors.gdp = error.message || "Could not load GDP data.";
+  }
+
+  writeCache(cacheKey, result, 21600);
+  return result;
+}
+
+function normalizeMacroDate(value) {
+  const text = String(value || "");
+  const match = text.match(/(\d{2})[.\/-](\d{2})[.\/-](\d{4})/);
+  return match ? match[3] + "-" + match[2] + "-" + match[1] : text.slice(0, 10);
+}
+
+function macroInflationPoint(row) {
+  let value = Number(row.value);
+  if (String(row.dt || "").indexOf("201907") === 0 && value <= -90) value += 100;
+  return { date: normalizeMacroDate(row.dt), value: value };
+}
+
+function validMacroPoint(point) { return Boolean(point && point.date && isFinite(Number(point.value))); }
+
+function parseMacroCsv(text) {
+  const rows = []; let row = []; let field = ""; let quoted = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    if (char === '"') { if (quoted && text[i + 1] === '"') { field += '"'; i += 1; } else quoted = !quoted; }
+    else if (char === "," && !quoted) { row.push(field); field = ""; }
+    else if ((char === "\n" || char === "\r") && !quoted) { if (char === "\r" && text[i + 1] === "\n") i += 1; row.push(field); if (row.some(Boolean)) rows.push(row); row = []; field = ""; }
+    else field += char;
+  }
+  row.push(field); if (row.some(Boolean)) rows.push(row);
+  return rows;
 }
 
 function parseRequest(event) {
@@ -211,4 +335,3 @@ function apiError(message, code, status) { const error = new Error(message); err
 function responseOk(data) { return jsonOutput({ ok: true, data: data }); }
 function responseError(message, code, status) { return jsonOutput({ ok: false, error: { message: message, code: code, status: status } }); }
 function jsonOutput(value) { return ContentService.createTextOutput(JSON.stringify(value)).setMimeType(ContentService.MimeType.JSON); }
-

@@ -6,6 +6,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>fino</title>
   <link rel="icon" type="image/png" href="/assets/fino-logo.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Comic+Relief:wght@400;700&amp;family=DM+Sans:wght@400;500;600;700&amp;family=Inter:wght@400;500;600;700&amp;family=Montserrat:wght@400;500;600;700&amp;family=Oswald:wght@400;500;600;700&amp;family=Roboto+Mono:wght@400;500;600;700&amp;family=Roboto:wght@400;500;700&amp;display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/style.css" />
 </head>
 
@@ -84,8 +87,7 @@
           <article class="panel">
             <div class="panel-header">
               <div>
-                <h2>Upcoming payments</h2>
-                <p>Next expected cash flows</p>
+                <h2>Upcoming cash flows</h2>
               </div>
             </div>
             <div id="dashboard-payments" class="payment-list empty-state">
@@ -99,7 +101,7 @@
         <div id="macro-state" class="macro-state">Loading official macroeconomic data…</div>
         <div id="macro-content" hidden>
           <div id="macro-fx-cards" class="macro-fx-grid"></div>
-          <div class="macro-section-heading"><div><p class="market-kicker">NBU</p><h2>Inflation</h2></div><p>Percent change</p></div>
+          <div class="macro-section-heading"><div><h2>Inflation</h2></div><p>Percent change</p></div>
           <div class="macro-chart-grid">
             <article class="panel macro-chart-card"><h3>Annual inflation</h3><div><canvas id="macro-inflation-annual"></canvas></div></article>
             <article class="panel macro-chart-card"><h3>Monthly inflation</h3><div><canvas id="macro-inflation-monthly"></canvas></div></article>
@@ -107,7 +109,7 @@
             <article class="panel macro-chart-card"><h3>Producer price index (PPI)</h3><div><canvas id="macro-inflation-ppi"></canvas></div></article>
           </div>
           <div class="macro-chart-grid macro-chart-grid-wide">
-            <article class="panel macro-chart-card"><h3>Gross domestic product</h3><p class="macro-source">State Statistics Service of Ukraine</p><div><canvas id="macro-gdp-chart"></canvas></div></article>
+            <article class="panel macro-chart-card"><h3>Gross domestic product</h3><div><canvas id="macro-gdp-chart"></canvas></div></article>
           </div>
           <p id="macro-errors" class="macro-errors" hidden></p>
         </div>
@@ -118,7 +120,6 @@
           <div class="panel-header">
             <div>
               <h2>Portfolio</h2>
-              <p>All current assets</p>
             </div>
             <div class="portfolio-controls">
               <label for="portfolio-sort">Sort by</label>
@@ -132,7 +133,7 @@
             </div>
           </div>
           <div class="table-wrap">
-            <table>
+            <table class="portfolio-mobile-cards">
               <thead>
                 <tr>
                   <th>Asset</th>
@@ -159,7 +160,6 @@
           <div class="panel-header">
             <div>
               <h2>Transactions</h2>
-              <p>Purchases and sales history</p>
             </div>
 
             <button class="primary-btn" id="sell-asset-btn">
@@ -169,7 +169,7 @@
 
           <div class="table-wrapper">
 
-            <table>
+            <table class="mobile-compact-table transactions-table">
 
               <thead>
                 <tr>
@@ -198,7 +198,6 @@
           <div class="panel-header">
             <div>
               <h2>Calendar</h2>
-              <p>Payments and planned purchases</p>
             </div>
 
             <button class="primary-btn" id="add-note-btn">
@@ -263,7 +262,8 @@
         <div class="analytics-card">
 
           <div class="asset-allocation-chart">
-            <canvas id="asset-allocation-chart"></canvas>
+            <div class="doughnut-canvas"><canvas id="asset-allocation-chart"></canvas></div>
+            <div class="doughnut-legend" id="asset-allocation-legend"></div>
           </div>
         </div>
 
@@ -351,13 +351,12 @@
           <div class="panel-header">
             <div>
               <h2>Profit by asset</h2>
-              <p>Received income, sales, and price changes</p>
             </div>
           </div>
 
-          <div class="table-wrap">
+          <div class="table-wrap profit-table-wrap">
 
-            <table>
+            <table class="mobile-compact-table profit-table">
 
               <thead>
                 <tr>
@@ -400,7 +399,6 @@
           <div class="panel-header">
             <div>
               <h2 id="rebalance-title">Portfolio rebalance</h2>
-              <p>Enter target shares. Removed positions are ignored; recommendations contain purchases only.</p>
             </div>
           </div>
           <form id="rebalance-form">
@@ -489,7 +487,7 @@
       <section id="wallet-current" class="wallet-page active">
         <article class="panel">
           <div class="panel-header">
-            <div><h2 id="wallet-month-title">Budget</h2><p>Planned and actual spending for the selected month</p></div>
+            <div><h2 id="wallet-month-title">Budget</h2></div>
             <input type="month" id="wallet-current-month" lang="en" />
           </div>
           <div class="table-wrap">
@@ -532,7 +530,7 @@
       <section id="wallet-archive" class="wallet-page">
         <article class="panel">
           <div class="panel-header">
-            <div><h2>Expense archive</h2><p>Daily spending for the selected month</p></div>
+            <div><h2>Expense archive</h2></div>
             <input type="month" id="wallet-archive-month" lang="en" />
           </div>
           <div class="table-wrap"><table id="wallet-archive-table"></table></div>
@@ -541,26 +539,28 @@
 
       <section id="wallet-expenses" class="wallet-page">
         <article class="panel wallet-expense-list-panel">
-          <div class="panel-header"><div><h2>Recorded expenses</h2><p>Edit or delete individual entries</p></div><input type="month" id="wallet-expenses-month" lang="en" /></div>
-          <div class="table-wrap"><table><thead><tr><th>Date</th><th>Category</th><th>Amount</th><th>Note</th><th></th></tr></thead><tbody id="wallet-expense-list"></tbody></table></div>
+          <div class="panel-header"><div><h2>Recorded expenses</h2></div><input type="month" id="wallet-expenses-month" lang="en" /></div>
+          <div class="table-wrap"><table class="mobile-compact-table recorded-expenses-table"><thead><tr><th>Date</th><th>Category</th><th>Amount</th><th>Note</th><th></th></tr></thead><tbody id="wallet-expense-list"></tbody></table></div>
         </article>
       </section>
 
       <section id="wallet-charts" class="wallet-page">
         <article class="panel">
-          <div class="panel-header"><div><h2>Expense charts</h2><p>Distribution and spending dynamics</p></div><input type="month" id="wallet-chart-month" lang="en" /></div>
+          <div class="panel-header"><div><h2>Expense charts</h2></div><input type="month" id="wallet-chart-month" lang="en" /></div>
           <div class="wallet-charts-grid">
-            <div class="wallet-chart"><canvas id="wallet-category-chart"></canvas></div>
+            <div class="wallet-chart wallet-doughnut-chart">
+              <div class="doughnut-canvas"><canvas id="wallet-category-chart"></canvas></div>
+              <div class="doughnut-legend" id="wallet-category-legend"></div>
+            </div>
             <div class="wallet-chart"><canvas id="wallet-daily-chart"></canvas></div>
             <div class="wallet-chart wallet-chart-wide">
               <label class="wallet-chart-filter"><span>Monthly series</span><select id="wallet-monthly-category"><option value="__total__">Total</option></select></label>
-              <canvas id="wallet-monthly-chart"></canvas>
+              <div class="wallet-monthly-chart-canvas"><canvas id="wallet-monthly-chart"></canvas></div>
             </div>
           </div>
           <div class="wallet-period-chart-block">
             <div class="wallet-period-chart-header">
               <div>
-                <p class="eyebrow">SELECTED PERIOD</p>
                 <h3>Total expenses</h3>
                 <strong id="wallet-period-total" class="wallet-period-total">0 ₴</strong>
               </div>
@@ -579,14 +579,14 @@
               </div>
             </div>
             <div class="wallet-period-chart"><canvas id="wallet-period-chart"></canvas></div>
-            <p class="wallet-period-caption">Cumulative recorded expenses by day. Salary is excluded.</p>
+            <p class="wallet-period-caption">Cumulative expenses by day.</p>
           </div>
         </article>
       </section>
 
       <section id="wallet-loans" class="wallet-page">
         <article class="panel loans-panel">
-          <div class="panel-header"><div><h2>Loans</h2><p>Balances and upcoming repayments</p></div><button class="primary-btn" id="add-loan-btn">Add loan</button></div>
+          <div class="panel-header"><div><h2>Loans</h2></div><button class="primary-btn" id="add-loan-btn">Add loan</button></div>
           <div id="loans-list"></div>
           <div class="panel-header loan-calendar-header"><div><h3>Upcoming loan payments</h3></div></div>
           <div id="loan-calendar"></div>
@@ -615,7 +615,7 @@
   <div class="modal-backdrop" id="asset-transactions-modal">
     <div class="modal modal-wide"><div class="modal-header"><div><p class="eyebrow">ASSET</p><h2 id="asset-transactions-title">Transactions</h2></div><button class="icon-btn" id="close-asset-transactions">×</button></div>
       <div class="transaction-filters"><label><input type="checkbox" id="asset-hide-sales" /> Hide sales</label><label><input type="checkbox" id="asset-only-current" /> Show current holdings only</label></div>
-      <div class="table-wrap"><table><thead><tr><th>Date</th><th>Instrument</th><th>Type</th><th>Quantity</th><th>Amount</th><th></th></tr></thead><tbody id="asset-transactions-body"></tbody></table></div>
+      <div class="table-wrap"><table class="mobile-compact-table asset-transactions-table"><thead><tr><th>Date</th><th>Instrument</th><th>Type</th><th>Quantity</th><th>Amount</th><th></th></tr></thead><tbody id="asset-transactions-body"></tbody></table></div>
     </div>
   </div>
 
@@ -631,7 +631,8 @@
       </div>
       <section class="settings-section">
         <div><h3>Appearance</h3><p>Visual preferences for investments and wallet</p></div>
-        <button class="settings-row-button" id="settings-theme-toggle" type="button"><span>Color theme</span><strong data-theme-label>Dark</strong></button>
+        <label class="settings-control"><span>Color theme</span><select id="settings-theme-select"><option value="dark">Dark</option><option value="light">Light</option><option value="monochromatic">Monochromatic</option><option value="analog">Analog</option></select></label>
+        <label class="settings-control"><span>Font</span><select id="settings-font-select"><option value="inter">Inter</option><option value="montserrat">Montserrat</option><option value="roboto">Roboto</option><option value="mono">Mono</option><option value="oswald">Oswald</option><option value="comic-relief">Comic Relief</option><option value="dm-sans">DM Sans</option></select></label>
       </section>
       <section class="settings-section">
         <div><h3>Server &amp; Google Drive</h3><p>Data synchronization and backups</p></div>

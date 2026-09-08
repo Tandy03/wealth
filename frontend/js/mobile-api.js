@@ -90,6 +90,130 @@
     return payload.data;
   }
 
+  function normalizeOfficialDate(value) {
+    const text = String(value || "");
+    const match = text.match(/(\d{2})[.\/-](\d{2})[.\/-](\d{4})/);
+    return match ? `${match[3]}-${match[2]}-${match[1]}` : text.slice(0, 10);
+  }
+
+  function parseOfficialCsv(text) {
+    const rows = []; let row = []; let field = ""; let quoted = false;
+    for (let index = 0; index < text.length; index += 1) {
+      const char = text[index];
+      if (char === '"') {
+        if (quoted && text[index + 1] === '"') { field += '"'; index += 1; }
+        else quoted = !quoted;
+      } else if (char === "," && !quoted) { row.push(field); field = ""; }
+      else if ((char === "\n" || char === "\r") && !quoted) {
+        if (char === "\r" && text[index + 1] === "\n") index += 1;
+        row.push(field); if (row.some(Boolean)) rows.push(row); row = []; field = "";
+      } else field += char;
+    }
+    row.push(field); if (row.some(Boolean)) rows.push(row);
+    return rows;
+  }
+
+  async function mobileMacroeconomics() {
+    const now = new Date();
+    const start = new Date(now.getFullYear() - 8, 0, 1);
+    const dateToken = (date) => `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
+    const nbuBase = "https://bank.gov.ua/NBUStatService/v1/statdirectory";
+    const result = {
+      updatedAt: new Date().toISOString(),
+      sources: { nbu: "NBU", gdp: "State Statistics Service of Ukraine" },
+      errors: {}, exchangeRates: [],
+      inflation: { annual: [], monthly: [], core: [], ppi: [] },
+      gdp: { nominal: [], realIndex: [] },
+    };
+
+    try {
+      const [ratesResponse, inflationResponse] = await Promise.all([
+        fetch(`${nbuBase}/exchange?json`),
+        fetch(`${nbuBase}/inflation?period=m&start=${dateToken(start)}&end=${dateToken(now)}&json`),
+      ]);
+      if (!ratesResponse.ok || !inflationResponse.ok) throw new Error("NBU data is temporarily unavailable.");
+      const [rates, inflation] = await Promise.all([ratesResponse.json(), inflationResponse.json()]);
+      const wanted = new Set(["USD", "EUR", "GBP"]);
+      result.exchangeRates = rates.filter((row) => wanted.has(String(row.cc || "").toUpperCase())).map((row) => ({
+        code: row.cc, name: row.txten || row.txt, rate: Number(row.rate), date: normalizeOfficialDate(row.exchangedate),
+      }));
+      const national = inflation.filter((row) => row.mcrd081 === "Total" && (row.ku == null || row.ku === ""));
+      const point = (row) => {
+        let value = Number(row.value);
+        if (String(row.dt || "").startsWith("201907") && value <= -90) value += 100;
+        return { date: normalizeOfficialDate(row.dt), value };
+      };
+      const valid = (item) => item.date && Number.isFinite(item.value);
+      const pick = (idValue, measure) => national.filter((row) => row.id_api === idValue && row.tzep === measure).map(point).filter(valid);
+      result.inflation.annual = pick("prices_price_cpi_", "PCCM_");
+      result.inflation.monthly = pick("prices_price_cpi_", "PCPM_");
+      result.inflation.core = pick("prices_price_ci_", "PCCM_");
+      result.inflation.ppi = national.filter((row) => row.id_api === "prices_price_ppi_" && row.tzep === "PCCM_" && row.mcrk110 === "BCDE").map(point).filter(valid);
+    } catch (error) { result.errors.nbu = error.message || "Could not load NBU data."; }
+
+    try {
+      const gdpUrl = "https://stat.gov.ua/sdmx/workspaces/default:integration/registry/sdmx/3.0/data/dataflow/SSSU/DF_ANNUAL_NATIONAL_ACCOUNTS/latest/*?startPeriod=2010";
+      const response = await fetch(gdpUrl, { headers: { Accept: "text/csv" } });
+      if (!response.ok) throw new Error(`State Statistics Service returned ${response.status}.`);
+      const rows = parseOfficialCsv((await response.text()).replace(/^\uFEFF/, ""));
+      const headers = rows.shift() || [];
+      const objects = rows.map((values) => Object.fromEntries(headers.map((key, index) => [key, values[index]])));
+      const select = (priceType) => objects.filter((row) => row.INDICATOR === "GDP_CUR_PRC" && row.PRICE_TYPE === priceType && row.REGION === "UA00000000000000000" && row.BREAKDOWN_CATEGORY === "_T" && row.BREAKDOWN === "_T" && row.SECTOR_ECONOMY === "S_1" && row.FREQ === "A").map((row) => ({ date: row.TIME_PERIOD, value: Number(row.OBS_VALUE) })).filter((item) => item.date && Number.isFinite(item.value));
+      result.gdp.nominal = select("CURR_PRICES");
+      result.gdp.realIndex = select("IDX_VOL_PY");
+    } catch (error) { result.errors.gdp = error.message || "Could not load GDP data."; }
+
+    if (!result.exchangeRates.length && !Object.values(result.inflation).some((series) => series.length) && !result.gdp.nominal.length) {
+      throw new Error("Official macroeconomic data is temporarily unavailable.");
+    }
+    return result;
+  }
+
+  async function mobileMarketCurrencies() {
+    const response = await fetch("https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?json");
+    if (!response.ok) throw new Error(`NBU API returned ${response.status}.`);
+    const payload = await response.json();
+    const excluded = new Set(["UAH", "XAU", "XAG", "XPT", "XPD"]);
+    const currencies = (Array.isArray(payload) ? payload : []).filter((item) => {
+      const code = String(item.cc || "").toUpperCase();
+      return /^[A-Z]{3}$/.test(code) && !excluded.has(code);
+    }).map((item) => ({ code: String(item.cc).toUpperCase(), name: item.txten || item.txt, rate: Number(item.rate), exchangeDate: item.exchangedate }));
+    return { source: "NBU", currencies };
+  }
+
+  async function mobileCurrencyHistory(parameters = {}) {
+    const code = String(parameters.code || "").trim().toUpperCase();
+    const startDate = String(parameters.startDate || "").slice(0, 10);
+    const endDate = String(parameters.endDate || "").slice(0, 10);
+    if (!/^[A-Z]{3}$/.test(code) || !/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) throw new Error("A valid currency and date range are required.");
+    const compact = (value) => value.replaceAll("-", "");
+    const query = new URLSearchParams({ start: compact(startDate), end: compact(endDate), valcode: code, sort: "exchangedate", order: "asc", json: "" });
+    const response = await fetch(`https://bank.gov.ua/NBU_Exchange/exchange_site?${query}`);
+    if (!response.ok) throw new Error(`NBU API returned ${response.status}.`);
+    const payload = await response.json();
+    const values = (Array.isArray(payload) ? payload : []).map((item) => {
+      const [day, month, year] = String(item.exchangedate || "").split(".");
+      const close = Number(item.rate_per_unit ?? item.rate);
+      return { datetime: year && month && day ? `${year}-${month}-${day}` : item.exchangedate, open: close, high: close, low: close, close, volume: null };
+    }).filter((item) => item.datetime && Number.isFinite(item.close));
+    if (!values.length) throw new Error(`No NBU rates found for ${code}.`);
+    return { provider: "NBU", meta: { symbol: `${code}/UAH`, currency: "UAH", interval: "1day", type: "Official exchange rate", exchange: "NBU", currencyCode: code }, values, cached: false, fetchedAt: new Date().toISOString() };
+  }
+
+  async function mobileFrankfurterHistory(parameters = {}) {
+    const ticker = String(parameters.ticker || "USEU").trim().toUpperCase();
+    const pairs = { USEU: { base: "USD", quote: "EUR" }, EUUS: { base: "EUR", quote: "USD" } };
+    const pair = pairs[ticker];
+    if (!pair) throw new Error("Unsupported Frankfurter market ticker.");
+    const query = new URLSearchParams({ base: pair.base, quotes: pair.quote, from: parameters.startDate, to: parameters.endDate });
+    const response = await fetch(`https://api.frankfurter.dev/v2/rates?${query}`, { headers: { Accept: "application/json" } });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(payload?.message || `Frankfurter API returned ${response.status}.`);
+    const values = (Array.isArray(payload) ? payload : []).filter((item) => item.base === pair.base && item.quote === pair.quote && Number.isFinite(Number(item.rate))).map((item) => ({ datetime: item.date, open: Number(item.rate), high: Number(item.rate), low: Number(item.rate), close: Number(item.rate), volume: null })).sort((a, b) => a.datetime.localeCompare(b.datetime));
+    if (!values.length) throw new Error(`No ${pair.base}/${pair.quote} rates were found for this period.`);
+    return { provider: "Frankfurter", meta: { symbol: `${pair.base}/${pair.quote}`, currency: pair.quote, interval: "1day", type: "Exchange rate", exchange: "Frankfurter", marketTicker: ticker }, values, cached: false, fetchedAt: new Date().toISOString() };
+  }
+
   window.mobileApi = {
     isNative: true,
     async getData() {
@@ -126,12 +250,75 @@
       } finally { syncing = false; }
     },
     async getMarketTimeSeries(parameters) { return proxy("twelve", parameters); },
+    async getMarketCurrencies() { return mobileMarketCurrencies(); },
+    async getCurrencyHistory(parameters) { return mobileCurrencyHistory(parameters); },
+    async getFrankfurterHistory(parameters) { return mobileFrankfurterHistory(parameters); },
     async getIndexHistory(parameters) { return proxy("fred", parameters); },
+    async getMacroeconomics() { return mobileMacroeconomics(); },
     async getBinanceEquityPrice(symbol) { return proxy("binance", { symbol }); },
     async syncApiAssets() {
       await loadLocal();
+      const synced = [];
+      const skipped = [];
       const binanceSynced = [];
       const binanceSkipped = [];
+      const fundSlugs = { inzhur_reit: "inzhur-reit", inzhur_miltech: "inzhur-miltech" };
+
+      try {
+        const catalogResponse = await fetch("https://www.inzhur.reit/_api/assets", { headers: { Accept: "application/json" } });
+        if (!catalogResponse.ok) throw new Error(`Inzhur API returned ${catalogResponse.status}.`);
+        const catalogPayload = await catalogResponse.json();
+        if (!Array.isArray(catalogPayload)) throw new Error("Inzhur API returned an invalid response.");
+        const catalog = catalogPayload.map((item) => ({
+          id: item.id, slug: item.slug, type: item.type, status: item.status, title: item.title,
+          isin: item.assetDetails?.isin || null,
+          maturityDate: item.assetDetails?.maturityDate || null,
+          prices: item.assetDetails?.prices || null,
+          paymentSchedule: item.assetDetails?.paymentSchedule || [],
+        }));
+        const today = new Date().toISOString().slice(0, 10);
+        for (const asset of data.assets.filter((item) => ["ovdp", "inzhur_reit", "inzhur_miltech"].includes(item.type))) {
+          let remoteAsset;
+          if (asset.type === "ovdp") {
+            const isin = String(asset.isin || "").trim().toUpperCase();
+            remoteAsset = catalog.find((item) => item.type === "bond" && String(item.isin || "").trim().toUpperCase() === isin);
+          } else {
+            const slug = asset.inzhurSlug || fundSlugs[asset.type];
+            remoteAsset = catalog.find((item) => item.type === "fund" && item.slug === slug);
+          }
+          if (!remoteAsset) { skipped.push({ id: asset.id, name: asset.name }); continue; }
+
+          const currentPrice = Number(remoteAsset.prices?.sellUAH || remoteAsset.prices?.buyUAH || remoteAsset.prices?.buy || 0);
+          if (currentPrice > 0) asset.currentPrice = currentPrice;
+          asset.inzhurSlug = remoteAsset.slug;
+          asset.lastSyncedAt = new Date().toISOString();
+
+          if (asset.type === "ovdp") {
+            asset.maturityDate = remoteAsset.maturityDate || asset.maturityDate;
+            const maturityDate = String(asset.maturityDate || "").slice(0, 10);
+            const schedule = (remoteAsset.paymentSchedule || []).map((payment) => {
+              const amountPerUnit = Number(payment.amount || 0) / 100;
+              const date = String(payment.date || "").slice(0, 10);
+              return { date, amountPerUnit, type: date === maturityDate && amountPerUnit >= 500 ? "MATURITY" : "COUPON" };
+            }).filter((payment) => /^\d{4}-\d{2}-\d{2}$/.test(payment.date) && payment.date >= today && payment.amountPerUnit > 0);
+            asset.coupons = schedule.filter((payment) => payment.type === "COUPON").map(({ date, amountPerUnit }) => ({ date, amountPerUnit }));
+            const maturity = schedule.find((payment) => payment.type === "MATURITY");
+            if (maturity) asset.redemptionValue = maturity.amountPerUnit;
+            data.payments = (data.payments || []).filter((payment) => payment.assetId !== asset.id || ["received", "paid"].includes(payment.status) || !["COUPON", "MATURITY"].includes(payment.type));
+            schedule.forEach((payment) => data.payments.push({
+              id: id("payment"), createdAt: new Date().toISOString(), assetId: asset.id, assetName: asset.name,
+              date: payment.date, type: payment.type, amountPerUnit: payment.amountPerUnit,
+              amount: payment.amountPerUnit * Number(asset.quantity || 0), currency: "UAH", status: "planned",
+            }));
+          }
+          synced.push({ id: asset.id, name: asset.name, price: asset.currentPrice || null, paymentScheduleUpdated: asset.type === "ovdp" });
+        }
+      } catch (error) {
+        data.assets.filter((item) => ["ovdp", "inzhur_reit", "inzhur_miltech"].includes(item.type)).forEach((asset) => {
+          skipped.push({ id: asset.id, name: asset.name, error: "INZHUR_API_ERROR", message: error.message });
+        });
+      }
+
       const symbolMap = { SPYB: "SPY", SMHB: "SMH", AAPLB: "AAPL" };
       const holdings = data.assets.filter((asset) => {
         const code = String(asset.ticker || asset.symbol || asset.name || "").trim().toUpperCase();
@@ -153,11 +340,11 @@
           binanceSkipped.push({ id: asset.id, name: asset.name, symbol: assetCode, error: "TWELVE_DATA_ERROR", message: error.message });
         }
       }
-      if (binanceSynced.length) {
+      if (synced.length || binanceSynced.length) {
         await saveLocal();
         uploadDrive().catch(() => {});
       }
-      return { synced: [], skipped: [], binanceSynced, binanceSkipped };
+      return { synced, skipped, binanceSynced, binanceSkipped };
     },
     async createAsset(asset) { return mutate((state) => { const created = { ...asset, id: id("asset") }; state.assets.push(created); state.transactions.push({ id: id("tx"), assetId: created.id, assetName: created.name, type: "BUY", quantity: Number(created.quantity || 0), price: Number(created.purchasePrice || 0), amount: Number(created.quantity || 0) * Number(created.purchasePrice || 0), currency: created.currency || "UAH", date: created.purchaseDate }); return created; }); },
     async updateAsset(assetId, patch) { return mutate((state) => { const asset = state.assets.find((item) => item.id === assetId); if (!asset) throw new Error("Asset not found."); Object.assign(asset, patch, { id: assetId }); return asset; }); },
@@ -168,7 +355,23 @@
     async createSale(sale) { return mutate((state) => { const asset = state.assets.find((item) => item.id === sale.assetId); if (!asset) throw new Error("Asset not found."); const quantity = Number(sale.quantity || 0); if (quantity > Number(asset.quantity || 0)) throw new Error("Not enough units available."); asset.quantity = Number(asset.quantity || 0) - quantity; const created = { ...sale, id: id("sale") }; state.sales.push(created); state.transactions.push({ ...created, id: id("tx"), type: "SELL", assetName: asset.name }); return created; }); },
     async getTransactions() { return clone((await loadLocal()).transactions || []); },
     async getPayments() { return clone((await loadLocal()).payments || []); },
-    async markPaymentReceived(paymentId) { return mutate((state) => { const payment = state.payments.find((item) => item.id === paymentId); if (!payment) throw new Error("Payment not found."); payment.received = true; payment.receivedAt = new Date().toISOString(); return payment; }); },
+    async markPaymentReceived(paymentId) { return mutate((state) => {
+      const payment = state.payments.find((item) => item.id === paymentId);
+      if (!payment) throw new Error("Payment not found.");
+      if (payment.status === "received" || payment.status === "paid" || payment.received) return payment;
+      const receivedNow = new Date();
+      const receivedDate = `${receivedNow.getFullYear()}-${String(receivedNow.getMonth() + 1).padStart(2, "0")}-${String(receivedNow.getDate()).padStart(2, "0")}`;
+      payment.status = "received";
+      payment.received = true;
+      payment.receivedAt = receivedNow.toISOString();
+      payment.receivedDate = receivedDate;
+      state.transactions.push({
+        id: id("tx"), createdAt: payment.receivedAt, date: receivedDate,
+        assetId: payment.assetId, assetName: payment.assetName, paymentId: payment.id,
+        type: payment.type, quantity: null, amount: payment.amount, currency: payment.currency || "UAH",
+      });
+      return payment;
+    }); },
     async getCalendarNotes() { return clone((await loadLocal()).calendarNotes || []); },
     async createCalendarNote(note) { return mutate((state) => { const created = { ...note, id: id("note") }; state.calendarNotes.push(created); return created; }); },
     async saveWallet(wallet) { return mutate((state) => { state.wallet = clone(wallet); return state.wallet; }); },

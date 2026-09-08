@@ -2456,7 +2456,9 @@ app.patch("/api/payments/:id/received", serializeMutation(async (req, res) => {
 
     payment.status = "received";
 
-    payment.receivedAt = new Date().toISOString();
+    const receivedNow = new Date();
+    payment.receivedAt = receivedNow.toISOString();
+    payment.receivedDate = `${receivedNow.getFullYear()}-${String(receivedNow.getMonth() + 1).padStart(2, "0")}-${String(receivedNow.getDate()).padStart(2, "0")}`;
 
     const asset = data.assets.find((item) => item.id === payment.assetId);
 
@@ -2467,7 +2469,7 @@ app.patch("/api/payments/:id/received", serializeMutation(async (req, res) => {
     data.transactions.push({
       id: createId("tx"),
       createdAt: payment.receivedAt,
-      date: payment.date,
+      date: payment.receivedDate,
       assetId: payment.assetId,
       assetName: payment.assetName,
       paymentId: payment.id,

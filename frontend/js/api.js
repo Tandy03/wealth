@@ -41,17 +41,20 @@ const api = {
   },
 
   async getMarketCurrencies() {
+    if (window.mobileApi) return window.mobileApi.getMarketCurrencies();
     const response = await fetch("/api/market-data/currencies");
     return readApiJson(response, "Failed to load NBU currencies.");
   },
 
   async getCurrencyHistory(params) {
+    if (window.mobileApi) return window.mobileApi.getCurrencyHistory(params);
     const query = new URLSearchParams(params);
     const response = await fetch(`/api/market-data/currency-history?${query}`);
     return readApiJson(response, "Failed to load NBU currency history.");
   },
 
   async getFrankfurterHistory(params) {
+    if (window.mobileApi) return window.mobileApi.getFrankfurterHistory(params);
     const query = new URLSearchParams(params);
     const response = await fetch(`/api/market-data/frankfurter-history?${query}`);
     return readApiJson(response, "Failed to load Frankfurter exchange-rate history.");
@@ -65,6 +68,7 @@ const api = {
   },
 
   async getMacroeconomics() {
+    if (window.mobileApi) return window.mobileApi.getMacroeconomics();
     const response = await fetch("/api/macroeconomics");
     return readApiJson(response, "Failed to load macroeconomic data.");
   },
