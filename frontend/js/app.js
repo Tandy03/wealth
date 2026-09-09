@@ -27,6 +27,7 @@ const state = {
   editingLoanId: null,
   editingExpenseId: null,
   holdingSelectionAction: "delete",
+  purchaseExchangeRates: {},
 };
 
 /* ============================================================
@@ -105,6 +106,117 @@ const EXCHANGE_RATES = { UAH: 1, USD: 44.4, EUR: 51.7 };
 
 function toUAH(value, currency = "UAH") {
   return normalizeNumber(value) * (EXCHANGE_RATES[currency] || 1);
+}
+
+function getExchangeRateOnDate(currency = "UAH", date = "") {
+  const normalizedCurrency = String(currency || "UAH").toUpperCase();
+  if (normalizedCurrency === "UAH") return 1;
+
+  const rates = state.purchaseExchangeRates[normalizedCurrency] || [];
+  const normalizedDate = String(date || "").slice(0, 10);
+  if (!normalizedDate || !rates.length) return EXCHANGE_RATES[normalizedCurrency] || 1;
+
+  const rate = [...rates].reverse().find((item) => item.date <= normalizedDate) || rates[0];
+  return normalizeNumber(rate?.rate) || EXCHANGE_RATES[normalizedCurrency] || 1;
+}
+
+function toUAHAtDate(value, currency = "UAH", date = "") {
+  return normalizeNumber(value) * getExchangeRateOnDate(currency, date);
+}
+
+function getAssetPurchaseDate(assetId, fallback = "") {
+  const asset = (state.data.assets || []).find((item) => item.id === assetId);
+  if (asset?.purchaseDate) return asset.purchaseDate;
+
+  return (state.data.transactions || [])
+    .filter((transaction) => transaction.assetId === assetId && transaction.type === "BUY" && transaction.date)
+    .map((transaction) => transaction.date)
+    .sort()[0] || fallback;
+}
+
+function getAssetPurchaseExchangeRate(assetId, currency = "UAH", fallbackDate = "") {
+  const normalizedCurrency = String(currency || "UAH").toUpperCase();
+  if (normalizedCurrency === "UAH") return 1;
+
+  const purchases = (state.data.transactions || []).filter(
+    (transaction) =>
+      transaction.assetId === assetId &&
+      transaction.type === "BUY" &&
+      String(transaction.currency || normalizedCurrency).toUpperCase() === normalizedCurrency,
+  );
+  const totals = purchases.reduce((result, transaction) => {
+    const amount = normalizeNumber(transaction.amount) ||
+      normalizeNumber(transaction.quantity) * normalizeNumber(transaction.purchasePrice ?? transaction.price);
+    result.foreign += amount;
+    result.uah += toUAHAtDate(amount, normalizedCurrency, transaction.date || fallbackDate);
+    return result;
+  }, { foreign: 0, uah: 0 });
+
+  return totals.foreign > 0
+    ? totals.uah / totals.foreign
+    : getExchangeRateOnDate(normalizedCurrency, fallbackDate);
+}
+
+function toUAHPurchaseCost(value, currency = "UAH", assetId = "", fallbackDate = "") {
+  return normalizeNumber(value) * getAssetPurchaseExchangeRate(assetId, currency, fallbackDate);
+}
+
+function getAssetInvestedUah(asset, quantity = getAvailableQuantity(asset.id)) {
+  return toUAHPurchaseCost(
+    quantity * normalizeNumber(asset.purchasePrice),
+    asset.currency,
+    asset.id,
+    asset.purchaseDate,
+  );
+}
+
+async function loadPurchaseExchangeRates() {
+  const cacheKey = "fino-purchase-exchange-rates-v1";
+  try {
+    const cachedRates = JSON.parse(localStorage.getItem(cacheKey) || "{}");
+    if (cachedRates && typeof cachedRates === "object") state.purchaseExchangeRates = cachedRates;
+  } catch (_) {
+    state.purchaseExchangeRates = {};
+  }
+
+  const purchaseRecords = [
+    ...(state.data.assets || []).map((asset) => ({
+      currency: asset.currency,
+      date: asset.purchaseDate,
+    })),
+    ...(state.data.transactions || [])
+      .filter((transaction) => transaction.type === "BUY")
+      .map((transaction) => ({ currency: transaction.currency, date: transaction.date })),
+  ].filter(
+    (record) => record.date && ["USD", "EUR"].includes(String(record.currency || "").toUpperCase()),
+  );
+  const currencies = [...new Set(purchaseRecords.map((record) => String(record.currency).toUpperCase()))];
+
+  await Promise.all(currencies.map(async (currency) => {
+    const dates = purchaseRecords
+      .filter((record) => String(record.currency).toUpperCase() === currency)
+      .map((record) => record.date)
+      .sort();
+    const firstDate = new Date(`${dates[0]}T00:00:00`);
+    firstDate.setDate(firstDate.getDate() - 7);
+    const today = getDateString(new Date());
+    const endDate = dates.at(-1) > today ? today : dates.at(-1);
+
+    try {
+      const result = await api.getCurrencyHistory({
+        code: currency,
+        startDate: getDateString(firstDate),
+        endDate,
+      });
+      state.purchaseExchangeRates[currency] = (result.values || [])
+        .map((item) => ({ date: String(item.datetime || "").slice(0, 10), rate: normalizeNumber(item.close) }))
+        .filter((item) => item.date && item.rate > 0)
+        .sort((a, b) => a.date.localeCompare(b.date));
+      localStorage.setItem(cacheKey, JSON.stringify(state.purchaseExchangeRates));
+    } catch (error) {
+      console.warn(`Could not load historical ${currency}/UAH rates:`, error.message);
+    }
+  }));
 }
 
 function convertCurrency(value, fromCurrency = "UAH", toCurrency = "UAH") {
@@ -444,7 +556,7 @@ function calculateInvested() {
     if (asset.type === "savings") return sum;
     const availableQuantity = getAvailableQuantity(asset.id);
 
-    return sum + toUAH(availableQuantity * normalizeNumber(asset.purchasePrice), asset.currency);
+    return sum + getAssetInvestedUah(asset, availableQuantity);
   }, 0);
 }
 
@@ -542,7 +654,7 @@ function renderDashboard() {
    */
 
   const totalCostBasis = (state.data.sales || []).reduce(
-    (sum, sale) => sum + (sale.type === "savings" ? 0 : toUAH(normalizeNumber(sale.costBasis), sale.currency)),
+    (sum, sale) => sum + (sale.type === "savings" ? 0 : toUAHPurchaseCost(normalizeNumber(sale.costBasis), sale.currency, sale.assetId, getAssetPurchaseDate(sale.assetId, sale.sellDate))),
     0,
   );
 
@@ -585,6 +697,10 @@ function renderDashboard() {
           const investedAsset = currencies.length === 1
             ? asset._assets.reduce((sum, holding) => sum + getAvailableQuantity(holding.id) * normalizeNumber(holding.purchasePrice), 0)
             : asset._assets.reduce((sum, holding) => sum + convertCurrency(getAvailableQuantity(holding.id) * normalizeNumber(holding.purchasePrice), holding.currency, "USD"), 0);
+          const investedAssetUah = asset._assets.reduce(
+            (sum, holding) => sum + getAssetInvestedUah(holding),
+            0,
+          );
           const displayCurrency = currencies.length === 1 ? currencies[0] : "USD";
           const assetIds = asset._assets.map((holding) => holding.id);
 
@@ -607,7 +723,7 @@ function renderDashboard() {
                             </div>
 
                             <div class="asset-amount">
-                                ${portfolioMoneyWithUahHover(investedAsset, displayCurrency)}
+                                ${portfolioMoneyWithUahHover(investedAsset, displayCurrency, investedAssetUah)}
                             </div>
 
                         </div>
@@ -705,11 +821,11 @@ function renderUpcomingPayments() {
    PORTFOLIO
    ============================================================ */
 
-function portfolioMoneyWithUahHover(value, currency = "UAH") {
+function portfolioMoneyWithUahHover(value, currency = "UAH", valueInUah = null) {
   const normalizedCurrency = String(currency || "UAH").toUpperCase();
   const original = money(value, normalizedCurrency);
   if (normalizedCurrency === "UAH") return original;
-  const converted = money(toUAH(value, normalizedCurrency));
+  const converted = money(Number.isFinite(valueInUah) ? valueInUah : toUAH(value, normalizedCurrency));
   return `<span class="portfolio-currency-hover" tabindex="0" data-original="${escapeHtml(original)}" data-uah="${escapeHtml(converted)}">${escapeHtml(original)}</span>`;
 }
 
@@ -768,8 +884,8 @@ function renderPortfolio() {
       }
 
       if (state.portfolioSort === "invested") {
-        const aInvested = toUAH(getAvailableQuantity(a.id) * normalizeNumber(a.purchasePrice), a.currency);
-        const bInvested = toUAH(getAvailableQuantity(b.id) * normalizeNumber(b.purchasePrice), b.currency);
+        const aInvested = getAssetInvestedUah(a);
+        const bInvested = getAssetInvestedUah(b);
 
         return bInvested - aInvested;
       }
@@ -799,6 +915,10 @@ function renderPortfolio() {
       const currencies = [...new Set(asset._assets.map((item) => item.currency || "UAH"))];
       const displayCurrency = currencies.length === 1 ? currencies[0] : "USD";
       const invested = asset._assets.reduce((sum, item) => sum + convertCurrency(getAvailableQuantity(item.id) * normalizeNumber(item.purchasePrice), item.currency, displayCurrency), 0);
+      const investedUah = asset._assets.reduce(
+        (sum, item) => sum + getAssetInvestedUah(item),
+        0,
+      );
       const currentValue = asset._assets.reduce((sum, item) => sum + convertCurrency(getAvailableQuantity(item.id) * getCurrentPrice(item), item.currency, displayCurrency), 0);
       const averagePrice = available > 0 ? invested / available : 0;
       const averageCurrentPrice = available > 0 ? currentValue / available : averagePrice;
@@ -833,7 +953,7 @@ function renderPortfolio() {
                         </td>
 
                         <td>
-                            ${portfolioMoneyWithUahHover(invested, displayCurrency)}
+                            ${portfolioMoneyWithUahHover(invested, displayCurrency, investedUah)}
                         </td>
 
                         <td>
@@ -3405,7 +3525,12 @@ function calculateProfit(from = null, to = null) {
       }
 
       if (payment.type === "MATURITY") {
-        const netMaturity = amount - toUAH(getMaturityCostBasis(payment.assetId), payment.currency);
+        const netMaturity = amount - toUAHPurchaseCost(
+          getMaturityCostBasis(payment.assetId),
+          payment.currency,
+          payment.assetId,
+          getAssetPurchaseDate(payment.assetId, payment.date),
+        );
 
         result.maturity += netMaturity;
 
@@ -3422,7 +3547,12 @@ function calculateProfit(from = null, to = null) {
     .forEach((sale) => {
       const profit = toUAH(profitAfterTax(normalizeNumber(sale.profit), sale.type), sale.currency);
 
-      const costBasis = toUAH(sale.costBasis, sale.currency);
+      const costBasis = toUAHPurchaseCost(
+        sale.costBasis,
+        sale.currency,
+        sale.assetId,
+        getAssetPurchaseDate(sale.assetId, sale.sellDate),
+      );
 
       const sourceAsset = state.data.assets.find((asset) => asset.id === sale.assetId);
       const assetId = `${sourceAsset?.type || sale.type || "unknown"}::${String(sourceAsset?.name || sale.assetName || "Unknown").trim().toLowerCase()}`;
@@ -3460,7 +3590,7 @@ function calculateProfit(from = null, to = null) {
     .filter((asset) => getAvailableQuantity(asset.id) > 0 && asset.type !== "savings")
     .forEach((asset) => {
       const assetId = `${asset.type}::${String(asset.name).trim().toLowerCase()}`;
-      const invested = toUAH(getAvailableQuantity(asset.id) * normalizeNumber(asset.purchasePrice), asset.currency);
+      const invested = getAssetInvestedUah(asset);
       const priceGrowth = toUAH(profitAfterTax(getUnrealizedPriceGrowth(asset), asset.type), asset.currency);
 
       if (!result.assets[assetId]) {
@@ -3560,16 +3690,11 @@ function renderProfitCalculator() {
    * Per-asset table
    */
 
-  const tbody = document.querySelector("#profit-assets-table");
+  const renderProfitTable = (tbody, rows) => {
+    if (!tbody) return;
 
-  if (!tbody) {
-    return;
-  }
-
-  const rows = Object.entries(result.assets);
-
-  if (!rows.length) {
-    tbody.innerHTML = `
+    if (!rows.length) {
+      tbody.innerHTML = `
             <tr>
                 <td
                     colspan="9"
@@ -3579,12 +3704,11 @@ function renderProfitCalculator() {
                 </td>
             </tr>
         `;
+      return;
+    }
 
-    return;
-  }
-
-  tbody.innerHTML = rows
-    .map(([assetId, asset]) => {
+    tbody.innerHTML = rows
+      .map((asset) => {
       const total =
         asset.dividends +
         asset.coupons +
@@ -3599,7 +3723,7 @@ function renderProfitCalculator() {
 
                             <td>
                                 <strong>
-                                    ${escapeHtml(asset.assetName)}
+                                    ${escapeHtml(asset.label)}
                                 </strong>
                             </td>
 
@@ -3639,8 +3763,44 @@ function renderProfitCalculator() {
 
                         </tr>
                     `;
-    })
-    .join("");
+      })
+      .join("");
+  };
+
+  const assetRows = Object.entries(result.assets).map(([, asset]) => ({
+    ...asset,
+    label: asset.assetName,
+  }));
+  renderProfitTable(document.querySelector("#profit-assets-table"), assetRows);
+
+  const typeRows = Object.entries(result.assets).reduce((groups, [assetId, asset]) => {
+    const type = assetId.split("::", 1)[0] || "unknown";
+    if (!groups[type]) {
+      groups[type] = {
+        label: typeLabels[type] || type,
+        currency: "UAH",
+        invested: 0,
+        dividends: 0,
+        coupons: 0,
+        maturity: 0,
+        salesProfit: 0,
+        priceGrowth: 0,
+      };
+    }
+
+    groups[type].invested += asset.invested;
+    groups[type].dividends += asset.dividends;
+    groups[type].coupons += asset.coupons;
+    groups[type].maturity += asset.maturity;
+    groups[type].salesProfit += asset.salesProfit;
+    groups[type].priceGrowth += asset.priceGrowth;
+    return groups;
+  }, {});
+
+  renderProfitTable(
+    document.querySelector("#profit-types-table"),
+    Object.values(typeRows),
+  );
 }
 
 /* ============================================================
@@ -3684,6 +3844,7 @@ function setupProfitCalculator() {
   const from = document.querySelector("#profit-from");
 
   const to = document.querySelector("#profit-to");
+  const historyMode = document.querySelector("#portfolio-history-mode");
 
   if (from) {
     from.addEventListener("change", renderProfitCalculator);
@@ -3692,6 +3853,8 @@ function setupProfitCalculator() {
   if (to) {
     to.addEventListener("change", renderProfitCalculator);
   }
+
+  historyMode?.addEventListener("change", renderPortfolioHistoryChart);
 }
 
 /* ============================================================
@@ -3903,13 +4066,19 @@ function calculateRebalance(event) {
     ...values.filter((item) => item.percent > 0).map((item) => item.value / (item.percent / 100)),
   );
 
-  result.innerHTML = values
+  const recommendations = values.map((item) => ({
+    ...item,
+    difference: Math.max(0, totalAfterAddition * (item.percent / 100) - item.value),
+  }));
+  const totalToInvest = recommendations.reduce((sum, item) => sum + item.difference, 0);
+
+  result.innerHTML = recommendations
     .map((item) => {
-      const difference = Math.max(0, totalAfterAddition * (item.percent / 100) - item.value);
+      const difference = item.difference;
       const action = difference > 0.005 ? `Buy ${money(difference)}` : "No purchase";
       return `<div class="rebalance-result"><span>${escapeHtml(item.group?.label || "Asset")}</span><strong>${action}</strong></div>`;
     })
-    .join("");
+    .join("") + `<div class="rebalance-result rebalance-result-total"><span>Total to invest</span><strong>${money(totalToInvest)}</strong></div>`;
 }
 
 function setupRebalanceCalculator() {
@@ -4383,6 +4552,8 @@ async function loadData() {
       : { expenses: [], months: {} },
   };
 
+  await loadPurchaseExchangeRates();
+
   normalizeWalletCategoryNames();
 
   console.log("Investment Tracker data loaded:", state.data);
@@ -4762,17 +4933,27 @@ function renderPortfolioHistoryChart() {
     return;
   }
 
+  const mode = document.querySelector("#portfolio-history-mode")?.value || "value";
+  const description = document.querySelector("#portfolio-history-description");
+  const assetsById = new Map((state.data.assets || []).map((asset) => [asset.id, asset]));
   const movements = (state.data.transactions || [])
     .filter((transaction) => {
-      const asset = state.data.assets.find((item) => item.id === transaction.assetId);
+      const asset = assetsById.get(transaction.assetId);
       return asset?.type !== "savings" && transaction.date && ["BUY", "SELL"].includes(transaction.type);
     })
     .map((transaction) => ({
       date: transaction.date,
+      assetId: transaction.assetId,
+      quantity: (transaction.type === "BUY" ? 1 : -1) * normalizeNumber(transaction.quantity),
       amount:
         transaction.type === "BUY"
-          ? toUAH(transaction.amount, transaction.currency)
-          : -toUAH(transaction.costBasis || transaction.amount, transaction.currency),
+          ? toUAHAtDate(transaction.amount, transaction.currency, transaction.date)
+          : -toUAHPurchaseCost(
+            transaction.costBasis || transaction.amount,
+            transaction.currency,
+            transaction.assetId,
+            getAssetPurchaseDate(transaction.assetId, transaction.date),
+          ),
     }))
     .sort((a, b) => a.date.localeCompare(b.date));
 
@@ -4780,7 +4961,25 @@ function renderPortfolioHistoryChart() {
     portfolioHistoryChart.destroy();
   }
 
-  if (!movements.length) {
+  const earnedEvents = [
+    ...(state.data.payments || [])
+      .filter((payment) => payment.status === "received" || payment.status === "paid")
+      .map((payment) => {
+        const date = payment.receivedDate || String(payment.receivedAt || "").slice(0, 10) || payment.date;
+        const maturityBasis = payment.type === "MATURITY" ? getMaturityCostBasis(payment.assetId) : 0;
+        return { date, amount: toUAH(normalizeNumber(payment.amount) - maturityBasis, payment.currency) };
+      }),
+    ...(state.data.sales || [])
+      .filter((sale) => sale.type !== "savings" && sale.sellDate)
+      .map((sale) => ({
+        date: sale.sellDate,
+        amount: toUAH(profitAfterTax(normalizeNumber(sale.profit), sale.type), sale.currency),
+      })),
+  ].filter((event) => /^\d{4}-\d{2}-\d{2}$/.test(String(event.date))).sort((a, b) => a.date.localeCompare(b.date));
+
+  const datedEvents = [...movements, ...earnedEvents];
+
+  if (!datedEvents.length) {
     portfolioHistoryChart = new Chart(canvas, {
       type: "line",
       data: { labels: [], datasets: [] },
@@ -4789,12 +4988,18 @@ function renderPortfolioHistoryChart() {
     return;
   }
 
-  const firstDate = new Date(`${movements[0].date}T00:00:00`);
+  const firstEventDate = datedEvents.map((event) => event.date).sort()[0];
+  const firstDate = new Date(`${firstEventDate}T00:00:00`);
   const lastDate = new Date();
   const labels = [];
-  const values = [];
-  let runningTotal = 0;
+  const investedValues = [];
+  const monthlyInvestedValues = [];
+  const portfolioValues = [];
+  const earnedValues = [];
+  const quantities = new Map();
+  let runningInvested = 0;
   let movementIndex = 0;
+  let earnedIndex = 0;
   const cursor = new Date(firstDate.getFullYear(), firstDate.getMonth(), 1);
   const lastMonth = new Date(lastDate.getFullYear(), lastDate.getMonth(), 1);
 
@@ -4802,31 +5007,89 @@ function renderPortfolioHistoryChart() {
     const monthEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
     const monthEndString = getDateString(monthEnd);
 
+    let investedThisMonth = 0;
     while (movementIndex < movements.length && movements[movementIndex].date <= monthEndString) {
-      runningTotal += movements[movementIndex].amount;
+      const movement = movements[movementIndex];
+      runningInvested += movement.amount;
+      investedThisMonth += movement.amount;
+      quantities.set(movement.assetId, normalizeNumber(quantities.get(movement.assetId)) + movement.quantity);
       movementIndex += 1;
     }
 
+    let earnedThisMonth = 0;
+    const monthKey = getDateString(cursor).slice(0, 7);
+    while (earnedIndex < earnedEvents.length && earnedEvents[earnedIndex].date.slice(0, 7) <= monthKey) {
+      if (earnedEvents[earnedIndex].date.slice(0, 7) === monthKey) earnedThisMonth += earnedEvents[earnedIndex].amount;
+      earnedIndex += 1;
+    }
+
+    const portfolioValue = [...quantities.entries()].reduce((sum, [assetId, quantity]) => {
+      const asset = assetsById.get(assetId);
+      if (!asset || quantity <= 0) return sum;
+      return sum + toUAH(quantity * getCurrentPrice(asset), asset.currency);
+    }, 0);
+
     labels.push(cursor.toLocaleDateString("uk-UA", { month: "short", year: "numeric" }));
-    values.push(Math.max(0, runningTotal));
+    investedValues.push(Math.max(0, runningInvested));
+    monthlyInvestedValues.push(investedThisMonth);
+    portfolioValues.push(Math.max(0, portfolioValue));
+    earnedValues.push(earnedThisMonth);
     cursor.setMonth(cursor.getMonth() + 1);
   }
+
+  const chartModes = {
+    value: {
+      label: "Portfolio value",
+      description: "Portfolio value by month",
+      values: portfolioValues,
+      type: "line",
+      color: "#7c8cff",
+      background: "rgba(124, 140, 255, 0.18)",
+    },
+    profit: {
+      label: "Value/invested difference",
+      description: "Difference between portfolio value and invested capital",
+      values: portfolioValues.map((value, index) => value - investedValues[index]),
+      type: "line",
+      color: "#49c58b",
+      background: "rgba(73, 197, 139, 0.18)",
+    },
+    earned: {
+      label: "Money earned",
+      description: "Received income and realized profit by month",
+      values: earnedValues,
+      type: "bar",
+      color: "#e8a33a",
+      background: "rgba(232, 163, 58, 0.65)",
+    },
+    invested: {
+      label: "Invested by month",
+      description: "Net invested capital by month",
+      values: monthlyInvestedValues,
+      type: "bar",
+      color: "#7c8cff",
+      background: "rgba(124, 140, 255, 0.68)",
+    },
+  };
+  const selected = chartModes[mode] || chartModes.value;
+  if (description) description.textContent = selected.description;
 
   const chartText = getComputedStyle(document.documentElement).getPropertyValue("--text").trim();
   const gridColor = getComputedStyle(document.documentElement).getPropertyValue("--border").trim();
 
   portfolioHistoryChart = new Chart(canvas, {
-    type: "line",
+    type: selected.type,
     data: {
       labels,
       datasets: [{
-        label: "Total invested",
-        data: values,
-        borderColor: "#7c8cff",
-        backgroundColor: "rgba(124, 140, 255, 0.18)",
-        fill: true,
+        label: selected.label,
+        data: selected.values,
+        borderColor: selected.color,
+        backgroundColor: selected.background,
+        fill: selected.type === "line",
         tension: 0.28,
-        pointRadius: 3,
+        pointRadius: selected.type === "line" ? 3 : 0,
+        borderRadius: selected.type === "bar" ? 5 : 0,
       }],
     },
     options: {
@@ -4834,7 +5097,7 @@ function renderPortfolioHistoryChart() {
       maintainAspectRatio: false,
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { label: (context) => `Total invested: ${money(context.raw)}` } },
+        tooltip: { callbacks: { label: (context) => `${selected.label}: ${money(context.raw)}` } },
       },
       scales: {
         x: { ticks: { color: chartText }, grid: { color: gridColor } },

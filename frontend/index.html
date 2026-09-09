@@ -15,12 +15,10 @@
 <body>
   <div class="app-shell" id="investments-app">
     <aside class="sidebar">
-      <button class="brand app-switch" id="open-wallet" type="button" title="Open Wallet">
-        <div class="brand-mark"><img src="/assets/fino-logo.png" alt="fino" /></div>
-        <div>
-          <strong>Investment</strong>
-        </div>
-      </button>
+      <div class="app-mode-switch" aria-label="Application section">
+        <button class="active" type="button" aria-current="page">Investment</button>
+        <button id="open-wallet" type="button">Wallet</button>
+      </div>
 
       <nav class="nav">
         <button class="nav-item active" data-section="dashboard">Dashboard</button>
@@ -380,12 +378,55 @@
 
         </article>
 
+        <article class="panel">
+
+          <div class="panel-header">
+            <div>
+              <h2>Profit by type</h2>
+            </div>
+          </div>
+
+          <div class="table-wrap profit-table-wrap">
+
+            <table class="mobile-compact-table profit-table">
+
+              <thead>
+                <tr>
+                  <th>Type</th>
+                  <th>Invested</th>
+                  <th>Dividends</th>
+                  <th>Coupons</th>
+                  <th>Maturity</th>
+                  <th>Sales profit</th>
+                  <th>Price growth</th>
+                  <th>Total profit</th>
+                  <th>ROI</th>
+                </tr>
+              </thead>
+
+              <tbody id="profit-types-table"></tbody>
+
+            </table>
+
+          </div>
+
+        </article>
+
         <article class="panel portfolio-history-panel">
           <div class="panel-header">
             <div>
               <h2>Portfolio investment dynamics</h2>
-              <p>Total invested capital by month</p>
+              <p id="portfolio-history-description">Portfolio value by month</p>
             </div>
+            <label class="portfolio-history-mode">
+              <span>Chart</span>
+              <select id="portfolio-history-mode">
+                <option value="value">Portfolio value</option>
+                <option value="profit">Value/invested difference</option>
+                <option value="earned">Money earned by month</option>
+                <option value="invested">Invested by month</option>
+              </select>
+            </label>
           </div>
           <div class="portfolio-history-chart">
             <canvas id="portfolio-history-chart"></canvas>
@@ -463,10 +504,10 @@
 
   <div class="app-shell wallet-shell" id="wallet-app" hidden>
     <aside class="sidebar">
-      <button class="brand app-switch" id="open-investments" type="button" title="Open Investments">
-        <div class="brand-mark"><img src="/assets/fino-logo.png" alt="fino" /></div>
-        <div><strong>Wallet</strong></div>
-      </button>
+      <div class="app-mode-switch" aria-label="Application section">
+        <button id="open-investments" type="button">Investment</button>
+        <button class="active" type="button" aria-current="page">Wallet</button>
+      </div>
       <nav class="nav">
         <button class="nav-item wallet-tab active" data-wallet-tab="current">Current</button>
         <button class="nav-item wallet-tab" data-wallet-tab="archive">Archive</button>
