@@ -1731,6 +1731,17 @@ textarea:focus {
 }
 
 @media (max-width: 700px) {
+  .app-mode-switch {
+    width: min(100%, 210px);
+    margin-bottom: 18px;
+  }
+
+  .app-mode-switch button {
+    height: 32px;
+    padding-inline: 7px;
+    font-size: 11px;
+  }
+
   .transaction-filters { display: grid; grid-template-columns: 1fr; gap: 12px; }
   .transaction-filters label { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 12px; align-items: center; width: 100%; line-height: 1.25; }
   .sidebar-settings-button {
