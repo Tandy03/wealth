@@ -103,6 +103,7 @@ const quantityFormatter = new Intl.NumberFormat("uk-UA", {
    ============================================================ */
 
 const EXCHANGE_RATES = { UAH: 1, USD: 44.4, EUR: 51.7 };
+const HISTORICAL_RATE_FALLBACKS = { UAH: 1, USD: 44.4, EUR: 51.7 };
 
 function toUAH(value, currency = "UAH") {
   return normalizeNumber(value) * (EXCHANGE_RATES[currency] || 1);
@@ -114,10 +115,10 @@ function getExchangeRateOnDate(currency = "UAH", date = "") {
 
   const rates = state.purchaseExchangeRates[normalizedCurrency] || [];
   const normalizedDate = String(date || "").slice(0, 10);
-  if (!normalizedDate || !rates.length) return EXCHANGE_RATES[normalizedCurrency] || 1;
+  if (!normalizedDate || !rates.length) return HISTORICAL_RATE_FALLBACKS[normalizedCurrency] || 1;
 
   const rate = [...rates].reverse().find((item) => item.date <= normalizedDate) || rates[0];
-  return normalizeNumber(rate?.rate) || EXCHANGE_RATES[normalizedCurrency] || 1;
+  return normalizeNumber(rate?.rate) || HISTORICAL_RATE_FALLBACKS[normalizedCurrency] || 1;
 }
 
 function toUAHAtDate(value, currency = "UAH", date = "") {
@@ -170,6 +171,28 @@ function getAssetInvestedUah(asset, quantity = getAvailableQuantity(asset.id)) {
   );
 }
 
+function getAssetInvestedUsd(asset, quantity = getAvailableQuantity(asset.id)) {
+  const purchases = (state.data.transactions || []).filter(
+    (transaction) => transaction.assetId === asset.id && transaction.type === "BUY",
+  );
+  const totalQuantity = purchases.reduce((sum, transaction) => sum + normalizeNumber(transaction.quantity), 0);
+  const investedUsd = purchases.reduce((sum, transaction) => {
+    const currency = String(transaction.currency || asset.currency || "UAH").toUpperCase();
+    const amount = normalizeNumber(transaction.amount) ||
+      normalizeNumber(transaction.quantity) * normalizeNumber(transaction.purchasePrice ?? transaction.price);
+    if (currency === "USD") return sum + amount;
+    const amountUah = currency === "UAH" ? amount : toUAHAtDate(amount, currency, transaction.date);
+    return sum + amountUah / getExchangeRateOnDate("USD", transaction.date || asset.purchaseDate);
+  }, 0);
+  if (totalQuantity > 0) return investedUsd * Math.min(1, normalizeNumber(quantity) / totalQuantity);
+
+  const amount = normalizeNumber(quantity) * normalizeNumber(asset.purchasePrice);
+  const currency = String(asset.currency || "UAH").toUpperCase();
+  if (currency === "USD") return amount;
+  const amountUah = currency === "UAH" ? amount : toUAHAtDate(amount, currency, asset.purchaseDate);
+  return amountUah / getExchangeRateOnDate("USD", asset.purchaseDate);
+}
+
 async function loadPurchaseExchangeRates() {
   const cacheKey = "fino-purchase-exchange-rates-v1";
   try {
@@ -179,6 +202,12 @@ async function loadPurchaseExchangeRates() {
     state.purchaseExchangeRates = {};
   }
 
+  const allPurchaseDates = [
+    ...(state.data.assets || []).map((asset) => asset.purchaseDate),
+    ...(state.data.transactions || [])
+      .filter((transaction) => transaction.type === "BUY")
+      .map((transaction) => transaction.date),
+  ].filter(Boolean);
   const purchaseRecords = [
     ...(state.data.assets || []).map((asset) => ({
       currency: asset.currency,
@@ -190,13 +219,13 @@ async function loadPurchaseExchangeRates() {
   ].filter(
     (record) => record.date && ["USD", "EUR"].includes(String(record.currency || "").toUpperCase()),
   );
-  const currencies = [...new Set(purchaseRecords.map((record) => String(record.currency).toUpperCase()))];
+  const currencies = [...new Set(["USD", ...purchaseRecords.map((record) => String(record.currency).toUpperCase())])];
 
   await Promise.all(currencies.map(async (currency) => {
-    const dates = purchaseRecords
+    const dates = (currency === "USD" ? allPurchaseDates : purchaseRecords
       .filter((record) => String(record.currency).toUpperCase() === currency)
-      .map((record) => record.date)
-      .sort();
+      .map((record) => record.date)).sort();
+    if (!dates.length) return;
     const firstDate = new Date(`${dates[0]}T00:00:00`);
     firstDate.setDate(firstDate.getDate() - 7);
     const today = getDateString(new Date());
@@ -243,11 +272,13 @@ function formatQuantity(value) {
   return quantityFormatter.format(normalizeNumber(value));
 }
 
-function setDashboardCurrencyHover(element, valueInUah) {
+function setDashboardCurrencyHover(element, valueInUah, valueInUsd = null) {
   if (!element) return;
   const card = element.closest(".stat-card") || element;
   element.dataset.valueUah = money(valueInUah);
-  element.dataset.valueUsd = usdMoney(valueInUah);
+  element.dataset.valueUsd = valueInUsd == null
+    ? usdMoney(valueInUah)
+    : `$${currencyFormatter.format(valueInUsd)}`;
   element.textContent = card.matches(":hover") ? element.dataset.valueUsd : element.dataset.valueUah;
   card.classList.add("currency-hover-card");
   card.removeAttribute("title");
@@ -560,6 +591,13 @@ function calculateInvested() {
   }, 0);
 }
 
+function calculateInvestedUsd() {
+  return state.data.assets.reduce((sum, asset) => {
+    if (asset.type === "savings") return sum;
+    return sum + getAssetInvestedUsd(asset, getAvailableQuantity(asset.id));
+  }, 0);
+}
+
 function getCurrentPrice(asset) {
   const syncedPrice = normalizeNumber(asset.currentPrice);
 
@@ -606,7 +644,7 @@ function renderDashboard() {
   const returnElement = document.querySelector("#stat-return");
 
   if (investedElement) {
-    setDashboardCurrencyHover(investedElement, invested);
+    setDashboardCurrencyHover(investedElement, invested, calculateInvestedUsd());
   }
 
   if (valueElement) {

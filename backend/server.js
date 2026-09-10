@@ -116,7 +116,11 @@ async function readData() {
       });
     });
 
+    repairLegacyPurchaseHistory(data);
     data.assets.forEach((asset) => updatePlannedPaymentsForAsset(data, asset.id));
+    const assetIds = new Set(data.assets.map((asset) => asset.id));
+    data.payments = data.payments.filter((payment) =>
+      assetIds.has(payment.assetId) || payment.status === "received" || payment.status === "paid");
 
     return data;
   } catch (error) {
@@ -293,6 +297,31 @@ function getDividendEligibleQuantity(data, assetId, paymentDate) {
   return Math.min(purchasedQuantity, normalizeNumber(asset?.quantity));
 }
 
+function repairLegacyPurchaseHistory(data) {
+  (data.assets || []).forEach((asset) => {
+    const buys = (data.transactions || []).filter(
+      (transaction) => transaction.assetId === asset.id && transaction.type === "BUY",
+    );
+    const excess = buys.reduce((sum, transaction) => sum + normalizeNumber(transaction.quantity), 0)
+      - normalizeNumber(asset.quantity);
+    if (excess <= 1e-8 || !buys.length) return;
+    const earliest = [...buys].sort((a, b) =>
+      String(a.date || a.createdAt).localeCompare(String(b.date || b.createdAt)))[0];
+    const correctedQuantity = normalizeNumber(earliest.quantity) - excess;
+    if (correctedQuantity <= 0) return;
+    const otherCost = buys.filter((transaction) => transaction !== earliest)
+      .reduce((sum, transaction) => sum + normalizeNumber(transaction.amount), 0);
+    const correctedCost = Math.max(
+      0,
+      normalizeNumber(asset.quantity) * normalizeNumber(asset.purchasePrice) - otherCost,
+    );
+    earliest.quantity = correctedQuantity;
+    earliest.amount = correctedCost;
+    earliest.purchasePrice = correctedCost / correctedQuantity;
+    delete earliest.price;
+  });
+}
+
 function updatePlannedPaymentsForAsset(data, assetId) {
   data.payments = data.payments.map((payment) => {
     if (payment.assetId !== assetId) {
@@ -334,6 +363,12 @@ function updatePlannedPaymentsForAsset(data, assetId) {
       amount: amountPerUnit * quantity,
     };
   });
+}
+
+function hasReceivedPayment(data, assetId, type, date) {
+  return data.payments.some((payment) =>
+    payment.assetId === assetId && payment.type === type && payment.date === date &&
+    (payment.status === "received" || payment.status === "paid"));
 }
 
 /*
@@ -1025,6 +1060,7 @@ app.post("/api/assets", serializeMutation(async (req, res) => {
        */
 
       asset.coupons.forEach((coupon) => {
+        if (hasReceivedPayment(data, asset.id, "COUPON", coupon.date)) return;
         data.payments.push({
           id: createId("payment"),
 
@@ -1054,7 +1090,7 @@ app.post("/api/assets", serializeMutation(async (req, res) => {
        * Ukrainian domestic bonds normally redeem at nominal value.
        */
 
-      data.payments.push({
+      if (!hasReceivedPayment(data, asset.id, "MATURITY", asset.maturityDate)) data.payments.push({
         id: createId("payment"),
 
         createdAt: new Date().toISOString(),
@@ -1111,6 +1147,7 @@ app.post("/api/assets", serializeMutation(async (req, res) => {
           paymentDate.getMonth() + 1,
         ).padStart(2, "0")}-${String(paymentDate.getDate()).padStart(2, "0")}`;
 
+        if (hasReceivedPayment(data, asset.id, "DIVIDEND", dateString)) continue;
         data.payments.push({
           id: createId("payment"),
 
@@ -1209,6 +1246,16 @@ app.post("/api/assets/merge", serializeMutation(async (req, res) => {
     data.payments = reassign(data.payments);
     data.calendarNotes = reassign(data.calendarNotes);
     data.assets = data.assets.filter((asset) => !mergedIds.has(asset.id));
+
+    const plannedKeys = new Set();
+    data.payments = data.payments.filter((payment) => {
+      if (payment.assetId !== primary.id || payment.status === "received" || payment.status === "paid") return true;
+      const key = [payment.type, payment.date, payment.currency || primary.currency].join("|");
+      if (plannedKeys.has(key)) return false;
+      plannedKeys.add(key);
+      return true;
+    });
+    updatePlannedPaymentsForAsset(data, primary.id);
 
     await writeData(data);
     res.json(primary);
@@ -1540,13 +1587,6 @@ app.put("/api/assets/:id", serializeMutation(async (req, res) => {
 
     if (buyTransaction) {
       buyTransaction.assetName = asset.name;
-
-      buyTransaction.date = asset.purchaseDate;
-
-      buyTransaction.quantity = asset.quantity;
-
-      buyTransaction.amount = asset.quantity * asset.purchasePrice;
-
       buyTransaction.currency = asset.currency;
     }
 
@@ -1595,6 +1635,7 @@ app.put("/api/assets/:id", serializeMutation(async (req, res) => {
 
     if (type === "ovdp") {
       asset.coupons.forEach((coupon) => {
+        if (hasReceivedPayment(data, asset.id, "COUPON", coupon.date)) return;
         data.payments.push({
           id: createId("payment"),
 
@@ -1610,7 +1651,7 @@ app.put("/api/assets/:id", serializeMutation(async (req, res) => {
 
           amountPerUnit: coupon.amountPerUnit,
 
-          amount: coupon.amountPerUnit * asset.quantity,
+          amount: coupon.amountPerUnit * getPurchasedQuantityOnDate(data, asset.id, coupon.date),
 
           currency: asset.currency,
 
@@ -1622,7 +1663,7 @@ app.put("/api/assets/:id", serializeMutation(async (req, res) => {
        * Maturity payment
        */
 
-      data.payments.push({
+      if (!hasReceivedPayment(data, asset.id, "MATURITY", asset.maturityDate)) data.payments.push({
         id: createId("payment"),
 
         createdAt: new Date().toISOString(),
@@ -1673,6 +1714,7 @@ app.put("/api/assets/:id", serializeMutation(async (req, res) => {
           paymentDate.getMonth() + 1,
         ).padStart(2, "0")}-${String(paymentDate.getDate()).padStart(2, "0")}`;
 
+        if (hasReceivedPayment(data, asset.id, "DIVIDEND", dateString)) continue;
         data.payments.push({
           id: createId("payment"),
 
@@ -1704,7 +1746,7 @@ app.put("/api/assets/:id", serializeMutation(async (req, res) => {
         const days = Math.max(0, (new Date(`${asset.maturityDate}T00:00:00`) - new Date(`${asset.purchaseDate}T00:00:00`)) / 86400000);
         payout = principal * (1 + asset.annualRate / 100 * days / 365);
       }
-      data.payments.push({ id: createId("payment"), createdAt: new Date().toISOString(), assetId: asset.id, assetName: asset.name, date: asset.maturityDate, type: "MATURITY", amountPerUnit: payout / asset.quantity, amount: payout, currency: asset.currency, status: "planned" });
+      if (!hasReceivedPayment(data, asset.id, "MATURITY", asset.maturityDate)) data.payments.push({ id: createId("payment"), createdAt: new Date().toISOString(), assetId: asset.id, assetName: asset.name, date: asset.maturityDate, type: "MATURITY", amountPerUnit: payout / asset.quantity, amount: payout, currency: asset.currency, status: "planned" });
     }
 
     /*
