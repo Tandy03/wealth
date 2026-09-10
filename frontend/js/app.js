@@ -2809,8 +2809,25 @@ function setupModal() {
         /*
          * CREATE NEW ASSET
          */
-
-        await api.createAsset(asset);
+        const identity = (item) => [
+          item.type,
+          item.name,
+          item.instrumentName || "",
+          item.instrumentType || "",
+          item.currency || "UAH",
+        ].map((value) => String(value).trim().toLocaleLowerCase()).join("::");
+        const existingAsset = state.data.assets.find((item) => identity(item) === identity(asset));
+        if (existingAsset) {
+          await api.buyMoreAsset(existingAsset.id, {
+            quantity: asset.quantity,
+            purchasePrice: asset.purchasePrice,
+            purchaseDate: asset.purchaseDate,
+            currency: asset.currency,
+            instrumentId: existingAsset.instrumentId,
+          });
+        } else {
+          await api.createAsset(asset);
+        }
       }
 
       /*

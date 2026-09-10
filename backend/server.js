@@ -1250,6 +1250,7 @@ app.post("/api/assets/merge", serializeMutation(async (req, res) => {
     const plannedKeys = new Set();
     data.payments = data.payments.filter((payment) => {
       if (payment.assetId !== primary.id || payment.status === "received" || payment.status === "paid") return true;
+      if (hasReceivedPayment(data, primary.id, payment.type, payment.date)) return false;
       const key = [payment.type, payment.date, payment.currency || primary.currency].join("|");
       if (plannedKeys.has(key)) return false;
       plannedKeys.add(key);

@@ -136,6 +136,13 @@
     return remote;
   }
 
+  function isRemoteNewer(remote, local) {
+    const remoteRevision = number(remote?.sync?.revision);
+    const localRevision = number(local?.sync?.revision);
+    if (remoteRevision !== localRevision) return remoteRevision > localRevision;
+    return String(remote?.sync?.updatedAt || "") > String(local?.sync?.updatedAt || "");
+  }
+
   async function uploadDrive(force = false) {
     await loadLocal();
     const accessToken = await token();
@@ -302,10 +309,14 @@
     isNative: true,
     async getData() {
       await loadLocal();
-      if (!data.assets.length && Number(data.sync?.revision || 0) === 0) {
-        try { data = normalizeData(await downloadDrive()); await Preferences.set({ key: STORAGE_KEY, value: JSON.stringify(data) }); lastSyncAt = new Date().toISOString(); }
-        catch (_) { /* Offline-first: retain the empty local snapshot. */ }
-      }
+      try {
+        const remote = await downloadDrive();
+        if (isRemoteNewer(remote, data) || (!data.assets.length && number(data.sync?.revision) === 0)) {
+          data = normalizeData(remote);
+          await Preferences.set({ key: STORAGE_KEY, value: JSON.stringify(data) });
+        }
+        lastSyncAt = new Date().toISOString();
+      } catch (_) { /* Offline-first: retain the local snapshot. */ }
       return clone(data);
     },
     async getGoogleDriveStatus() {
@@ -324,7 +335,7 @@
         else if (action === "backup") await uploadDrive(false);
         else {
           const remote = await downloadDrive();
-          if (Number(remote.sync?.revision || 0) > Number(data.sync?.revision || 0)) {
+          if (isRemoteNewer(remote, data)) {
             data = normalizeData(remote);
             await Preferences.set({ key: STORAGE_KEY, value: JSON.stringify(data) });
           } else await uploadDrive(false);
