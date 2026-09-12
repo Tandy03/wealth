@@ -17,6 +17,7 @@ import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.GridLayout;
+import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.Space;
 import android.widget.TextView;
@@ -232,9 +233,14 @@ public class MainActivity extends BridgeActivity {
             }
         }
 
-        Button biometric = createPinKey("◎", palette);
+        ImageButton biometric = new ImageButton(this);
+        biometric.setImageResource(R.drawable.ic_fingerprint);
+        biometric.setColorFilter(palette.text);
+        biometric.setScaleType(ImageButton.ScaleType.CENTER_INSIDE);
+        biometric.setPadding(dp(21), dp(21), dp(21), dp(21));
+        biometric.setBackground(roundedBackground(palette.secondary, 999));
+        biometric.setStateListAnimator(null);
         biometric.setContentDescription("Unlock with fingerprint");
-        biometric.setTextSize(30);
         biometric.setVisibility(canUseBiometrics() ? View.VISIBLE : View.INVISIBLE);
         biometric.setOnClickListener(view -> authenticateBiometrically());
         addKeyToGrid(keypad, biometric, 3, 0);
