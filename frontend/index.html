@@ -433,6 +433,22 @@
           </div>
         </article>
 
+        <article class="panel portfolio-history-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Asset price history</h2>
+              <p id="asset-price-history-description">Prices recorded after edits and synchronization</p>
+            </div>
+            <label class="portfolio-history-mode">
+              <span>Asset</span>
+              <select id="asset-price-history-select"></select>
+            </label>
+          </div>
+          <div class="portfolio-history-chart">
+            <canvas id="asset-price-history-chart"></canvas>
+          </div>
+        </article>
+
       </section>
 
       <section id="rebalance-section" class="page-section">
@@ -711,11 +727,6 @@
           <label><span>Amount</span><input type="number" name="amount" min="0.01" step="0.01" required /></label>
           <label><span>Note</span><input name="note" /></label>
         </div>
-        <label class="wallet-new-category custom-checkbox">
-          <input type="checkbox" id="use-new-category" />
-          <span class="custom-checkbox-mark" aria-hidden="true"></span>
-          <span>Add a new category for this month</span>
-        </label>
         <label id="new-category-field" hidden><span>New category name</span><input id="new-expense-category" /></label>
         <div class="modal-actions"><button type="button" class="secondary-btn" id="cancel-expense">Cancel</button><button type="submit" class="primary-btn">Save</button></div>
       </form>

@@ -10,6 +10,7 @@ const state = {
     payments: [],
     calendarNotes: [],
     sales: [],
+    priceHistory: [],
     wallet: { expenses: [], months: {} },
     instruments: [],
   },
@@ -3687,6 +3688,7 @@ function calculateProfit(from = null, to = null) {
 function renderProfitCalculator() {
   renderAssetAllocationChart();
   renderPortfolioHistoryChart();
+  renderAssetPriceHistoryChart();
 
   const from = document.querySelector("#profit-from")?.value || null;
 
@@ -3910,6 +3912,7 @@ function setupProfitCalculator() {
   }
 
   historyMode?.addEventListener("change", renderPortfolioHistoryChart);
+  document.querySelector("#asset-price-history-select")?.addEventListener("change", renderAssetPriceHistoryChart);
 }
 
 /* ============================================================
@@ -4601,6 +4604,7 @@ async function loadData() {
     calendarNotes: Array.isArray(data.calendarNotes) ? data.calendarNotes : [],
 
     sales: Array.isArray(data.sales) ? data.sales : [],
+    priceHistory: Array.isArray(data.priceHistory) ? data.priceHistory : [],
     instruments: Array.isArray(data.instruments) ? data.instruments : [],
     wallet: data.wallet && typeof data.wallet === "object"
       ? data.wallet
@@ -5157,6 +5161,67 @@ function renderPortfolioHistoryChart() {
       scales: {
         x: { ticks: { color: chartText }, grid: { color: gridColor } },
         y: { ticks: { color: chartText, callback: (value) => money(value) }, grid: { color: gridColor } },
+      },
+    },
+  });
+}
+
+let assetPriceHistoryChart = null;
+
+function renderAssetPriceHistoryChart() {
+  const canvas = document.querySelector("#asset-price-history-chart");
+  const select = document.querySelector("#asset-price-history-select");
+  const description = document.querySelector("#asset-price-history-description");
+  if (!canvas || !select || typeof Chart === "undefined") return;
+
+  const groups = new Map();
+  (state.data.assets || [])
+    .filter((asset) => getAvailableQuantity(asset.id) > 0 && asset.type !== "savings")
+    .forEach((asset) => {
+      const key = `${asset.type}::${String(asset.name || "").trim().toLocaleLowerCase()}`;
+      if (!groups.has(key)) groups.set(key, { key, name: asset.name, assetIds: [] });
+      groups.get(key).assetIds.push(asset.id);
+    });
+
+  const previousValue = select.value;
+  select.innerHTML = [...groups.values()]
+    .map((group) => `<option value="${escapeHtml(group.key)}">${escapeHtml(group.name)}</option>`)
+    .join("");
+  if (groups.has(previousValue)) select.value = previousValue;
+
+  assetPriceHistoryChart?.destroy();
+  assetPriceHistoryChart = null;
+  const group = groups.get(select.value);
+  const points = group ? (state.data.priceHistory || [])
+    .filter((point) => group.assetIds.includes(point.assetId) && normalizeNumber(point.price) > 0)
+    .sort((a, b) => String(a.recordedAt || a.date).localeCompare(String(b.recordedAt || b.date))) : [];
+  const currency = points.at(-1)?.currency || "UAH";
+  if (description) description.textContent = group
+    ? points.length
+      ? `${group.name}: ${points.length} recorded price point${points.length === 1 ? "" : "s"}`
+      : `${group.name}: price history will appear after the next edit or synchronization`
+    : "No active portfolio assets";
+
+  const chartText = getComputedStyle(document.documentElement).getPropertyValue("--text").trim();
+  const gridColor = getComputedStyle(document.documentElement).getPropertyValue("--border").trim();
+  assetPriceHistoryChart = new Chart(canvas, {
+    type: "line",
+    data: {
+      labels: points.map((point) => new Date(point.recordedAt || `${point.date}T00:00:00`).toLocaleString("uk-UA", {
+        day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+      })),
+      datasets: [{
+        label: group?.name || "Asset price", data: points.map((point) => normalizeNumber(point.price)),
+        borderColor: "#7c8cff", backgroundColor: "rgba(124, 140, 255, 0.18)",
+        fill: true, tension: 0.25, pointRadius: 4,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (context) => money(context.raw, currency) } } },
+      scales: {
+        x: { ticks: { color: chartText, maxRotation: 0, autoSkip: true }, grid: { color: gridColor } },
+        y: { ticks: { color: chartText, callback: (value) => money(value, currency) }, grid: { color: gridColor } },
       },
     },
   });
@@ -5908,13 +5973,14 @@ function openExpenseModal(expenseId = null) {
   form.elements.date.value = expense?.date || getDateString();
   const key = String(form.elements.date.value).slice(0, 7);
   const categories = walletCategories(key);
-  document.querySelector("#expense-category").innerHTML = categories.map((category) => `<option>${escapeHtml(category)}</option>`).join("");
+  document.querySelector("#expense-category").innerHTML = categories.map((category) => `<option>${escapeHtml(category)}</option>`).join("") + '<option value="__add_new__">Add new</option>';
   const groceries = categories.find((category) => category === "Groceries + household") || categories.find((category) => category.toLowerCase().startsWith("groceries"));
   form.elements.category.value = expense?.category || groceries || form.elements.category.value;
   form.elements.amount.value = expense?.amount || "";
   form.elements.note.value = expense?.note || "";
   document.querySelector("#expense-modal-title").textContent = expense ? "Edit expense" : "Record expense";
   document.querySelector("#new-category-field").hidden = true;
+  document.querySelector("#new-expense-category").value = "";
   modal.classList.add("open");
 }
 
@@ -5979,17 +6045,21 @@ function setupWallet() {
   document.querySelector("#add-expense-btn")?.addEventListener("click", () => openExpenseModal());
   document.querySelector("#close-expense-modal")?.addEventListener("click", close);
   document.querySelector("#cancel-expense")?.addEventListener("click", close);
-  document.querySelector("#use-new-category")?.addEventListener("change", (event) => { document.querySelector("#new-category-field").hidden = !event.target.checked; });
+  document.querySelector("#expense-category")?.addEventListener("change", (event) => {
+    const adding = event.target.value === "__add_new__";
+    document.querySelector("#new-category-field").hidden = !adding;
+    if (adding) document.querySelector("#new-expense-category")?.focus();
+  });
   form?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const values = new FormData(form);
     const date = values.get("date");
     const key = String(date).slice(0, 7);
     let category = String(values.get("category") || "");
-    if (document.querySelector("#use-new-category").checked) {
+    if (category === "__add_new__") {
       category = document.querySelector("#new-expense-category").value.trim();
       if (!category) return showNotice("Enter a new category name.");
-      walletMonth(key).customCategories.push(category);
+      if (!walletMonth(key).customCategories.includes(category)) walletMonth(key).customCategories.push(category);
     }
     const expense = { id: state.editingExpenseId || `expense-${Date.now()}`, date, category, amount: normalizeNumber(values.get("amount")), note: values.get("note") || "", currency: "UAH" };
     if (state.editingExpenseId) {

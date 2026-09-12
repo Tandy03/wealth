@@ -95,6 +95,9 @@ async function readData() {
     if (!Array.isArray(data.sales)) {
       data.sales = [];
     }
+    if (!Array.isArray(data.priceHistory)) {
+      data.priceHistory = [];
+    }
 
     if (!data.wallet || typeof data.wallet !== "object") {
       data.wallet = { expenses: [], months: {}, loans: [] };
@@ -116,6 +119,8 @@ async function readData() {
       });
     });
 
+    normalizeAssetNames(data);
+    initializeAssetPriceHistory(data);
     repairLegacyPurchaseHistory(data);
     data.assets.forEach((asset) => updatePlannedPaymentsForAsset(data, asset.id));
     const assetIds = new Set(data.assets.map((asset) => asset.id));
@@ -136,6 +141,7 @@ async function readData() {
         payments: [],
         calendarNotes: [],
         sales: [],
+        priceHistory: [],
         wallet: { expenses: [], months: {}, loans: [] },
         instruments: [],
       };
@@ -177,7 +183,7 @@ async function initializeStorage() {
       localData = JSON.parse(await fs.readFile(DATA_FILE, "utf8"));
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
-      localData = { sync: { revision: 0, updatedAt: new Date().toISOString(), deviceId: process.env.GOOGLE_DRIVE_DEVICE_ID || os.hostname() }, assets: [], transactions: [], payments: [], calendarNotes: [], sales: [], wallet: { expenses: [], months: {}, loans: [] }, instruments: [] };
+      localData = { sync: { revision: 0, updatedAt: new Date().toISOString(), deviceId: process.env.GOOGLE_DRIVE_DEVICE_ID || os.hostname() }, assets: [], transactions: [], payments: [], calendarNotes: [], sales: [], priceHistory: [], wallet: { expenses: [], months: {}, loans: [] }, instruments: [] };
     }
     if (!localData.sync || typeof localData.sync !== "object") localData.sync = { revision: 0, updatedAt: new Date().toISOString(), deviceId: process.env.GOOGLE_DRIVE_DEVICE_ID || os.hostname() };
     try {
@@ -199,6 +205,39 @@ async function initializeStorage() {
 
 function createId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeAssetNames(data) {
+  const renamed = new Map();
+  (data.assets || []).forEach((asset) => {
+    if (String(asset.name || "").trim().toLowerCase() === "ovdp 1") {
+      asset.name = "OVDP 5378";
+      renamed.set(asset.id, asset.name);
+    }
+  });
+  [data.transactions, data.payments, data.calendarNotes, data.sales, data.priceHistory].forEach((items = []) => {
+    items.forEach((item) => { if (renamed.has(item.assetId)) item.assetName = renamed.get(item.assetId); });
+  });
+}
+
+function recordAssetPrice(data, asset, source, recordedAt = new Date().toISOString()) {
+  const price = normalizeNumber(asset.currentPrice);
+  if (price <= 0 || !(data.assets || []).some((item) => item.id === asset.id)) return;
+  data.priceHistory ||= [];
+  data.priceHistory.push({
+    id: createId("price"), assetId: asset.id, assetName: asset.name,
+    recordedAt, date: recordedAt.slice(0, 10), price,
+    currency: asset.currency || BASE_CURRENCY, source,
+  });
+}
+
+function initializeAssetPriceHistory(data) {
+  data.priceHistory ||= [];
+  (data.assets || []).forEach((asset) => {
+    if (normalizeNumber(asset.currentPrice) <= 0) return;
+    if (data.priceHistory.some((point) => point.assetId === asset.id)) return;
+    recordAssetPrice(data, asset, "initial", asset.lastSyncedAt || asset.updatedAt || asset.createdAt || new Date().toISOString());
+  });
 }
 
 function isValidDateString(value) {
@@ -673,6 +712,7 @@ app.post("/api/assets/sync-inzhur", serializeMutation(async (req, res) => {
 
       asset.inzhurSlug = remoteAsset.slug;
       asset.lastSyncedAt = new Date().toISOString();
+      if (currentPrice > 0) recordAssetPrice(data, asset, "sync", asset.lastSyncedAt);
 
       if (asset.type === "ovdp") {
         asset.maturityDate = remoteAsset.maturityDate || asset.maturityDate;
@@ -747,6 +787,7 @@ app.post("/api/assets/sync-inzhur", serializeMutation(async (req, res) => {
         asset.currentPrice = market.currentPrice;
         asset.currency = market.quoteCurrency;
         asset.lastSyncedAt = new Date().toISOString();
+        recordAssetPrice(data, asset, "sync", asset.lastSyncedAt);
         asset.marketData = {
           provider: "binance",
           bidPrice: market.bidPrice,
@@ -1245,6 +1286,7 @@ app.post("/api/assets/merge", serializeMutation(async (req, res) => {
     data.sales = reassign(data.sales);
     data.payments = reassign(data.payments);
     data.calendarNotes = reassign(data.calendarNotes);
+    data.priceHistory = reassign(data.priceHistory);
     data.assets = data.assets.filter((asset) => !mergedIds.has(asset.id));
 
     const plannedKeys = new Set();
@@ -1473,6 +1515,7 @@ app.put("/api/assets/:id", serializeMutation(async (req, res) => {
     if (["s1_reit", "etf", "stock"].includes(type) && body.currentPrice !== undefined && currentPrice > 0) {
       asset.currentPrice = currentPrice;
       asset.lastSyncedAt = new Date().toISOString();
+      recordAssetPrice(data, asset, "edit", asset.lastSyncedAt);
     }
 
     /*
@@ -2108,6 +2151,9 @@ app.delete("/api/assets/:id", serializeMutation(async (req, res) => {
 
     data.calendarNotes = data.calendarNotes.filter(
       (note) => note.assetId !== assetId,
+    );
+    data.priceHistory = (data.priceHistory || []).filter(
+      (point) => point.assetId !== assetId,
     );
 
     await writeData(data);

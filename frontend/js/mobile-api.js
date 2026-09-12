@@ -7,7 +7,7 @@
   const STORAGE_KEY = "fino-data-v1";
   const emptyData = () => ({
     sync: { revision: 0, updatedAt: new Date().toISOString(), deviceId: "android-phone" },
-    assets: [], transactions: [], payments: [], calendarNotes: [], sales: [],
+    assets: [], transactions: [], payments: [], calendarNotes: [], sales: [], priceHistory: [],
     wallet: { expenses: [], months: {}, loans: [] }, instruments: [],
   });
   const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -57,11 +57,37 @@
 
   function normalizeData(state) {
     state.wallet ||= { expenses: [], months: {}, loans: [] };
+    state.priceHistory = Array.isArray(state.priceHistory) ? state.priceHistory : [];
+    const renamed = new Map();
+    (state.assets || []).forEach((asset) => {
+      if (String(asset.name || "").trim().toLowerCase() === "ovdp 1") {
+        asset.name = "OVDP 5378";
+        renamed.set(asset.id, asset.name);
+      }
+    });
+    [state.transactions, state.payments, state.calendarNotes, state.sales, state.priceHistory].forEach((items = []) => {
+      items.forEach((item) => { if (renamed.has(item.assetId)) item.assetName = renamed.get(item.assetId); });
+    });
+    (state.assets || []).forEach((asset) => {
+      if (number(asset.currentPrice) <= 0 || state.priceHistory.some((point) => point.assetId === asset.id)) return;
+      recordAssetPrice(state, asset, "initial", asset.lastSyncedAt || asset.updatedAt || asset.createdAt || new Date().toISOString());
+    });
     repairLegacyPurchaseHistory(state);
     const assetIds = new Set((state.assets || []).map((asset) => asset.id));
     state.payments = (state.payments || []).filter((payment) => assetIds.has(payment.assetId) || isReceived(payment));
     refreshPlannedPaymentAmounts(state);
     return state;
+  }
+
+  function recordAssetPrice(state, asset, source, recordedAt = new Date().toISOString()) {
+    const price = number(asset.currentPrice);
+    if (price <= 0 || !(state.assets || []).some((item) => item.id === asset.id)) return;
+    state.priceHistory ||= [];
+    state.priceHistory.push({
+      id: id("price"), assetId: asset.id, assetName: asset.name,
+      recordedAt, date: recordedAt.slice(0, 10), price,
+      currency: asset.currency || "UAH", source,
+    });
   }
 
   function rebuildPlannedPayments(state, asset) {
@@ -387,6 +413,7 @@
           if (currentPrice > 0) asset.currentPrice = currentPrice;
           asset.inzhurSlug = remoteAsset.slug;
           asset.lastSyncedAt = new Date().toISOString();
+          if (currentPrice > 0) recordAssetPrice(data, asset, "sync", asset.lastSyncedAt);
 
           if (asset.type === "ovdp") {
             asset.maturityDate = remoteAsset.maturityDate || asset.maturityDate;
@@ -430,6 +457,7 @@
           asset.currency = "USD";
           asset.provider = "twelve-data";
           asset.lastPriceUpdate = series.fetchedAt || new Date().toISOString();
+          recordAssetPrice(data, asset, "sync", asset.lastPriceUpdate);
           binanceSynced.push({ id: asset.id, name: asset.name, symbol: assetCode, underlyingSymbol, price: asset.currentPrice, currency: "USD" });
         } catch (error) {
           binanceSkipped.push({ id: asset.id, name: asset.name, symbol: assetCode, error: "TWELVE_DATA_ERROR", message: error.message });
@@ -442,10 +470,10 @@
       return { synced, skipped, binanceSynced, binanceSkipped };
     },
     async createAsset(asset) { return mutate((state) => { const created = { ...asset, id: id("asset") }; state.assets.push(created); state.transactions.push({ id: id("tx"), assetId: created.id, assetName: created.name, type: "BUY", quantity: number(created.quantity), purchasePrice: number(created.purchasePrice), amount: number(created.quantity) * number(created.purchasePrice), currency: created.currency || "UAH", date: created.purchaseDate }); rebuildPlannedPayments(state, created); return created; }); },
-    async updateAsset(assetId, patch) { return mutate((state) => { const asset = state.assets.find((item) => item.id === assetId); if (!asset) throw new Error("Asset not found."); Object.assign(asset, patch, { id: assetId, updatedAt: new Date().toISOString() }); (state.transactions || []).forEach((tx) => { if (tx.assetId === assetId) { tx.assetName = asset.name; tx.currency = asset.currency || tx.currency; } }); rebuildPlannedPayments(state, asset); return asset; }); },
-    async mergeAssets(assetIds) { return mutate((state) => { const ids = [...new Set(assetIds)]; const items = state.assets.filter((item) => ids.includes(item.id)); if (items.length < 2) throw new Error("At least two holdings are required to merge."); const primary = items[0]; const removedIds = new Set(items.slice(1).map((item) => item.id)); const totalQuantity = items.reduce((sum, item) => sum + number(item.quantity), 0); const totalCost = items.reduce((sum, item) => sum + number(item.quantity) * number(item.purchasePrice), 0); primary.quantity = totalQuantity; primary.purchasePrice = totalQuantity ? totalCost / totalQuantity : 0; primary.purchaseDate = items.map((item) => item.purchaseDate).filter(Boolean).sort()[0] || primary.purchaseDate; primary.firstDividendDate = items.map((item) => item.firstDividendDate).filter(Boolean).sort()[0] || primary.firstDividendDate; const reassign = (values = []) => values.map((item) => removedIds.has(item.assetId) ? { ...item, assetId: primary.id, assetName: primary.name } : item); state.transactions = reassign(state.transactions); state.sales = reassign(state.sales); state.payments = reassign(state.payments); state.calendarNotes = reassign(state.calendarNotes); state.assets = state.assets.filter((item) => !removedIds.has(item.id)); rebuildPlannedPayments(state, primary); return primary; }); },
+    async updateAsset(assetId, patch) { return mutate((state) => { const asset = state.assets.find((item) => item.id === assetId); if (!asset) throw new Error("Asset not found."); Object.assign(asset, patch, { id: assetId, updatedAt: new Date().toISOString() }); (state.transactions || []).forEach((tx) => { if (tx.assetId === assetId) { tx.assetName = asset.name; tx.currency = asset.currency || tx.currency; } }); if (patch.currentPrice !== undefined && number(asset.currentPrice) > 0) recordAssetPrice(state, asset, "edit", asset.updatedAt); rebuildPlannedPayments(state, asset); return asset; }); },
+    async mergeAssets(assetIds) { return mutate((state) => { const ids = [...new Set(assetIds)]; const items = state.assets.filter((item) => ids.includes(item.id)); if (items.length < 2) throw new Error("At least two holdings are required to merge."); const primary = items[0]; const removedIds = new Set(items.slice(1).map((item) => item.id)); const totalQuantity = items.reduce((sum, item) => sum + number(item.quantity), 0); const totalCost = items.reduce((sum, item) => sum + number(item.quantity) * number(item.purchasePrice), 0); primary.quantity = totalQuantity; primary.purchasePrice = totalQuantity ? totalCost / totalQuantity : 0; primary.purchaseDate = items.map((item) => item.purchaseDate).filter(Boolean).sort()[0] || primary.purchaseDate; primary.firstDividendDate = items.map((item) => item.firstDividendDate).filter(Boolean).sort()[0] || primary.firstDividendDate; const reassign = (values = []) => values.map((item) => removedIds.has(item.assetId) ? { ...item, assetId: primary.id, assetName: primary.name } : item); state.transactions = reassign(state.transactions); state.sales = reassign(state.sales); state.payments = reassign(state.payments); state.calendarNotes = reassign(state.calendarNotes); state.priceHistory = reassign(state.priceHistory); state.assets = state.assets.filter((item) => !removedIds.has(item.id)); rebuildPlannedPayments(state, primary); return primary; }); },
     async buyMoreAsset(assetId, purchase) { return mutate((state) => { const asset = state.assets.find((item) => item.id === assetId); if (!asset) throw new Error("Asset not found."); const oldQty = number(asset.quantity), qty = number(purchase.quantity), price = number(purchase.price ?? purchase.purchasePrice); asset.purchasePrice = oldQty + qty ? ((oldQty * number(asset.purchasePrice)) + qty * price) / (oldQty + qty) : price; asset.quantity = oldQty + qty; state.transactions.push({ id: id("tx"), assetId, assetName: asset.name, instrumentId: purchase.instrumentId || asset.instrumentId, type: "BUY", quantity: qty, purchasePrice: price, amount: qty * price, currency: purchase.currency || asset.currency || "UAH", date: purchase.date || purchase.purchaseDate }); rebuildPlannedPayments(state, asset); return asset; }); },
-    async deleteAsset(assetId) { return mutate((state) => { state.assets = state.assets.filter((item) => item.id !== assetId); state.transactions = state.transactions.filter((item) => item.assetId !== assetId); state.payments = state.payments.filter((item) => item.assetId !== assetId); return { success: true }; }); },
+    async deleteAsset(assetId) { return mutate((state) => { state.assets = state.assets.filter((item) => item.id !== assetId); state.transactions = state.transactions.filter((item) => item.assetId !== assetId); state.payments = state.payments.filter((item) => item.assetId !== assetId); state.priceHistory = (state.priceHistory || []).filter((item) => item.assetId !== assetId); return { success: true }; }); },
     async getSales() { return clone((await loadLocal()).sales || []); },
     async createSale(sale) { return mutate((state) => { const asset = state.assets.find((item) => item.id === sale.assetId); if (!asset) throw new Error("Asset not found."); const quantity = Number(sale.quantity || 0); if (quantity > Number(asset.quantity || 0)) throw new Error("Not enough units available."); asset.quantity = Number(asset.quantity || 0) - quantity; const created = { ...sale, id: id("sale") }; state.sales.push(created); state.transactions.push({ ...created, id: id("tx"), type: "SELL", assetName: asset.name }); return created; }); },
     async getTransactions() { return clone((await loadLocal()).transactions || []); },
