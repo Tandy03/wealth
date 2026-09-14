@@ -5207,20 +5207,40 @@ function renderAssetPriceHistoryChart() {
   assetPriceHistoryChart = new Chart(canvas, {
     type: "line",
     data: {
-      labels: points.map((point) => new Date(point.recordedAt || `${point.date}T00:00:00`).toLocaleString("uk-UA", {
-        day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
-      })),
       datasets: [{
-        label: group?.name || "Asset price", data: points.map((point) => normalizeNumber(point.price)),
+        label: group?.name || "Asset price",
+        data: points.map((point) => ({
+          x: new Date(point.recordedAt || `${point.date}T00:00:00`).getTime(),
+          y: normalizeNumber(point.price),
+        })).filter((point) => Number.isFinite(point.x)),
         borderColor: "#7c8cff", backgroundColor: "rgba(124, 140, 255, 0.18)",
         fill: true, tension: 0.25, pointRadius: 4,
       }],
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (context) => money(context.raw, currency) } } },
+      parsing: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (items) => items.length ? new Date(items[0].parsed.x).toLocaleString("uk-UA", {
+              day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+            }) : "",
+            label: (context) => money(context.parsed.y, currency),
+          },
+        },
+      },
       scales: {
-        x: { ticks: { color: chartText, maxRotation: 0, autoSkip: true }, grid: { color: gridColor } },
+        x: {
+          type: "linear",
+          ticks: {
+            color: chartText, maxRotation: 0, autoSkip: true,
+            maxTicksLimit: window.innerWidth <= 700 ? 4 : 8,
+            callback: (value) => new Date(value).toLocaleDateString("uk-UA", { day: "2-digit", month: "2-digit" }),
+          },
+          grid: { color: gridColor },
+        },
         y: { ticks: { color: chartText, callback: (value) => money(value, currency) }, grid: { color: gridColor } },
       },
     },
