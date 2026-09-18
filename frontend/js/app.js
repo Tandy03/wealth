@@ -296,7 +296,7 @@ function setDashboardCurrencyHover(element, valueInUah, valueInUsd = null) {
 function setReturnBenchmarkHover(element, portfolioReturn) {
   if (!element) return;
   const card = element.closest(".stat-card") || element;
-  const label = document.querySelector("#stat-return-label");
+  const label = document.querySelector("#stat-roi-label");
   element.dataset.portfolioReturn = portfolioReturn == null ? "Unavailable" : `${portfolioReturn.toFixed(2)}%`;
   element.textContent = element.dataset.portfolioReturn;
   card.classList.add("currency-hover-card");
@@ -309,7 +309,7 @@ function setReturnBenchmarkHover(element, portfolioReturn) {
       element.textContent = state.sp500Benchmark == null ? "Unavailable" : `${state.sp500Benchmark >= 0 ? "+" : ""}${state.sp500Benchmark.toFixed(2)}%`;
     };
     const showPortfolioReturn = () => {
-      if (label) label.textContent = "XIRR";
+      if (label) label.textContent = "Return";
       element.textContent = element.dataset.portfolioReturn;
     };
     card.addEventListener("mouseenter", showBenchmark);
@@ -693,6 +693,8 @@ function renderDashboard() {
 
   const profitElement = document.querySelector("#stat-profit");
 
+  const roiElement = document.querySelector("#stat-roi");
+
   const returnElement = document.querySelector("#stat-return");
 
   if (investedElement) {
@@ -748,12 +750,16 @@ function renderDashboard() {
     0,
   );
 
-  if (returnElement) {
-    const roiBase = invested + totalCostBasis;
-    const xirr = calculatePortfolioXirr();
-    setReturnBenchmarkHover(returnElement, xirr == null ? null : xirr * 100);
-    renderReinvestmentForecast(totalProfit, roiBase);
+  const roiBase = invested + totalCostBasis;
+  const roi = roiBase > 0 ? (totalProfit / roiBase) * 100 : 0;
+  if (roiElement) {
+    setReturnBenchmarkHover(roiElement, roi);
   }
+  if (returnElement) {
+    const xirr = calculatePortfolioXirr();
+    returnElement.textContent = xirr == null ? "Unavailable" : `${(xirr * 100).toFixed(2)}%`;
+  }
+  renderReinvestmentForecast(totalProfit, roiBase);
 
   /*
    * Dashboard assets
