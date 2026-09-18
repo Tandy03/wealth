@@ -4231,6 +4231,7 @@ function setupRebalanceCalculator() {
 function setupThemeToggle() {
   const themeSelect = document.querySelector("#settings-theme-select");
   const fontSelect = document.querySelector("#settings-font-select");
+  const languageSelect = document.querySelector("#settings-language-select");
   const biometricControl = document.querySelector("#settings-biometric-control");
   const biometricToggle = document.querySelector("#settings-biometric-toggle");
   const biometricStatus = document.querySelector("#settings-biometric-status");
@@ -4247,6 +4248,7 @@ function setupThemeToggle() {
   localStorage.removeItem("investment-tracker-text-size");
   if (themeSelect) themeSelect.value = document.documentElement.dataset.theme;
   if (fontSelect) fontSelect.value = document.documentElement.dataset.font;
+  if (languageSelect) languageSelect.value = window.FinoI18n?.locale || "en";
   if (appLock) {
     biometricControl.hidden = false;
     appLock.setTheme({ theme: document.documentElement.dataset.theme }).catch(() => {});
@@ -4270,6 +4272,9 @@ function setupThemeToggle() {
   fontSelect?.addEventListener("change", () => {
     document.documentElement.dataset.font = fontSelect.value;
     localStorage.setItem("investment-tracker-font", fontSelect.value);
+  });
+  languageSelect?.addEventListener("change", () => {
+    window.FinoI18n?.setLanguage(languageSelect.value);
   });
   biometricToggle?.addEventListener("change", () => {
     appLock?.setBiometricEnabled({ enabled: biometricToggle.checked }).catch(() => {
@@ -5653,8 +5658,8 @@ function renderWalletCurrent() {
   const totalPlan = expenseCategories.reduce((sum, category) => sum + normalizeNumber(month.plans[category]), 0);
   const totalActual = expenseCategories.reduce((sum, category) => sum + walletCategoryTotal(key, category), 0);
   const spendingActual = totalActual - walletCategoryTotal(key, "Save+invest") - walletCategoryTotal(key, "Tithe");
-  const monthName = new Date(`${key}-01T00:00:00`).toLocaleDateString("en-US", { month: "long", year: "numeric" });
-  document.querySelector("#wallet-month-title").innerHTML = `Budget<span>${escapeHtml(monthName)}</span>`;
+  const monthName = new Date(`${key}-01T00:00:00`).toLocaleDateString(window.FinoI18n?.locale || "en-US", { month: "long", year: "numeric" });
+  document.querySelector("#wallet-month-title").innerHTML = `${window.FinoI18n?.t("Budget") || "Budget"}<span>${escapeHtml(monthName)}</span>`;
 
   const row = (category) => {
     const plan = normalizeNumber(month.plans[category]);

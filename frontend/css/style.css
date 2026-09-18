@@ -2154,3 +2154,38 @@ textarea:focus {
     margin-top: 12px;
   }
 }
+:root { --viewport-safe-width: 100%; }
+html, body { max-width: 100%; overflow-x: hidden; }
+.app, .wallet-app, .main, .wallet-main, .page-section, .wallet-page, .panel { min-width: 0; max-width: 100%; }
+input[type="month"] { max-width: 100%; min-width: 0; }
+
+@media (max-width: 720px) {
+  .wallet-main { width: 100%; overflow-x: clip; }
+  .wallet-main .topbar,
+  #wallet-current > .panel > .panel-header,
+  #wallet-archive > .panel > .panel-header,
+  #wallet-expenses > .panel > .panel-header,
+  #wallet-charts > .panel > .panel-header { display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: 12px; }
+  .wallet-main .topbar-actions, .wallet-main .topbar-actions button,
+  #wallet-current-month, #wallet-archive-month, #wallet-expenses-month, #wallet-chart-month { width: 100%; max-width: 100%; justify-self: stretch; }
+  .wallet-main .topbar h1 { font-size: clamp(27px, 9vw, 38px); line-height: 1.05; overflow-wrap: normal; word-break: normal; }
+  #wallet-month-title { font-size: clamp(20px, 7vw, 28px); line-height: 1.08; overflow-wrap: normal; word-break: normal; }
+  #wallet-month-title span { margin-top: 3px; font-size: .72em; }
+  #wallet-current > .panel { padding-inline: 12px; overflow: hidden; }
+  #wallet-current .table-wrap { width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; }
+  #wallet-current .wallet-table { width: 620px; min-width: 620px; table-layout: fixed; font-size: 10px; }
+  #wallet-current .wallet-table th, #wallet-current .wallet-table td { padding: 9px 6px; overflow-wrap: normal; word-break: normal; hyphens: none; }
+  #wallet-current .wallet-table th:nth-child(1), #wallet-current .wallet-table td:nth-child(1) { width: 132px; }
+  #wallet-current .wallet-table th:nth-child(2), #wallet-current .wallet-table td:nth-child(2) { width: 82px; }
+  #wallet-current .wallet-table th:nth-child(3), #wallet-current .wallet-table td:nth-child(3) { width: 86px; }
+  #wallet-current .wallet-table th:nth-child(4), #wallet-current .wallet-table td:nth-child(4) { width: 94px; }
+  #wallet-current .wallet-table th:nth-child(5), #wallet-current .wallet-table td:nth-child(5) { width: 88px; }
+  #wallet-current .wallet-table th:nth-child(6), #wallet-current .wallet-table td:nth-child(6) { width: 96px; }
+  #wallet-current .wallet-table th:nth-child(7), #wallet-current .wallet-table td:nth-child(7) { width: 42px; }
+  .wallet-nav { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .wallet-nav::-webkit-scrollbar { display: none; }
+  .wallet-nav button { flex: 0 0 auto; white-space: nowrap; }
+  .settings-modal { width: calc(100vw - 20px); max-height: calc(100dvh - 20px); padding: 18px 14px; }
+  .settings-control { grid-template-columns: minmax(0, 1fr); }
+  .settings-control select { min-width: 0; max-width: 100%; }
+}
