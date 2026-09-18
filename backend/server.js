@@ -9,7 +9,7 @@ const { getTimeSeries } = require("./services/twelveData/client");
 const { getNbuCurrencyHistory } = require("./services/nbu/exchangeHistory");
 const { getExchangeHistory: getFrankfurterExchangeHistory } = require("./services/frankfurter/exchangeHistory");
 const { getIndexHistory } = require("./services/fred/indices");
-const { getMacroeconomics } = require("./services/macroeconomics/client");
+const { getMacroeconomics, getPolicyRate } = require("./services/macroeconomics/client");
 const googleDriveStorage = require("./services/googleDrive/storage");
 
 const app = express();
@@ -561,6 +561,15 @@ app.get("/api/macroeconomics", async (req, res) => {
   } catch (error) {
     console.error("GET /api/macroeconomics:", error.message);
     res.status(502).json({ error: "Could not load macroeconomic data." });
+  }
+});
+
+app.get("/api/macroeconomics/policy-rate", async (req, res) => {
+  try {
+    res.json({ policyRate: await getPolicyRate() });
+  } catch (error) {
+    console.error("GET /api/macroeconomics/policy-rate:", error.message);
+    res.status(502).json({ error: "Could not load the NBU key policy rate." });
   }
 });
 

@@ -2,9 +2,9 @@
   const isNative = Boolean(window.Capacitor?.isNativePlatform?.());
   if (!isNative) return;
 
-  const FILE_ID = "1FFYfJIenSPjVbZz2rcvJ9fWMMpXH1ZB7";
   const proxyConfig = window.FINO_MOBILE_CONFIG || {};
-  const STORAGE_KEY = "fino-data-v1";
+  const LEGACY_STORAGE_KEY = "fino-data-v1";
+  const MIGRATION_OWNER_KEY = "fino-account-migration-owner";
   const emptyData = () => ({
     sync: { revision: 0, updatedAt: new Date().toISOString(), deviceId: "android-phone" },
     assets: [], transactions: [], payments: [], calendarNotes: [], sales: [], priceHistory: [],
@@ -127,10 +127,39 @@
   let data;
   let lastSyncAt = null;
   let syncing = false;
+  let authSession = null;
+  let activeEmail = "";
+  let storageKey = LEGACY_STORAGE_KEY;
+  let fileId = null;
+
+  const accountSuffix = (email) => encodeURIComponent(String(email || "").trim().toLowerCase());
+
+  async function ensureAccount() {
+    const result = await DriveAuth.getAccessToken();
+    if (!result?.accessToken || !result?.email) throw new Error("Google Drive authorization required.");
+    const email = String(result.email).trim().toLowerCase();
+    if (email !== activeEmail) {
+      activeEmail = email;
+      storageKey = `${LEGACY_STORAGE_KEY}:${accountSuffix(email)}`;
+      const savedFile = await Preferences.get({ key: `fino-drive-file:${accountSuffix(email)}` });
+      fileId = savedFile.value || null;
+      data = undefined;
+      const accountData = await Preferences.get({ key: storageKey });
+      const migrationOwner = await Preferences.get({ key: MIGRATION_OWNER_KEY });
+      if (!accountData.value && !migrationOwner.value) {
+        const legacy = await Preferences.get({ key: LEGACY_STORAGE_KEY });
+        if (legacy.value) await Preferences.set({ key: storageKey, value: legacy.value });
+        await Preferences.set({ key: MIGRATION_OWNER_KEY, value: email });
+      }
+    }
+    authSession = { accessToken: result.accessToken, email };
+    return authSession;
+  }
 
   async function loadLocal() {
+    await ensureAccount();
     if (data) return data;
-    const stored = await Preferences.get({ key: STORAGE_KEY });
+    const stored = await Preferences.get({ key: storageKey });
     try { data = stored.value ? JSON.parse(stored.value) : emptyData(); }
     catch { data = emptyData(); }
     normalizeData(data);
@@ -142,18 +171,56 @@
       revision: Number(data.sync?.revision || 0) + 1,
       updatedAt: new Date().toISOString(), deviceId: "android-phone",
     };
-    await Preferences.set({ key: STORAGE_KEY, value: JSON.stringify(data) });
+    await Preferences.set({ key: storageKey, value: JSON.stringify(data) });
   }
 
   async function token() {
-    const result = await DriveAuth.getAccessToken();
-    if (!result?.accessToken) throw new Error("Google Drive authorization required.");
-    return result.accessToken;
+    return (await ensureAccount()).accessToken;
+  }
+
+  async function rememberFileId(idValue) {
+    fileId = idValue;
+    await Preferences.set({ key: `fino-drive-file:${accountSuffix(activeEmail)}`, value: idValue });
+  }
+
+  async function locateDriveFile(accessToken) {
+    if (fileId) {
+      const check = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,trashed`, { headers: { Authorization: `Bearer ${accessToken}` } });
+      if (check.ok && !(await check.json()).trashed) return fileId;
+      fileId = null;
+    }
+    const query = new URLSearchParams({
+      q: "name = 'fino-data.json' and trashed = false",
+      spaces: "drive", orderBy: "modifiedTime desc", pageSize: "10", fields: "files(id,name,modifiedTime,appProperties)",
+    });
+    const response = await fetch(`https://www.googleapis.com/drive/v3/files?${query}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!response.ok) throw new Error(`Drive file lookup failed (${response.status}).`);
+    const found = (await response.json()).files?.[0]?.id;
+    if (found) await rememberFileId(found);
+    return found || null;
+  }
+
+  async function createDriveFile(accessToken) {
+    const response = await fetch("https://www.googleapis.com/drive/v3/files?fields=id", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "fino-data.json", mimeType: "application/json", appProperties: { finoApp: "true" } }),
+    });
+    if (!response.ok) throw new Error(`Drive file creation failed (${response.status}).`);
+    const createdId = (await response.json()).id;
+    await rememberFileId(createdId);
+    return createdId;
   }
 
   async function downloadDrive() {
     const accessToken = await token();
-    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${FILE_ID}?alt=media`, {
+    const currentFileId = await locateDriveFile(accessToken);
+    if (!currentFileId) {
+      await createDriveFile(accessToken);
+      await uploadDrive(true);
+      return clone(data);
+    }
+    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${currentFileId}?alt=media`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     if (!response.ok) throw new Error(`Drive download failed (${response.status}).`);
@@ -172,13 +239,15 @@
   async function uploadDrive(force = false) {
     await loadLocal();
     const accessToken = await token();
-    if (!force) {
+    let currentFileId = await locateDriveFile(accessToken);
+    if (!currentFileId) currentFileId = await createDriveFile(accessToken);
+    if (!force && currentFileId) {
       const remote = await downloadDrive();
       if (Number(remote.sync?.revision || 0) > Number(data.sync?.revision || 0)) {
         throw new Error("Conflict detected: Google Drive contains newer data. Download it first.");
       }
     }
-    const response = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${FILE_ID}?uploadType=media`, {
+    const response = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${currentFileId}?uploadType=media`, {
       method: "PATCH",
       headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
       body: JSON.stringify(data),
@@ -209,6 +278,7 @@
 
   function normalizeOfficialDate(value) {
     const text = String(value || "");
+    if (/^\d{8}$/.test(text)) return `${text.slice(0, 4)}-${text.slice(4, 6)}-${text.slice(6, 8)}`;
     const match = text.match(/(\d{2})[.\/-](\d{2})[.\/-](\d{4})/);
     return match ? `${match[3]}-${match[2]}-${match[1]}` : text.slice(0, 10);
   }
@@ -232,14 +302,14 @@
 
   async function mobileMacroeconomics() {
     const now = new Date();
-    const start = new Date(now.getFullYear() - 8, 0, 1);
+    const start = new Date(now.getFullYear() - 3, 0, 1);
     const dateToken = (date) => `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
     const nbuBase = "https://bank.gov.ua/NBUStatService/v1/statdirectory";
     const result = {
       updatedAt: new Date().toISOString(),
       sources: { nbu: "NBU", gdp: "State Statistics Service of Ukraine" },
       errors: {}, exchangeRates: [],
-      inflation: { annual: [], monthly: [], core: [], ppi: [] },
+      inflation: { annual: [], monthly: [], core: [] },
       gdp: { nominal: [], realIndex: [] },
     };
 
@@ -265,7 +335,6 @@
       result.inflation.annual = pick("prices_price_cpi_", "PCCM_");
       result.inflation.monthly = pick("prices_price_cpi_", "PCPM_");
       result.inflation.core = pick("prices_price_ci_", "PCCM_");
-      result.inflation.ppi = national.filter((row) => row.id_api === "prices_price_ppi_" && row.tzep === "PCCM_" && row.mcrk110 === "BCDE").map(point).filter(valid);
     } catch (error) { result.errors.nbu = error.message || "Could not load NBU data."; }
 
     try {
@@ -284,6 +353,25 @@
       throw new Error("Official macroeconomic data is temporarily unavailable.");
     }
     return result;
+  }
+
+  let policyRateCache = null;
+  async function mobileNbuPolicyRate() {
+    if (policyRateCache) return { policyRate: clone(policyRateCache) };
+    if (proxyConfig.proxyUrl && proxyConfig.proxyToken) {
+      try {
+        const result = await proxy("policyRate");
+        policyRateCache = result?.policyRate || [];
+        if (policyRateCache.length) return { policyRate: clone(policyRateCache) };
+      } catch (_) { /* Older proxy deployments fall back to the official NBU API. */ }
+    }
+    const now = new Date();
+    const start = new Date(now.getFullYear() - 8, 0, 1);
+    const dateToken = (date) => `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
+    const response = await fetch(`https://bank.gov.ua/NBUStatService/v1/statdirectory/key?period=d&start=${dateToken(start)}&end=${dateToken(now)}&json`);
+    if (!response.ok) throw new Error("NBU policy-rate data is temporarily unavailable.");
+    policyRateCache = (await response.json()).filter((row) => row.id_api === "KEY_PolicyRate").map((row) => ({ date: normalizeOfficialDate(row.dt), value: Number(row.value) })).filter((item) => item.date && Number.isFinite(item.value)).sort((a, b) => a.date.localeCompare(b.date));
+    return { policyRate: clone(policyRateCache) };
   }
 
   async function mobileMarketCurrencies() {
@@ -339,7 +427,7 @@
         const remote = await downloadDrive();
         if (isRemoteNewer(remote, data) || (!data.assets.length && number(data.sync?.revision) === 0)) {
           data = normalizeData(remote);
-          await Preferences.set({ key: STORAGE_KEY, value: JSON.stringify(data) });
+          await Preferences.set({ key: storageKey, value: JSON.stringify(data) });
         }
         lastSyncAt = new Date().toISOString();
       } catch (_) { /* Offline-first: retain the local snapshot. */ }
@@ -347,23 +435,30 @@
     },
     async getGoogleDriveStatus() {
       await loadLocal();
-      return { enabled: true, connected: true, syncing, lastSyncAt, status: syncing ? "Syncing" : "Synced", fileId: FILE_ID };
+      return { enabled: true, connected: true, syncing, lastSyncAt, status: syncing ? "Syncing" : "Synced", fileId, email: activeEmail };
     },
     async syncGoogleDrive(action = "sync") {
       syncing = true;
       try {
         await loadLocal();
-        if (action === "download") {
+        if (action === "reconnect") {
+          await DriveAuth.signOut();
+          authSession = null;
+          activeEmail = "";
+          fileId = null;
+          data = undefined;
+          return { success: true, action, status: { enabled: true, connected: false, authorizationRequired: true, lastSyncAt: null, fileId: null } };
+        } else if (action === "download") {
           const remote = await downloadDrive();
           data = normalizeData(remote);
-          await Preferences.set({ key: STORAGE_KEY, value: JSON.stringify(data) });
+          await Preferences.set({ key: storageKey, value: JSON.stringify(data) });
         } else if (action === "upload") await uploadDrive(true);
         else if (action === "backup") await uploadDrive(false);
         else {
           const remote = await downloadDrive();
           if (isRemoteNewer(remote, data)) {
             data = normalizeData(remote);
-            await Preferences.set({ key: STORAGE_KEY, value: JSON.stringify(data) });
+            await Preferences.set({ key: storageKey, value: JSON.stringify(data) });
           } else await uploadDrive(false);
         }
         lastSyncAt = new Date().toISOString();
@@ -376,6 +471,7 @@
     async getFrankfurterHistory(parameters) { return mobileFrankfurterHistory(parameters); },
     async getIndexHistory(parameters) { return proxy("fred", parameters); },
     async getMacroeconomics() { return mobileMacroeconomics(); },
+    async getNbuPolicyRate() { return mobileNbuPolicyRate(); },
     async getBinanceEquityPrice(symbol) { return proxy("binance", { symbol }); },
     async syncApiAssets() {
       await loadLocal();

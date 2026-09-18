@@ -1494,6 +1494,12 @@ textarea:focus {
   height: 340px;
 }
 
+.allocation-chart-header { margin-bottom: 18px; }
+
+@media (max-width: 700px) {
+  .allocation-chart-header { align-items: stretch; flex-direction: column; }
+}
+
 .portfolio-history-mode { display: flex; align-items: center; gap: 10px; min-width: min(310px, 100%); }
 .portfolio-history-mode > span { flex: 0 0 auto; margin: 0; }
 .portfolio-history-mode select { min-width: 230px; }
@@ -1797,9 +1803,23 @@ textarea:focus {
   .responsive-card-table thead { display: none; }
   .responsive-card-table tbody,
   .responsive-card-table tfoot { display: grid; gap: 12px; }
-  #wallet-archive-table tfoot { margin-top: 12px; }
+  #wallet-archive-table tfoot { margin-top: 28px; }
   .responsive-card-table tbody tr,
   .responsive-card-table tfoot tr { display: block; overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); }
+  #wallet-archive-table tfoot tr {
+    border: 2px solid color-mix(in srgb, var(--accent) 72%, var(--border));
+    background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
+    box-shadow: 0 10px 28px color-mix(in srgb, var(--accent) 15%, transparent);
+  }
+  #wallet-archive-table tfoot th {
+    color: var(--text);
+    font-weight: 700;
+  }
+  #wallet-archive-table tfoot th:first-child {
+    padding-block: 13px;
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    font-size: 1.08em;
+  }
   .responsive-card-table tbody td,
   .responsive-card-table tfoot th,
   .responsive-card-table tfoot td { display: grid; grid-template-columns: minmax(105px, 42%) minmax(0, 1fr); align-items: center; gap: 10px; width: 100%; padding: 9px 12px; border-bottom: 1px solid var(--border); text-align: right; white-space: normal; overflow-wrap: anywhere; line-height: 1.25; }

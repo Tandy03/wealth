@@ -24,17 +24,27 @@ import java.util.concurrent.Executors;
 public class GoogleDriveAuthPlugin extends Plugin {
     private static final String DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 
+    private GoogleSignInClient signInClient() {
+        GoogleSignInOptions options = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestEmail().requestScopes(new Scope(DRIVE_SCOPE)).build();
+        return GoogleSignIn.getClient(getContext(), options);
+    }
+
     @PluginMethod
     public void getAccessToken(PluginCall call) {
         GoogleSignInAccount account = GoogleSignIn.getLastSignedInAccount(getContext());
         if (account == null || !GoogleSignIn.hasPermissions(account, new Scope(DRIVE_SCOPE))) {
-            GoogleSignInOptions options = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                .requestEmail().requestScopes(new Scope(DRIVE_SCOPE)).build();
-            GoogleSignInClient client = GoogleSignIn.getClient(getContext(), options);
-            startActivityForResult(call, client.getSignInIntent(), "signInResult");
+            startActivityForResult(call, signInClient().getSignInIntent(), "signInResult");
             return;
         }
         resolveToken(call, account);
+    }
+
+    @PluginMethod
+    public void signOut(PluginCall call) {
+        signInClient().signOut()
+            .addOnSuccessListener(ignored -> call.resolve())
+            .addOnFailureListener(error -> call.reject("Could not sign out of Google.", error));
     }
 
     @ActivityCallback

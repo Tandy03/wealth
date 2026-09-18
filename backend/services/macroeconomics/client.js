@@ -6,10 +6,11 @@ const SSSU_DATA = "https://stat.gov.ua/sdmx/workspaces/default:integration/regis
 const MINFIN_PACKAGE = "https://data.gov.ua/api/3/action/package_show?id=4119d762-a5c1-4c4c-9c30-e2abdd383fb4";
 const CACHE_MS = 6 * 60 * 60 * 1000;
 let cache = null;
+let policyRateCache = null;
 
-async function request(url, accept = "application/json") {
+async function request(url, accept = "application/json", timeoutMs = 25000) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 25000);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(url, { headers: { Accept: accept, "User-Agent": USER_AGENT }, signal: controller.signal });
     if (!response.ok) throw new Error(`${new URL(url).hostname} returned ${response.status}`);
@@ -23,6 +24,7 @@ function dateToken(date) {
 
 function normalizeDate(value) {
   const text = String(value || "");
+  if (/^\d{8}$/.test(text)) return `${text.slice(0, 4)}-${text.slice(4, 6)}-${text.slice(6, 8)}`;
   const match = text.match(/(\d{2})[.\/-](\d{2})[.\/-](\d{4})/);
   if (match) return `${match[3]}-${match[2]}-${match[1]}`;
   return text.slice(0, 10);
@@ -51,7 +53,6 @@ async function getNbuData() {
     annual: pick("prices_price_cpi_", "PCCM_"),
     monthly: pick("prices_price_cpi_", "PCPM_"),
     core: pick("prices_price_ci_", "PCCM_"),
-    ppi: national.filter((row) => row.id_api === "prices_price_ppi_" && row.tzep === "PCCM_" && row.mcrk110 === "BCDE").map((row) => ({ date: normalizeDate(row.dt), value: inflationValue(row) })).filter((row) => row.date && Number.isFinite(row.value)),
   };
   const state = budget.filter((row) => row.mcr200p === "SBU");
   const budgetMatchers = {
@@ -61,6 +62,19 @@ async function getNbuData() {
   };
   const budgetSeries = Object.fromEntries(Object.entries(budgetMatchers).map(([key, matcher]) => [key, state.filter((row) => matcher(row) && Number.isFinite(Number(row.value))).map((row) => ({ date: normalizeDate(row.dt), value: Number(row.value) / 1000 }))]));
   return { exchangeRates, inflation: inflationSeries, budget: budgetSeries };
+}
+
+async function getPolicyRate() {
+  if (policyRateCache && Date.now() - policyRateCache.updatedAt < CACHE_MS) return policyRateCache.data;
+  const now = new Date();
+  const start = new Date(now.getFullYear() - 3, 0, 1);
+  const rows = await request(`${NBU_BASE}/key?period=d&start=${dateToken(start)}&end=${dateToken(now)}&json`, "application/json", 45000).then((response) => response.json());
+  const data = rows.filter((row) => row.id_api === "KEY_PolicyRate").map((row) => ({
+    date: normalizeDate(row.dt || row.date || row.startdate),
+    value: Number(row.value ?? row.rate),
+  })).filter((row) => row.date && Number.isFinite(row.value)).sort((a, b) => a.date.localeCompare(b.date));
+  policyRateCache = { updatedAt: Date.now(), data };
+  return data;
 }
 
 function parseCsv(text) {
@@ -189,4 +203,4 @@ async function getMacroeconomics() {
   return payload;
 }
 
-module.exports = { getMacroeconomics, parseCsv, debtFromCsv, debtHistoryFromCsv, zipEntries };
+module.exports = { getMacroeconomics, getPolicyRate, parseCsv, debtFromCsv, debtHistoryFromCsv, zipEntries };

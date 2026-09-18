@@ -73,6 +73,12 @@ const api = {
     return readApiJson(response, "Failed to load macroeconomic data.");
   },
 
+  async getNbuPolicyRate() {
+    if (window.mobileApi) return window.mobileApi.getNbuPolicyRate();
+    const response = await fetch("/api/macroeconomics/policy-rate");
+    return readApiJson(response, "Failed to load the NBU key policy rate.");
+  },
+
   async getGoogleDriveStatus() {
     if (window.mobileApi) return window.mobileApi.getGoogleDriveStatus();
     const response = await fetch("/api/sync/status");

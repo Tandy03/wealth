@@ -42,6 +42,7 @@ function doPost(event) {
       case "binanceCatalog": return responseOk(getBinanceCatalog());
       case "inzhurCatalog": return responseOk(getInzhurCatalog());
       case "macroeconomics": return responseOk(getMacroeconomics());
+      case "policyRate": return responseOk(getNbuPolicyRate());
       default: throw apiError("Unknown proxy action.", "UNKNOWN_ACTION", 400);
     }
   } catch (error) {
@@ -82,7 +83,7 @@ function getInzhurCatalog() {
 }
 
 function getMacroeconomics() {
-  const cacheKey = "macroeconomics-v1";
+  const cacheKey = "macroeconomics-v4";
   const cached = readCache(cacheKey);
   if (cached) return withCached(cached);
 
@@ -97,7 +98,7 @@ function getMacroeconomics() {
     sources: { nbu: "NBU", gdp: "State Statistics Service of Ukraine" },
     errors: {},
     exchangeRates: [],
-    inflation: { annual: [], monthly: [], core: [], ppi: [] },
+    inflation: { annual: [], monthly: [], core: [] },
     gdp: { nominal: [], realIndex: [] },
   };
 
@@ -118,7 +119,6 @@ function getMacroeconomics() {
     result.inflation.annual = pick("prices_price_cpi_", "PCCM_");
     result.inflation.monthly = pick("prices_price_cpi_", "PCPM_");
     result.inflation.core = pick("prices_price_ci_", "PCCM_");
-    result.inflation.ppi = national.filter(function (row) { return row.id_api === "prices_price_ppi_" && row.tzep === "PCCM_" && row.mcrk110 === "BCDE"; }).map(macroInflationPoint).filter(validMacroPoint);
   } catch (error) {
     result.errors.nbu = error.message || "Could not load NBU data.";
   }
@@ -145,8 +145,25 @@ function getMacroeconomics() {
   return result;
 }
 
+function getNbuPolicyRate() {
+  const cacheKey = "policy-rate-v2";
+  const cached = readCache(cacheKey);
+  if (cached) return withCached(cached);
+  const now = new Date();
+  const start = new Date(Date.UTC(now.getUTCFullYear() - 3, 0, 1));
+  const token = function (date) { return date.getUTCFullYear() + String(date.getUTCMonth() + 1).padStart(2, "0") + String(date.getUTCDate()).padStart(2, "0"); };
+  const response = fetchJson("https://bank.gov.ua/NBUStatService/v1/statdirectory/key?period=d&start=" + token(start) + "&end=" + token(now) + "&json", { headers: { Accept: "application/json" } }, "NBU");
+  if (response.status < 200 || response.status >= 300 || !Array.isArray(response.data)) throw apiError("NBU policy-rate data is unavailable.", "NBU_ERROR", response.status || 502);
+  const result = { policyRate: response.data.filter(function (row) { return row.id_api === "KEY_PolicyRate"; }).map(function (row) {
+    return { date: normalizeMacroDate(row.dt), value: Number(row.value) };
+  }).filter(validMacroPoint).sort(function (a, b) { return a.date.localeCompare(b.date); }) };
+  writeCache(cacheKey, result, 21600);
+  return result;
+}
+
 function normalizeMacroDate(value) {
   const text = String(value || "");
+  if (/^\d{8}$/.test(text)) return text.slice(0, 4) + "-" + text.slice(4, 6) + "-" + text.slice(6, 8);
   const match = text.match(/(\d{2})[.\/-](\d{2})[.\/-](\d{4})/);
   return match ? match[3] + "-" + match[2] + "-" + match[1] : text.slice(0, 10);
 }

@@ -230,7 +230,7 @@ async function loadPurchaseExchangeRates() {
     const firstDate = new Date(`${dates[0]}T00:00:00`);
     firstDate.setDate(firstDate.getDate() - 7);
     const today = getDateString(new Date());
-    const endDate = dates.at(-1) > today ? today : dates.at(-1);
+    const endDate = today;
 
     try {
       const result = await api.getCurrencyHistory({
@@ -298,7 +298,7 @@ function setReturnBenchmarkHover(element, portfolioReturn) {
   if (!element) return;
   const card = element.closest(".stat-card") || element;
   const label = document.querySelector("#stat-return-label");
-  element.dataset.portfolioReturn = `${portfolioReturn.toFixed(2)}%`;
+  element.dataset.portfolioReturn = portfolioReturn == null ? "Unavailable" : `${portfolioReturn.toFixed(2)}%`;
   element.textContent = element.dataset.portfolioReturn;
   card.classList.add("currency-hover-card");
   card.title = "Compare with S&P 500";
@@ -310,7 +310,7 @@ function setReturnBenchmarkHover(element, portfolioReturn) {
       element.textContent = state.sp500Benchmark == null ? "Unavailable" : `${state.sp500Benchmark >= 0 ? "+" : ""}${state.sp500Benchmark.toFixed(2)}%`;
     };
     const showPortfolioReturn = () => {
-      if (label) label.textContent = "Return";
+      if (label) label.textContent = "XIRR";
       element.textContent = element.dataset.portfolioReturn;
     };
     card.addEventListener("mouseenter", showBenchmark);
@@ -451,7 +451,9 @@ function renderGoogleDriveStatus(status) {
     panel.classList.toggle("is-offline", !status.connected && !status.authorizationRequired && !status.conflict);
     panel.classList.toggle("is-auth", Boolean(status.authorizationRequired));
     panel.classList.toggle("is-conflict", Boolean(status.conflict));
-    panel.querySelector("[data-drive-connection]").textContent = `Google Drive: ${status.connected ? "Connected" : "Offline"}`;
+    panel.querySelector("[data-drive-connection]").textContent = status.connected
+      ? `Google Drive: ${status.email || "Connected"}`
+      : "Google Drive: Offline";
     panel.querySelector("[data-drive-state]").textContent = label;
     panel.querySelector("[data-drive-last-sync]").textContent = `Last sync: ${status.lastSyncAt ? new Date(status.lastSyncAt).toLocaleString("uk-UA", { dateStyle: "short", timeStyle: "short" }) : "—"}`;
     panel.querySelectorAll("[data-drive-action]").forEach((button) => { button.disabled = Boolean(status.syncing); });
@@ -479,7 +481,10 @@ function setupGoogleDriveSync() {
         const result = await api.syncGoogleDrive(action);
         renderGoogleDriveStatus(result.status);
         if (action === "download") await loadData();
-        if (action === "reconnect") await showNotice("Run npm run google-auth in the project console, then restart the server.", "Authorization required");
+        if (action === "reconnect") await showNotice(
+          window.mobileApi ? "Select the Google account whose portfolio you want to open." : "Run npm run google-auth in the project console, then restart the server.",
+          "Authorization required",
+        );
         else if (action === "backup") await showNotice("Google Drive backup created.");
       } catch (error) {
         await refreshGoogleDriveStatus();
@@ -622,6 +627,64 @@ function profitAfterTax(profit, assetType) {
     : profit;
 }
 
+function calculateXirr(cashFlows) {
+  const grouped = new Map();
+  cashFlows.forEach(({ date, amount }) => {
+    const normalizedDate = String(date || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedDate) || !Number.isFinite(amount) || amount === 0) return;
+    grouped.set(normalizedDate, (grouped.get(normalizedDate) || 0) + amount);
+  });
+  const flows = [...grouped].map(([date, amount]) => ({ date: new Date(`${date}T00:00:00Z`), amount })).sort((a, b) => a.date - b.date);
+  if (flows.length < 2 || !flows.some((flow) => flow.amount < 0) || !flows.some((flow) => flow.amount > 0)) return null;
+  const origin = flows[0].date.getTime();
+  const npv = (rate) => flows.reduce((sum, flow) => sum + flow.amount / ((1 + rate) ** ((flow.date.getTime() - origin) / 31557600000)), 0);
+  let low = -0.9999;
+  let high = 1;
+  let lowValue = npv(low);
+  let highValue = npv(high);
+  while (lowValue * highValue > 0 && high < 1000000) {
+    high *= 2;
+    highValue = npv(high);
+  }
+  if (!Number.isFinite(lowValue) || !Number.isFinite(highValue) || lowValue * highValue > 0) return null;
+  for (let iteration = 0; iteration < 200; iteration += 1) {
+    const middle = (low + high) / 2;
+    const middleValue = npv(middle);
+    if (!Number.isFinite(middleValue)) return null;
+    if (Math.abs(middleValue) < 0.01) return middle;
+    if (lowValue * middleValue <= 0) {
+      high = middle;
+      highValue = middleValue;
+    } else {
+      low = middle;
+      lowValue = middleValue;
+    }
+  }
+  return (low + high) / 2;
+}
+
+function calculatePortfolioXirr() {
+  const assetsById = new Map((state.data.assets || []).map((asset) => [asset.id, asset]));
+  const cashFlows = (state.data.transactions || [])
+    .filter((transaction) => transaction.type === "BUY" && transaction.date && assetsById.get(transaction.assetId)?.type !== "savings")
+    .map((transaction) => ({
+      date: transaction.date,
+      amount: -toUAHAtDate(normalizeNumber(transaction.amount) || normalizeNumber(transaction.quantity) * normalizeNumber(transaction.purchasePrice ?? transaction.price), transaction.currency || assetsById.get(transaction.assetId)?.currency, transaction.date),
+    }));
+  (state.data.sales || []).filter((sale) => sale.sellDate && sale.type !== "savings").forEach((sale) => {
+    const proceeds = normalizeNumber(sale.saleProceeds) || normalizeNumber(sale.quantity) * normalizeNumber(sale.sellPrice);
+    const tax = isSaleTaxable(sale.type) ? Math.max(0, normalizeNumber(sale.profit)) * CAPITAL_GAINS_TAX_RATE : 0;
+    cashFlows.push({ date: sale.sellDate, amount: toUAHAtDate(proceeds - tax, sale.currency, sale.sellDate) });
+  });
+  (state.data.payments || []).filter((payment) => payment.status === "received" || payment.status === "paid").forEach((payment) => {
+    const date = payment.receivedDate || String(payment.receivedAt || "").slice(0, 10) || payment.date;
+    cashFlows.push({ date, amount: toUAHAtDate(normalizeNumber(payment.amount), payment.currency, date) });
+  });
+  const currentValue = calculatePortfolioValue();
+  if (currentValue > 0) cashFlows.push({ date: getDateString(new Date()), amount: currentValue });
+  return calculateXirr(cashFlows);
+}
+
 function getUnrealizedPriceGrowth(asset) {
   if (["savings", "novapay", "deposit"].includes(asset.type)) return 0;
   return getAvailableQuantity(asset.id) *
@@ -699,8 +762,8 @@ function renderDashboard() {
 
   if (returnElement) {
     const roiBase = invested + totalCostBasis;
-    const roi = roiBase > 0 ? (totalProfit / roiBase) * 100 : 0;
-    setReturnBenchmarkHover(returnElement, roi);
+    const xirr = calculatePortfolioXirr();
+    setReturnBenchmarkHover(returnElement, xirr == null ? null : xirr * 100);
     renderReinvestmentForecast(totalProfit, roiBase);
   }
 
@@ -3902,6 +3965,7 @@ function setupProfitCalculator() {
 
   const to = document.querySelector("#profit-to");
   const historyMode = document.querySelector("#portfolio-history-mode");
+  const allocationMode = document.querySelector("#asset-allocation-mode");
 
   if (from) {
     from.addEventListener("change", renderProfitCalculator);
@@ -3912,6 +3976,7 @@ function setupProfitCalculator() {
   }
 
   historyMode?.addEventListener("change", renderPortfolioHistoryChart);
+  allocationMode?.addEventListener("change", renderAssetAllocationChart);
   document.querySelector("#asset-price-history-select")?.addEventListener("change", renderAssetPriceHistoryChart);
 }
 
@@ -4457,14 +4522,14 @@ function macroYearTick(value) {
   return String(label || "").slice(0, 4);
 }
 
-function macroLineChart(canvasId, series, label, color, suffix = "%") {
+function macroLineChart(canvasId, series, label, color, suffix = "%", stepped = false) {
   const canvas = document.querySelector(`#${canvasId}`);
   if (!canvas) return;
   const byDate = new Map((series || []).map((point) => [point.date, point.value]));
   const points = [...byDate].sort(([a], [b]) => a.localeCompare(b));
   const chart = new Chart(canvas, {
     type: "line",
-    data: { labels: points.map(([date]) => date), datasets: [{ label, data: points.map(([, value]) => value), borderColor: color, backgroundColor: `${color}20`, fill: true, tension: 0.28, pointRadius: points.length > 45 ? 0 : 2 }] },
+    data: { labels: points.map(([date]) => date), datasets: [{ label, data: points.map(([, value]) => value), borderColor: color, backgroundColor: `${color}20`, fill: true, stepped, tension: stepped ? 0 : 0.28, pointRadius: points.length > 45 ? 0 : 2 }] },
     options: { responsive: true, maintainAspectRatio: false, interaction: { intersect: false, mode: "index" }, scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 8, callback: macroYearTick } }, y: { ticks: { callback: (value) => `${value}${suffix}` } } }, plugins: { legend: { display: false } } },
   });
   macroCharts.push(chart);
@@ -4501,7 +4566,6 @@ async function renderMacroeconomics() {
     macroLineChart("macro-inflation-annual", data.inflation?.annual, "Annual CPI", "#55d68b");
     macroLineChart("macro-inflation-monthly", data.inflation?.monthly, "Monthly CPI", "#7c8cff");
     macroLineChart("macro-inflation-core", data.inflation?.core, "Core CPI", "#f5c84c");
-    macroLineChart("macro-inflation-ppi", data.inflation?.ppi, "PPI", "#ff8a65");
     const gdpDates = [...new Set([...(data.gdp?.nominal || []), ...(data.gdp?.realIndex || [])].map((point) => point.date))].sort();
     macroMultiChart("macro-gdp-chart", gdpDates, [
       { label: "Nominal GDP, UAH million", data: valuesForDates(data.gdp?.nominal, gdpDates), borderColor: "#7c8cff" },
@@ -4512,6 +4576,15 @@ async function renderMacroeconomics() {
     errorNode.hidden = !errors.length;
     errorNode.textContent = errors.length ? `Some sources are temporarily unavailable: ${errors.map(([name]) => name.toUpperCase()).join(", ")}.` : "";
     content.hidden = false; state.hidden = true; macroLoaded = true;
+    const policyState = document.querySelector("#macro-policy-rate-state");
+    api.getNbuPolicyRate().then((result) => {
+      const rawSeries = result?.policyRate || [];
+      const series = rawSeries.filter((point, index) => index === 0 || index === rawSeries.length - 1 || point.value !== rawSeries[index - 1].value);
+      macroLineChart("macro-policy-rate", series, "NBU key policy rate", "#e8a33a", "%", true);
+      if (policyState) policyState.textContent = series.length ? `NBU · ${series.at(-1).date}` : "No policy-rate data returned";
+    }).catch((error) => {
+      if (policyState) policyState.textContent = error.message || "Policy-rate data is temporarily unavailable";
+    });
   } catch (error) {
     state.textContent = error.message || "Could not load macroeconomic data.";
   }
@@ -4848,6 +4921,7 @@ function renderAssetAllocationChart() {
   }
 
   const assets = state.data?.assets || [];
+  const mode = document.querySelector("#asset-allocation-mode")?.value || "assets";
 
   /*
    * ==========================================================
@@ -4863,8 +4937,11 @@ function renderAssetAllocationChart() {
 
     const value = toUAH(availableQuantity * getCurrentPrice(asset), asset.currency);
 
-    const key = asset.type;
-    allocation[key] = allocation[key] || { value: 0, label: typeLabels[asset.type] || asset.type };
+    const rawLabel = mode === "tools"
+      ? String(asset.instrumentName || "").trim() || "Unassigned"
+      : typeLabels[asset.type] || asset.type;
+    const key = mode === "tools" ? rawLabel.toLocaleLowerCase() : asset.type;
+    allocation[key] = allocation[key] || { value: 0, label: rawLabel };
     allocation[key].value += value;
   });
 
@@ -5096,6 +5173,55 @@ function renderPortfolioHistoryChart() {
     cursor.setMonth(cursor.getMonth() + 1);
   }
 
+  const priceHistoryByAsset = new Map();
+  (state.data.priceHistory || [])
+    .filter((point) => point.assetId && normalizeNumber(point.price) > 0)
+    .sort((a, b) => String(a.recordedAt || a.date).localeCompare(String(b.recordedAt || b.date)))
+    .forEach((point) => {
+      if (!priceHistoryByAsset.has(point.assetId)) priceHistoryByAsset.set(point.assetId, []);
+      priceHistoryByAsset.get(point.assetId).push(point);
+    });
+  const priceOnDate = (asset, date) => {
+    const points = priceHistoryByAsset.get(asset.id) || [];
+    let point = null;
+    for (let index = points.length - 1; index >= 0; index -= 1) {
+      if (String(points[index].recordedAt || points[index].date).slice(0, 10) <= date) {
+        point = points[index];
+        break;
+      }
+    }
+    return normalizeNumber(point?.price || asset.purchasePrice || asset.currentPrice);
+  };
+  const weeklyDifferenceLabels = [];
+  const weeklyDifferenceValues = [];
+  const dailyQuantities = new Map();
+  let dailyInvested = 0;
+  let dailyMovementIndex = 0;
+  const dailyCursor = new Date(`${firstEventDate}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  while (dailyCursor <= today) {
+    const date = getDateString(dailyCursor);
+    while (dailyMovementIndex < movements.length && movements[dailyMovementIndex].date <= date) {
+      const movement = movements[dailyMovementIndex];
+      dailyInvested += movement.amount;
+      dailyQuantities.set(movement.assetId, normalizeNumber(dailyQuantities.get(movement.assetId)) + movement.quantity);
+      dailyMovementIndex += 1;
+    }
+    const dailyPortfolioValue = [...dailyQuantities.entries()].reduce((sum, [assetId, quantity]) => {
+      const asset = assetsById.get(assetId);
+      if (!asset || quantity <= 0) return sum;
+      return sum + toUAH(quantity * priceOnDate(asset, date), asset.currency);
+    }, 0);
+    const isWeekEnd = dailyCursor.getDay() === 0;
+    const isLastDay = dailyCursor.getTime() === today.getTime();
+    if (isWeekEnd || isLastDay) {
+      weeklyDifferenceLabels.push(dailyCursor.toLocaleDateString("uk-UA"));
+      weeklyDifferenceValues.push(Math.max(0, dailyPortfolioValue) - Math.max(0, dailyInvested));
+    }
+    dailyCursor.setDate(dailyCursor.getDate() + 1);
+  }
+
   const chartModes = {
     value: {
       label: "Portfolio value",
@@ -5107,8 +5233,9 @@ function renderPortfolioHistoryChart() {
     },
     profit: {
       label: "Value/invested difference",
-      description: "Difference between portfolio value and invested capital",
-      values: portfolioValues.map((value, index) => value - investedValues[index]),
+      description: "Difference between portfolio value and invested capital by week",
+      values: weeklyDifferenceValues,
+      labels: weeklyDifferenceLabels,
       type: "line",
       color: "#49c58b",
       background: "rgba(73, 197, 139, 0.18)",
@@ -5139,7 +5266,7 @@ function renderPortfolioHistoryChart() {
   portfolioHistoryChart = new Chart(canvas, {
     type: selected.type,
     data: {
-      labels,
+      labels: selected.labels || labels,
       datasets: [{
         label: selected.label,
         data: selected.values,
@@ -5147,7 +5274,7 @@ function renderPortfolioHistoryChart() {
         backgroundColor: selected.background,
         fill: selected.type === "line",
         tension: 0.28,
-        pointRadius: selected.type === "line" ? 3 : 0,
+        pointRadius: selected.type === "line" ? (selected.values.length > 90 ? 0 : 3) : 0,
         borderRadius: selected.type === "bar" ? 5 : 0,
       }],
     },
@@ -5477,7 +5604,7 @@ function setupBuyMoreModal() {
    ============================================================ */
 
 const WALLET_CATEGORIES = [
-  "Salary", "Tithe", "Utilities", "Savings",
+  "Salary", "Tithe", "Utilities", "Save+invest",
   "Groceries + household", "Fuel", "Transport", "Subscriptions",
   "Other", "Entertainment", "Gifts", "Health", "Children",
 ];
@@ -5504,6 +5631,7 @@ function normalizeWalletCategoryNames() {
   const replacements = {
     "Groceries + household goods": "Groceries + household",
     "Other expenses": "Other",
+    Savings: "Save+invest",
   };
   const wallet = state.data.wallet;
   (wallet.expenses || []).forEach((expense) => { expense.category = replacements[expense.category] || expense.category; });
@@ -5564,7 +5692,7 @@ function renderWalletCurrent() {
   const expenseCategories = categories.filter((category) => category !== "Salary");
   const totalPlan = expenseCategories.reduce((sum, category) => sum + normalizeNumber(month.plans[category]), 0);
   const totalActual = expenseCategories.reduce((sum, category) => sum + walletCategoryTotal(key, category), 0);
-  const spendingActual = totalActual - walletCategoryTotal(key, "Savings") - walletCategoryTotal(key, "Tithe");
+  const spendingActual = totalActual - walletCategoryTotal(key, "Save+invest") - walletCategoryTotal(key, "Tithe");
   const monthName = new Date(`${key}-01T00:00:00`).toLocaleDateString("en-US", { month: "long", year: "numeric" });
   document.querySelector("#wallet-month-title").innerHTML = `Budget<span>${escapeHtml(monthName)}</span>`;
 
@@ -5733,17 +5861,23 @@ function renderWalletPeriodChart() {
   const fromInput = document.querySelector("#wallet-period-from");
   const toInput = document.querySelector("#wallet-period-to");
   const totalElement = document.querySelector("#wallet-period-total");
+  const mode = document.querySelector("#wallet-period-mode")?.value || "__total__";
+  const caption = document.querySelector("#wallet-period-caption");
   const canvas = document.querySelector("#wallet-period-chart");
   if (!fromInput || !toInput || !totalElement || !canvas) return;
   if (document.querySelector("#wallet-period-preset")?.value !== "custom" || !fromInput.value || !toInput.value) applyWalletPeriodPreset();
 
   const from = fromInput.value;
   const to = toInput.value;
-  const expenses = (state.data.wallet.expenses || []).filter((expense) =>
-    expense.category !== "Salary" && expense.date >= from && expense.date <= to,
-  );
+  const expenses = (state.data.wallet.expenses || []).filter((expense) => {
+    const category = String(expense.category || "").trim().toLowerCase();
+    const isExpense = category !== "salary";
+    const isRegularExpense = isExpense && category !== "tithe" && category !== "save+invest" && category !== "savings";
+    return (mode === "__expenses__" ? isRegularExpense : isExpense) && expense.date >= from && expense.date <= to;
+  });
   const total = expenses.reduce((sum, expense) => sum + normalizeNumber(expense.amount), 0);
   totalElement.textContent = walletMoney(total);
+  if (caption) caption.textContent = mode === "__expenses__" ? "Cumulative expenses excluding Tithe and Save+invest by day." : "Cumulative total expenses by day.";
 
   const dailyTotals = expenses.reduce((result, expense) => {
     result[expense.date] = (result[expense.date] || 0) + normalizeNumber(expense.amount);
@@ -5767,14 +5901,14 @@ function renderWalletPeriodChart() {
   walletPeriodChart?.destroy();
   walletPeriodChart = new Chart(canvas, {
     type: "line",
-    data: { labels, datasets: [{ label: "Cumulative expenses", data: cumulativeValues, borderColor: "#49c58b", backgroundColor: "rgba(73,197,139,.14)", fill: true, tension: .22, pointRadius: labels.length > 60 ? 0 : 2, pointHoverRadius: 4, borderWidth: 2 }] },
+    data: { labels, datasets: [{ label: mode === "__expenses__" ? "Cumulative expenses" : "Cumulative total", data: cumulativeValues, borderColor: "#49c58b", backgroundColor: "rgba(73,197,139,.14)", fill: true, tension: .22, pointRadius: labels.length > 60 ? 0 : 2, pointHoverRadius: 4, borderWidth: 2 }] },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       interaction: { intersect: false, mode: "index" },
       plugins: {
         legend: { display: false },
-        title: { display: true, text: "Cumulative expenses during the selected period" },
+        title: { display: true, text: mode === "__expenses__" ? "Expenses excluding Tithe and Save+invest" : "Total expenses during the selected period" },
         tooltip: { callbacks: { label: (item) => walletMoney(item.parsed.y) } },
       },
       scales: {
@@ -5827,20 +5961,21 @@ function renderWalletMonthlyChart() {
   const previousSelection = monthlyCategorySelect?.value || "__total__";
   const allCategories = [...new Set(allExpenses.map((expense) => expense.category))].sort();
   if (monthlyCategorySelect) {
-    monthlyCategorySelect.innerHTML = '<option value="__total__">Total</option>' + allCategories.map((category) => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`).join("");
-    monthlyCategorySelect.value = allCategories.includes(previousSelection) || previousSelection === "__total__" ? previousSelection : "__total__";
+    monthlyCategorySelect.innerHTML = '<option value="__total__">Total</option><option value="__expenses__">Expenses</option>' + allCategories.map((category) => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`).join("");
+    monthlyCategorySelect.value = allCategories.includes(previousSelection) || ["__total__", "__expenses__"].includes(previousSelection) ? previousSelection : "__total__";
   }
   const selectedCategory = monthlyCategorySelect?.value || "__total__";
   const monthTotals = {};
   allExpenses.forEach((expense) => {
     const month = String(expense.date).slice(0, 7);
     if (!monthTotals[month]) monthTotals[month] = 0;
-    if (selectedCategory === "__total__" || expense.category === selectedCategory) {
+    const category = String(expense.category || "").trim().toLowerCase();
+    if (selectedCategory === "__total__" || (selectedCategory === "__expenses__" && category !== "tithe" && category !== "save+invest" && category !== "savings") || expense.category === selectedCategory) {
       monthTotals[month] += normalizeNumber(expense.amount);
     }
   });
   const months = Object.keys(monthTotals).sort();
-  const seriesLabel = selectedCategory === "__total__" ? "Total expenses" : selectedCategory;
+  const seriesLabel = selectedCategory === "__total__" ? "Total expenses" : selectedCategory === "__expenses__" ? "Expenses" : selectedCategory;
   walletMonthlyChart?.destroy();
   walletMonthlyChart = new Chart(document.querySelector("#wallet-monthly-chart"), { type: "line", data: { labels: months, datasets: [{ label: seriesLabel, data: months.map((month) => monthTotals[month]), borderColor: "#7c8cff", backgroundColor: "rgba(124,140,255,.18)", fill: true, tension: .3, pointRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, title: { display: true, text: `${seriesLabel} by month` } }, scales: { x: { ticks: walletMonthAxisTicks() } } } });
 }
@@ -6036,6 +6171,7 @@ function setupWallet() {
   document.querySelector("#wallet-expenses-month")?.addEventListener("change", renderWalletExpenseList);
   document.querySelector("#wallet-chart-month")?.addEventListener("change", renderWalletCharts);
   document.querySelector("#wallet-monthly-category")?.addEventListener("change", renderWalletMonthlyChart);
+  document.querySelector("#wallet-period-mode")?.addEventListener("change", renderWalletPeriodChart);
   document.querySelector("#wallet-period-preset")?.addEventListener("change", () => {
     applyWalletPeriodPreset();
     renderWalletPeriodChart();
