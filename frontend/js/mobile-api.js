@@ -309,7 +309,7 @@
       updatedAt: new Date().toISOString(),
       sources: { nbu: "NBU", gdp: "State Statistics Service of Ukraine" },
       errors: {}, exchangeRates: [],
-      inflation: { annual: [], monthly: [], core: [] },
+      inflation: { annual: [], monthly: [] },
       gdp: { nominal: [], realIndex: [] },
     };
 
@@ -334,7 +334,6 @@
       const pick = (idValue, measure) => national.filter((row) => row.id_api === idValue && row.tzep === measure).map(point).filter(valid);
       result.inflation.annual = pick("prices_price_cpi_", "PCCM_");
       result.inflation.monthly = pick("prices_price_cpi_", "PCPM_");
-      result.inflation.core = pick("prices_price_ci_", "PCCM_");
     } catch (error) { result.errors.nbu = error.message || "Could not load NBU data."; }
 
     try {

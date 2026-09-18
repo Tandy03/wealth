@@ -261,7 +261,6 @@ function money(value, currency = "UAH") {
   return `${currencyFormatter.format(number)} ${symbols[currency] || currency}`;
 }
 
-const CAPITAL_GAINS_TAX_RATE = 0.23;
 
 function usdMoney(value) {
   const number = (Number(value) || 0) / EXCHANGE_RATES.USD;
@@ -617,16 +616,6 @@ function calculatePortfolioValue() {
   );
 }
 
-function isSaleTaxable(assetType) {
-  return ["inzhur_reit", "s1_reit", "inzhur_miltech"].includes(assetType);
-}
-
-function profitAfterTax(profit, assetType) {
-  return profit > 0 && isSaleTaxable(assetType)
-    ? profit * (1 - CAPITAL_GAINS_TAX_RATE)
-    : profit;
-}
-
 function calculateXirr(cashFlows) {
   const grouped = new Map();
   cashFlows.forEach(({ date, amount }) => {
@@ -673,8 +662,7 @@ function calculatePortfolioXirr() {
     }));
   (state.data.sales || []).filter((sale) => sale.sellDate && sale.type !== "savings").forEach((sale) => {
     const proceeds = normalizeNumber(sale.saleProceeds) || normalizeNumber(sale.quantity) * normalizeNumber(sale.sellPrice);
-    const tax = isSaleTaxable(sale.type) ? Math.max(0, normalizeNumber(sale.profit)) * CAPITAL_GAINS_TAX_RATE : 0;
-    cashFlows.push({ date: sale.sellDate, amount: toUAHAtDate(proceeds - tax, sale.currency, sale.sellDate) });
+    cashFlows.push({ date: sale.sellDate, amount: toUAHAtDate(proceeds, sale.currency, sale.sellDate) });
   });
   (state.data.payments || []).filter((payment) => payment.status === "received" || payment.status === "paid").forEach((payment) => {
     const date = payment.receivedDate || String(payment.receivedAt || "").slice(0, 10) || payment.date;
@@ -720,12 +708,12 @@ function renderDashboard() {
    */
 
   const salesProfit = (state.data.sales || []).reduce(
-    (sum, sale) => sum + (sale.type === "savings" ? 0 : toUAH(profitAfterTax(normalizeNumber(sale.profit), sale.type), sale.currency)),
+    (sum, sale) => sum + (sale.type === "savings" ? 0 : toUAH(normalizeNumber(sale.profit), sale.currency)),
     0,
   );
 
   const priceGrowthProfit = state.data.assets.reduce(
-    (sum, asset) => sum + toUAH(profitAfterTax(getUnrealizedPriceGrowth(asset), asset.type), asset.currency),
+    (sum, asset) => sum + toUAH(getUnrealizedPriceGrowth(asset), asset.currency),
     0,
   );
 
@@ -3664,7 +3652,7 @@ function calculateProfit(from = null, to = null) {
   (state.data.sales || [])
     .filter((sale) => sale.type !== "savings" && isDateInRange(sale.sellDate, from, to))
     .forEach((sale) => {
-      const profit = toUAH(profitAfterTax(normalizeNumber(sale.profit), sale.type), sale.currency);
+      const profit = toUAH(normalizeNumber(sale.profit), sale.currency);
 
       const costBasis = toUAHPurchaseCost(
         sale.costBasis,
@@ -3710,7 +3698,7 @@ function calculateProfit(from = null, to = null) {
     .forEach((asset) => {
       const assetId = `${asset.type}::${String(asset.name).trim().toLowerCase()}`;
       const invested = getAssetInvestedUah(asset);
-      const priceGrowth = toUAH(profitAfterTax(getUnrealizedPriceGrowth(asset), asset.type), asset.currency);
+      const priceGrowth = toUAH(getUnrealizedPriceGrowth(asset), asset.currency);
 
       if (!result.assets[assetId]) {
         result.assets[assetId] = {
@@ -4565,7 +4553,6 @@ async function renderMacroeconomics() {
     document.querySelector("#macro-fx-cards").innerHTML = orderedExchangeRates.map((rate) => `<article class="macro-fx-card"><span>${escapeHtml(rate.code)} / UAH</span><strong>${symbols[rate.code] || ""}${currencyFormatter.format(rate.rate)}</strong><small>NBU · ${escapeHtml(rate.date || "latest")}</small></article>`).join("");
     macroLineChart("macro-inflation-annual", data.inflation?.annual, "Annual CPI", "#55d68b");
     macroLineChart("macro-inflation-monthly", data.inflation?.monthly, "Monthly CPI", "#7c8cff");
-    macroLineChart("macro-inflation-core", data.inflation?.core, "Core CPI", "#f5c84c");
     const gdpDates = [...new Set([...(data.gdp?.nominal || []), ...(data.gdp?.realIndex || [])].map((point) => point.date))].sort();
     macroMultiChart("macro-gdp-chart", gdpDates, [
       { label: "Nominal GDP, UAH million", data: valuesForDates(data.gdp?.nominal, gdpDates), borderColor: "#7c8cff" },
@@ -5109,7 +5096,7 @@ function renderPortfolioHistoryChart() {
       .filter((sale) => sale.type !== "savings" && sale.sellDate)
       .map((sale) => ({
         date: sale.sellDate,
-        amount: toUAH(profitAfterTax(normalizeNumber(sale.profit), sale.type), sale.currency),
+        amount: toUAH(normalizeNumber(sale.profit), sale.currency),
       })),
   ].filter((event) => /^\d{4}-\d{2}-\d{2}$/.test(String(event.date))).sort((a, b) => a.date.localeCompare(b.date));
 
@@ -5173,54 +5160,19 @@ function renderPortfolioHistoryChart() {
     cursor.setMonth(cursor.getMonth() + 1);
   }
 
-  const priceHistoryByAsset = new Map();
-  (state.data.priceHistory || [])
-    .filter((point) => point.assetId && normalizeNumber(point.price) > 0)
-    .sort((a, b) => String(a.recordedAt || a.date).localeCompare(String(b.recordedAt || b.date)))
-    .forEach((point) => {
-      if (!priceHistoryByAsset.has(point.assetId)) priceHistoryByAsset.set(point.assetId, []);
-      priceHistoryByAsset.get(point.assetId).push(point);
-    });
-  const priceOnDate = (asset, date) => {
-    const points = priceHistoryByAsset.get(asset.id) || [];
-    let point = null;
-    for (let index = points.length - 1; index >= 0; index -= 1) {
-      if (String(points[index].recordedAt || points[index].date).slice(0, 10) <= date) {
-        point = points[index];
-        break;
-      }
-    }
-    return normalizeNumber(point?.price || asset.purchasePrice || asset.currentPrice);
+  const strictHistoricalRate = (currency, date) => {
+    const normalizedCurrency = String(currency || "UAH").toUpperCase();
+    if (normalizedCurrency === "UAH") return 1;
+    const rates = state.purchaseExchangeRates[normalizedCurrency] || [];
+    const point = [...rates].reverse().find((item) => item.date <= date);
+    return point && normalizeNumber(point.rate) > 0 ? normalizeNumber(point.rate) : null;
   };
-  const weeklyDifferenceLabels = [];
-  const weeklyDifferenceValues = [];
-  const dailyQuantities = new Map();
-  let dailyInvested = 0;
-  let dailyMovementIndex = 0;
-  const dailyCursor = new Date(`${firstEventDate}T00:00:00`);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  while (dailyCursor <= today) {
-    const date = getDateString(dailyCursor);
-    while (dailyMovementIndex < movements.length && movements[dailyMovementIndex].date <= date) {
-      const movement = movements[dailyMovementIndex];
-      dailyInvested += movement.amount;
-      dailyQuantities.set(movement.assetId, normalizeNumber(dailyQuantities.get(movement.assetId)) + movement.quantity);
-      dailyMovementIndex += 1;
-    }
-    const dailyPortfolioValue = [...dailyQuantities.entries()].reduce((sum, [assetId, quantity]) => {
-      const asset = assetsById.get(assetId);
-      if (!asset || quantity <= 0) return sum;
-      return sum + toUAH(quantity * priceOnDate(asset, date), asset.currency);
-    }, 0);
-    const isWeekEnd = dailyCursor.getDay() === 0;
-    const isLastDay = dailyCursor.getTime() === today.getTime();
-    if (isWeekEnd || isLastDay) {
-      weeklyDifferenceLabels.push(dailyCursor.toLocaleDateString("uk-UA"));
-      weeklyDifferenceValues.push(Math.max(0, dailyPortfolioValue) - Math.max(0, dailyInvested));
-    }
-    dailyCursor.setDate(dailyCursor.getDate() + 1);
-  }
+  const weeklyPerformance = window.PortfolioPerformance.buildWeeklyPerformance(state.data, {
+    today: getDateString(new Date()),
+    exchangeRateOnDate: strictHistoricalRate,
+  });
+  const weeklyDifferenceLabels = weeklyPerformance.points.map((point) => new Date(`${point.date}T12:00:00`).toLocaleDateString("uk-UA"));
+  const weeklyDifferenceValues = weeklyPerformance.points.map((point) => point.value);
 
   const chartModes = {
     value: {
@@ -5232,8 +5184,10 @@ function renderPortfolioHistoryChart() {
       background: "rgba(124, 140, 255, 0.18)",
     },
     profit: {
-      label: "Value/invested difference",
-      description: "Difference between portfolio value and invested capital by week",
+      label: "Cumulative portfolio profit",
+      description: weeklyPerformance.limitations.length
+        ? "Cumulative portfolio profit by week. Gaps mean historical price or FX data is unavailable."
+        : "Cumulative realized income and profit plus unrealized profit by week",
       values: weeklyDifferenceValues,
       labels: weeklyDifferenceLabels,
       type: "line",

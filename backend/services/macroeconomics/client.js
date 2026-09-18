@@ -52,7 +52,6 @@ async function getNbuData() {
   const inflationSeries = {
     annual: pick("prices_price_cpi_", "PCCM_"),
     monthly: pick("prices_price_cpi_", "PCPM_"),
-    core: pick("prices_price_ci_", "PCCM_"),
   };
   const state = budget.filter((row) => row.mcr200p === "SBU");
   const budgetMatchers = {
