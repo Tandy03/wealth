@@ -74,27 +74,14 @@ function updateNewInstrumentFields() {
   if (typeField) typeField.hidden = !isNew;
 }
 
-const monthNames = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
+const monthNames = Array.from({ length: 12 }, (_, month) => new Date(2026, month, 1).toLocaleDateString(window.FinoI18n?.locale || "en", { month: "long" }));
 
-const currencyFormatter = new Intl.NumberFormat("uk-UA", {
+const currencyFormatter = new Intl.NumberFormat(window.FinoI18n?.locale || "en", {
   minimumFractionDigits: 0,
   maximumFractionDigits: 2,
 });
 
-const quantityFormatter = new Intl.NumberFormat("uk-UA", {
+const quantityFormatter = new Intl.NumberFormat(window.FinoI18n?.locale || "en", {
   minimumFractionDigits: 0,
   maximumFractionDigits: 3,
 });
@@ -373,7 +360,7 @@ function formatDate(dateString) {
     return "-";
   }
 
-  return date.toLocaleDateString("uk-UA");
+  return date.toLocaleDateString(window.FinoI18n?.locale || "en");
 }
 
 function getDateString(date = new Date()) {
@@ -402,6 +389,8 @@ function normalizeNumber(value) {
 let noticeResolver = null;
 
 function showNotice(message, title = "Message") {
+  message = window.FinoI18n?.t(message) || message;
+  title = window.FinoI18n?.t(title) || title;
   const modal = document.querySelector("#notice-modal");
   if (!modal) return Promise.resolve(true);
   document.querySelector("#notice-title").textContent = title;
@@ -454,7 +443,7 @@ function renderGoogleDriveStatus(status) {
       ? `Google Drive: ${status.email || "Connected"}`
       : "Google Drive: Offline";
     panel.querySelector("[data-drive-state]").textContent = label;
-    panel.querySelector("[data-drive-last-sync]").textContent = `Last sync: ${status.lastSyncAt ? new Date(status.lastSyncAt).toLocaleString("uk-UA", { dateStyle: "short", timeStyle: "short" }) : "—"}`;
+    panel.querySelector("[data-drive-last-sync]").textContent = `${window.FinoI18n?.t("Last sync:") || "Last sync:"} ${status.lastSyncAt ? new Date(status.lastSyncAt).toLocaleString(window.FinoI18n?.locale || "en", { dateStyle: "short", timeStyle: "short" }) : "—"}`;
     panel.querySelectorAll("[data-drive-action]").forEach((button) => { button.disabled = Boolean(status.syncing); });
   });
 }
@@ -503,6 +492,8 @@ function setupSettingsModal() {
   document.querySelectorAll("[data-open-settings]").forEach((button) => {
     button.addEventListener("click", () => {
       modal?.classList.add("open");
+      const content = modal?.querySelector(".settings-modal");
+      if (content) content.scrollTop = 0;
       refreshGoogleDriveStatus();
     });
   });
@@ -4365,7 +4356,7 @@ function populateMarketSymbols() {
 }
 
 function formatMarketPrice(value, currency = "USD") {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 2 }).format(value);
+  return new Intl.NumberFormat(window.FinoI18n?.locale || "en", { style: "currency", currency, maximumFractionDigits: 2 }).format(value);
 }
 
 async function renderMarketChart() {
@@ -4458,7 +4449,7 @@ async function renderMarketChart() {
         },
         scales: {
           x: { grid: { display: false }, ticks: { color: textColor, maxTicksLimit: 7, maxRotation: 0 } },
-          y: { position: "right", grid: { color: gridColor }, ticks: { color: textColor, callback: (value) => Number(value).toLocaleString("en-US") } },
+          y: { position: "right", grid: { color: gridColor }, ticks: { color: textColor, callback: (value) => Number(value).toLocaleString(window.FinoI18n?.locale || "en") } },
         },
       },
     });
@@ -4732,7 +4723,7 @@ function disableNumberInputWheelChanges() {
 }
 
 function applyResponsiveTableLabels() {
-  document.querySelectorAll(".table-wrap table:not(.wallet-table):not(.mobile-compact-table), .table-wrapper table:not(.wallet-table):not(.mobile-compact-table)").forEach((table) => {
+  document.querySelectorAll(".table-wrap table:not(.wallet-table), .table-wrapper table:not(.wallet-table)").forEach((table) => {
     table.classList.add("responsive-card-table");
     const headers = [...table.querySelectorAll("thead th")].map((cell) => cell.textContent.trim());
     table.querySelectorAll("tbody tr, tfoot tr").forEach((row) => {
@@ -5163,7 +5154,7 @@ function renderPortfolioHistoryChart() {
       return sum + toUAH(quantity * getCurrentPrice(asset), asset.currency);
     }, 0);
 
-    labels.push(cursor.toLocaleDateString("uk-UA", { month: "short", year: "numeric" }));
+    labels.push(cursor.toLocaleDateString(window.FinoI18n?.locale || "en", { month: "short", year: "numeric" }));
     investedValues.push(Math.max(0, runningInvested));
     monthlyInvestedValues.push(investedThisMonth);
     portfolioValues.push(Math.max(0, portfolioValue));
@@ -5182,7 +5173,7 @@ function renderPortfolioHistoryChart() {
     today: getDateString(new Date()),
     exchangeRateOnDate: strictHistoricalRate,
   });
-  const weeklyDifferenceLabels = weeklyPerformance.points.map((point) => new Date(`${point.date}T12:00:00`).toLocaleDateString("uk-UA"));
+  const weeklyDifferenceLabels = weeklyPerformance.points.map((point) => new Date(`${point.date}T12:00:00`).toLocaleDateString(window.FinoI18n?.locale || "en"));
   const weeklyDifferenceValues = weeklyPerformance.points.map((point) => point.value);
 
   const chartModes = {
@@ -5316,7 +5307,7 @@ function renderAssetPriceHistoryChart() {
         legend: { display: false },
         tooltip: {
           callbacks: {
-            title: (items) => items.length ? new Date(items[0].parsed.x).toLocaleString("uk-UA", {
+            title: (items) => items.length ? new Date(items[0].parsed.x).toLocaleString(window.FinoI18n?.locale || "en", {
               day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
             }) : "",
             label: (context) => money(context.parsed.y, currency),
@@ -5329,7 +5320,7 @@ function renderAssetPriceHistoryChart() {
           ticks: {
             color: chartText, maxRotation: 0, autoSkip: true,
             maxTicksLimit: window.innerWidth <= 700 ? 4 : 8,
-            callback: (value) => new Date(value).toLocaleDateString("uk-UA", { day: "2-digit", month: "2-digit" }),
+            callback: (value) => new Date(value).toLocaleDateString(window.FinoI18n?.locale || "en", { day: "2-digit", month: "2-digit" }),
           },
           grid: { color: gridColor },
         },
@@ -5574,7 +5565,7 @@ const WALLET_CATEGORIES = [
   "Other", "Entertainment", "Gifts", "Health", "Children",
 ];
 
-const walletCurrencyFormatter = new Intl.NumberFormat("en-US", {
+const walletCurrencyFormatter = new Intl.NumberFormat(window.FinoI18n?.locale || "en", {
   minimumFractionDigits: 0,
   maximumFractionDigits: 2,
 });
@@ -5585,7 +5576,7 @@ function walletMoney(value) {
 
 function formatWalletDate(dateString) {
   const date = new Date(`${dateString}T00:00:00`);
-  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString("en-US");
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString(window.FinoI18n?.locale || "en");
 }
 
 function walletMonthKey(date = new Date()) {
@@ -5658,7 +5649,7 @@ function renderWalletCurrent() {
   const totalPlan = expenseCategories.reduce((sum, category) => sum + normalizeNumber(month.plans[category]), 0);
   const totalActual = expenseCategories.reduce((sum, category) => sum + walletCategoryTotal(key, category), 0);
   const spendingActual = totalActual - walletCategoryTotal(key, "Save+invest") - walletCategoryTotal(key, "Tithe");
-  const monthName = new Date(`${key}-01T00:00:00`).toLocaleDateString(window.FinoI18n?.locale || "en-US", { month: "long", year: "numeric" });
+  const monthName = new Date(`${key}-01T00:00:00`).toLocaleDateString(window.FinoI18n?.locale || "en", { month: "long", year: "numeric" });
   document.querySelector("#wallet-month-title").innerHTML = `${window.FinoI18n?.t("Budget") || "Budget"}<span>${escapeHtml(monthName)}</span>`;
 
   const row = (category) => {
@@ -5757,7 +5748,7 @@ function renderWalletNotes() {
   if (!list) return;
   const key = document.querySelector("#wallet-current-month")?.value || walletMonthKey();
   const month = walletMonth(key);
-  const monthName = new Date(`${key}-01T00:00:00`).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const monthName = new Date(`${key}-01T00:00:00`).toLocaleDateString(window.FinoI18n?.locale || "en", { month: "long", year: "numeric" });
   if (description) description.textContent = `Notes for ${monthName}`;
   list.innerHTML = month.notes.length
     ? month.notes.map((note) => `<div class="wallet-note"><span>${escapeHtml(note.text)}</span><button type="button" class="icon-btn" data-delete-wallet-note="${escapeHtml(note.id)}" aria-label="Delete note">×</button></div>`).join("")

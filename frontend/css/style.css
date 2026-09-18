@@ -2188,4 +2188,42 @@ input[type="month"] { max-width: 100%; min-width: 0; }
   .settings-modal { width: calc(100vw - 20px); max-height: calc(100dvh - 20px); padding: 18px 14px; }
   .settings-control { grid-template-columns: minmax(0, 1fr); }
   .settings-control select { min-width: 0; max-width: 100%; }
+
+  .topbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; }
+  .topbar #page-title { min-width: 0; white-space: normal; font-size: clamp(25px, 8vw, 36px); line-height: 1.05; }
+  .topbar-actions .primary-btn { max-width: 46vw; white-space: normal; line-height: 1.15; }
+
+  #portfolio-section > .panel > .panel-header,
+  #transactions-section > .panel > .panel-header { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: stretch; }
+  .portfolio-controls { display: grid; grid-template-columns: minmax(0, 1fr); width: 100%; gap: 9px; }
+  .portfolio-controls label { display: block; }
+  .portfolio-controls select,
+  .portfolio-controls button { width: 100%; min-width: 0; max-width: 100%; white-space: normal; }
+  #transactions-section .panel-header .primary-btn { width: 100%; max-width: 100%; }
+
+  .responsive-card-table.mobile-compact-table { width: 100%; min-width: 0; table-layout: auto; font-size: 13px; }
+  .responsive-card-table.mobile-compact-table thead { display: none; }
+  .responsive-card-table.mobile-compact-table tbody { display: grid; gap: 12px; }
+  .responsive-card-table.mobile-compact-table tbody tr { display: block; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--surface-2); }
+  .responsive-card-table.mobile-compact-table tbody td { display: grid; grid-template-columns: minmax(105px, 42%) minmax(0, 1fr); gap: 10px; align-items: center; width: 100% !important; padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: right !important; overflow: visible; white-space: normal; }
+  .responsive-card-table.mobile-compact-table tbody td::before { content: attr(data-label); color: var(--muted); font-weight: 600; text-align: left; }
+  .responsive-card-table.mobile-compact-table tbody td:last-child { border-bottom: 0; }
+  .responsive-card-table.mobile-compact-table tbody td:last-child:empty { display: none; }
+  .responsive-card-table.mobile-compact-table button { width: auto; max-width: 100%; justify-self: end; padding: 8px 12px; font-size: 12px; }
+  .responsive-card-table.mobile-compact-table .empty-state { display: block; text-align: center !important; }
+  .responsive-card-table.mobile-compact-table .empty-state::before { display: none; }
+
+  .analytics-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .analytics-filters-input { min-width: 0; margin: 0; }
+  .analytics-filters-input input { width: 100%; min-width: 0; }
+  .analytics-filters button { width: 100%; min-width: 0; white-space: normal; }
+
+  .macro-chart-card { padding-inline: 14px; overflow: hidden; }
+  .macro-chart-card > div { height: 310px; min-width: 0; }
+  .macro-chart-grid-wide .macro-chart-card > div { height: 430px; }
+  .settings-modal { overscroll-behavior: contain; }
+  .settings-drive-panel .drive-sync-actions { grid-template-columns: 1fr; }
+  .settings-drive-panel .drive-sync-actions button { width: 100%; white-space: normal; overflow-wrap: anywhere; }
+  .drive-sync-heading { min-width: 0; }
+  .drive-sync-heading strong { min-width: 0; overflow-wrap: anywhere; }
 }
