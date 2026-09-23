@@ -60,7 +60,9 @@ function serializeMutation(handler) {
  */
 
 app.use(cors());
-app.use(express.json());
+// Wallet history is saved as one JSON document. Once enough expenses have
+// accumulated it can legitimately exceed Express' 100 KB default limit.
+app.use(express.json({ limit: "2mb" }));
 app.use(express.static(FRONTEND_DIR));
 
 /*

@@ -5714,7 +5714,8 @@ function renderWalletArchive() {
   const key = input.value;
   const categories = walletCategories(key);
   const expenses = walletExpenses(key);
-  const days = [...new Set(expenses.map((expense) => expense.date))].sort();
+  const days = [...new Set(expenses.map((expense) => expense.date))]
+    .sort((a, b) => String(b).localeCompare(String(a)));
   const categoryTotals = categories.map((category) => walletCategoryTotal(key, category));
   table.innerHTML = `<thead><tr><th>Date</th>${categories.map((category) => `<th>${escapeHtml(category)}</th>`).join("")}<th>Total</th></tr></thead><tbody>`
     + (days.length ? days.map((date) => {
@@ -6164,6 +6165,8 @@ function setupWallet() {
   });
   form?.addEventListener("submit", async (event) => {
     event.preventDefault();
+    const submitButton = form.querySelector('[type="submit"]');
+    if (submitButton?.disabled) return;
     const values = new FormData(form);
     const date = values.get("date");
     const key = String(date).slice(0, 7);
@@ -6181,9 +6184,17 @@ function setupWallet() {
       state.data.wallet.expenses.push(expense);
     }
     cleanupUnusedWalletCategories();
-    await api.saveWallet(state.data.wallet);
-    close();
-    renderWallet();
+    if (submitButton) submitButton.disabled = true;
+    try {
+      await api.saveWallet(state.data.wallet);
+      close();
+      renderWallet();
+    } catch (error) {
+      console.error("Failed to save expense:", error);
+      await showNotice(error?.message || "Failed to save wallet.");
+    } finally {
+      if (submitButton) submitButton.disabled = false;
+    }
   });
 }
 
