@@ -454,11 +454,27 @@ h3 {
 }
 
 .icon-btn {
-  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  background: var(--surface-2);
   color: var(--muted);
-  border: 0;
-  font-size: 28px;
-  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  font-size: 22px;
+  line-height: 1;
+  padding: 0;
+}
+
+.icon-btn:hover,
+.icon-btn:focus-visible {
+  color: var(--text);
+  border-color: #39414e;
+  background: var(--surface);
 }
 
 .stats-grid {
@@ -481,6 +497,13 @@ h3 {
 
 .currency-hover-card {
   cursor: default;
+}
+
+.expense-row-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .currency-hover-card strong {
@@ -1912,7 +1935,7 @@ textarea:focus {
   #wallet-current .wallet-table th:nth-child(7),
   #wallet-current .wallet-table td:nth-child(7) { width: 5%; }
   #wallet-current .wallet-table input[type="number"] { width: 100%; min-width: 0; padding: 5px 2px; font-size: inherit; }
-  #wallet-current .wallet-table .icon-btn { width: 18px; height: 24px; padding: 0; font-size: 13px; }
+  #wallet-current .wallet-table .icon-btn { width: 32px; height: 32px; min-width: 32px; min-height: 32px; padding: 0; font-size: 18px; }
   .loan-row { grid-template-columns: 1fr; }
   .wallet-note-form { align-items: stretch; flex-direction: column; }
   .budget-progress-card { padding: 17px; border-radius: 20px; }
@@ -2210,6 +2233,10 @@ input[type="month"] { max-width: 100%; min-width: 0; }
   .responsive-card-table.mobile-compact-table tbody td:last-child { border-bottom: 0; }
   .responsive-card-table.mobile-compact-table tbody td:last-child:empty { display: none; }
   .responsive-card-table.mobile-compact-table button { width: auto; max-width: 100%; justify-self: end; padding: 8px 12px; font-size: 12px; }
+  .recorded-expenses-table tbody td[data-label="Actions"] { grid-template-columns: minmax(105px, 42%) minmax(0, 1fr); }
+  .recorded-expenses-table .expense-row-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; min-width: 0; }
+  .recorded-expenses-table .expense-row-actions .secondary-btn { min-height: 36px; padding: 7px 13px; }
+  .recorded-expenses-table .expense-row-actions .icon-btn { flex: 0 0 36px; width: 36px; height: 36px; min-height: 36px; padding: 0; justify-content: center; }
   .responsive-card-table.mobile-compact-table .empty-state { display: block; text-align: center !important; }
   .responsive-card-table.mobile-compact-table .empty-state::before { display: none; }
 

@@ -306,6 +306,36 @@ function setReturnBenchmarkHover(element, portfolioReturn) {
   }
 }
 
+function setXirrDevaluationHover(element, xirr, annualDevaluation = 0.05) {
+  if (!element) return;
+  const card = element.closest(".stat-card") || element;
+  const label = document.querySelector("#stat-xirr-label");
+  const unavailable = "Unavailable";
+  const uahValue = xirr == null ? unavailable : `${(xirr * 100).toFixed(2)}%`;
+  const usdXirr = xirr == null ? null : ((1 + xirr) / (1 + annualDevaluation)) - 1;
+  const usdValue = usdXirr == null ? unavailable : `${(usdXirr * 100).toFixed(2)}%`;
+  element.dataset.xirrUah = uahValue;
+  element.dataset.xirrUsd = usdValue;
+  element.textContent = uahValue;
+  card.classList.add("currency-hover-card");
+  card.title = "XIRR in USD with 5% annual UAH depreciation";
+  card.tabIndex = 0;
+  if (card.dataset.xirrHoverBound) return;
+  card.dataset.xirrHoverBound = "true";
+  const showUsd = () => {
+    if (label) label.textContent = "XIRR · USD (UAH −5%/year)";
+    element.textContent = element.dataset.xirrUsd;
+  };
+  const showUah = () => {
+    if (label) label.textContent = "XIRR";
+    element.textContent = element.dataset.xirrUah;
+  };
+  card.addEventListener("mouseenter", showUsd);
+  card.addEventListener("mouseleave", showUah);
+  card.addEventListener("focus", showUsd);
+  card.addEventListener("blur", showUah);
+}
+
 function renderReinvestmentForecast(totalProfit, investedCapital) {
   const amountElement = document.querySelector("#stat-reinvestment");
   const averageElement = document.querySelector("#stat-average-monthly-profit");
@@ -748,7 +778,7 @@ function renderDashboard() {
   }
   if (returnElement) {
     const xirr = calculatePortfolioXirr();
-    returnElement.textContent = xirr == null ? "Unavailable" : `${(xirr * 100).toFixed(2)}%`;
+    setXirrDevaluationHover(returnElement, xirr);
   }
   renderReinvestmentForecast(totalProfit, roiBase);
 
@@ -5732,7 +5762,7 @@ function renderWalletExpenseList() {
   const monthInput = document.querySelector("#wallet-expenses-month");
   if (monthInput) monthInput.value ||= walletMonthKey();
   const expenses = walletExpenses(monthInput?.value || walletMonthKey()).sort((a, b) => String(b.date).localeCompare(String(a.date)));
-  body.innerHTML = expenses.length ? expenses.map((expense) => `<tr><td>${formatWalletDate(expense.date)}</td><td>${escapeHtml(expense.category)}</td><td>${walletMoney(expense.amount)}</td><td>${escapeHtml(expense.note || "—")}</td><td><button class="secondary-btn" data-edit-expense="${escapeHtml(expense.id)}">Edit</button> <button class="icon-btn" data-delete-expense="${escapeHtml(expense.id)}" aria-label="Delete">×</button></td></tr>`).join("") : '<tr><td colspan="5" class="empty-state">No recorded expenses this month.</td></tr>';
+  body.innerHTML = expenses.length ? expenses.map((expense) => `<tr><td>${formatWalletDate(expense.date)}</td><td>${escapeHtml(expense.category)}</td><td>${walletMoney(expense.amount)}</td><td>${escapeHtml(expense.note || "—")}</td><td><div class="expense-row-actions"><button class="secondary-btn" data-edit-expense="${escapeHtml(expense.id)}">Edit</button><button class="icon-btn" data-delete-expense="${escapeHtml(expense.id)}" aria-label="Delete">×</button></div></td></tr>`).join("") : '<tr><td colspan="5" class="empty-state">No recorded expenses this month.</td></tr>';
   body.querySelectorAll("[data-edit-expense]").forEach((button) => button.addEventListener("click", () => openExpenseModal(button.dataset.editExpense)));
   body.querySelectorAll("[data-delete-expense]").forEach((button) => button.addEventListener("click", async () => {
     if (!(await showConfirm("Delete this expense?"))) return;
