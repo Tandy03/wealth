@@ -54,15 +54,27 @@
     events.sort((a, b) => a.date.localeCompare(b.date) || order[a.kind] - order[b.kind] || a.timestamp.localeCompare(b.timestamp));
     if (!events.length) return { points: [], limitations: [] };
 
-    const consume = (assetId, requested) => {
+    const growthFactor = (assetId, startDate, targetDate) => {
+      const asset = assets.get(assetId);
+      if (asset?.type !== "crypto_earn") return 1;
+      const rate = Math.max(0, number(asset.annualRate)) / 100;
+      const started = new Date(`${day(startDate)}T00:00:00Z`).getTime();
+      const ended = new Date(`${day(targetDate)}T00:00:00Z`).getTime();
+      const days = Number.isFinite(started) && Number.isFinite(ended) ? Math.max(0, Math.floor((ended - started) / 86400000)) : 0;
+      return (1 + rate / 365) ** days;
+    };
+    const consume = (assetId, requested, date) => {
       const assetLots = lots.get(assetId) || [];
       let remaining = Math.max(0, number(requested));
       let basis = 0;
       for (const lot of assetLots) {
         if (remaining <= 1e-9) break;
-        const used = Math.min(lot.quantity, remaining);
-        basis += used * lot.unitCostUah;
-        lot.quantity -= used;
+        const factor = growthFactor(assetId, lot.date, date);
+        const available = lot.quantity * factor;
+        const used = Math.min(available, remaining);
+        const principalUsed = used / factor;
+        basis += principalUsed * lot.unitCostUah;
+        lot.quantity -= principalUsed;
         remaining -= used;
       }
       return { basis, shortfall: remaining };
@@ -96,15 +108,15 @@
         if (event.kind === "buy") {
           if (rate == null) { limitations.add(`Missing ${event.currency} rate for ${event.date}`); reliable = false; }
           if (!lots.has(event.assetId)) lots.set(event.assetId, []);
-          lots.get(event.assetId).push({ quantity: event.quantity, unitCostUah: rate == null ? NaN : event.price * rate });
+          lots.get(event.assetId).push({ date: event.date, quantity: event.quantity, unitCostUah: rate == null ? NaN : event.price * rate });
         } else if (event.kind === "sale") {
-          const consumed = consume(event.assetId, event.quantity);
+          const consumed = consume(event.assetId, event.quantity, event.date);
           if (consumed.shortfall > 1e-9) { limitations.add(`Sale exceeds reconstructed quantity for ${event.assetId} on ${event.date}`); reliable = false; }
           if (rate == null || !Number.isFinite(consumed.basis)) { limitations.add(`Sale result unavailable for ${event.assetId} on ${event.date}`); reliable = false; }
           else realized += (event.proceeds - event.fees) * rate - consumed.basis;
         } else if (event.kind === "maturity") {
           const quantity = (lots.get(event.assetId) || []).reduce((sum, lot) => sum + Math.max(0, lot.quantity), 0);
-          const consumed = consume(event.assetId, quantity);
+          const consumed = consume(event.assetId, quantity, event.date);
           if (rate == null || !Number.isFinite(consumed.basis)) { limitations.add(`Maturity result unavailable for ${event.assetId} on ${event.date}`); reliable = false; }
           else realized += event.amount * rate - consumed.basis;
         } else if (event.kind === "income") {
@@ -116,7 +128,7 @@
         let unrealized = 0;
         let available = true;
         lots.forEach((assetLots, assetId) => {
-          const quantity = assetLots.reduce((sum, lot) => sum + Math.max(0, lot.quantity), 0);
+          const quantity = assetLots.reduce((sum, lot) => sum + Math.max(0, lot.quantity) * growthFactor(assetId, lot.date, date), 0);
           if (quantity <= 1e-9) return;
           const asset = assets.get(assetId);
           const price = priceAt(assetId, date);

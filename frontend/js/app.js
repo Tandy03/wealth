@@ -45,6 +45,7 @@ const typeLabels = {
   savings: "Savings",
   novapay: "NovaPay",
   deposit: "Bank deposit",
+  crypto_earn: "Crypto Earn",
 };
 
 const DEFAULT_INSTRUMENTS = [
@@ -151,6 +152,9 @@ function toUAHPurchaseCost(value, currency = "UAH", assetId = "", fallbackDate =
 }
 
 function getAssetInvestedUah(asset, quantity = getAvailableQuantity(asset.id)) {
+  if (asset.type === "crypto_earn") {
+    quantity = Math.min(quantity, Math.max(0, normalizeNumber(asset.quantity) - getSoldQuantity(asset.id)));
+  }
   return toUAHPurchaseCost(
     quantity * normalizeNumber(asset.purchasePrice),
     asset.currency,
@@ -160,6 +164,9 @@ function getAssetInvestedUah(asset, quantity = getAvailableQuantity(asset.id)) {
 }
 
 function getAssetInvestedUsd(asset, quantity = getAvailableQuantity(asset.id)) {
+  if (asset.type === "crypto_earn") {
+    quantity = Math.min(quantity, Math.max(0, normalizeNumber(asset.quantity) - getSoldQuantity(asset.id)));
+  }
   const purchases = (state.data.transactions || []).filter(
     (transaction) => transaction.assetId === asset.id && transaction.type === "BUY",
   );
@@ -568,6 +575,28 @@ function getSoldQuantity(assetId) {
     .reduce((sum, sale) => sum + normalizeNumber(sale.quantity), 0);
 }
 
+function getCryptoEarnQuantity(asset, targetDate = getDateString(new Date())) {
+  const annualRate = Math.max(0, normalizeNumber(asset.annualRate)) / 100;
+  const targetTime = new Date(`${targetDate}T00:00:00Z`).getTime();
+  const purchases = (state.data.transactions || []).filter(
+    (transaction) => transaction.assetId === asset.id && transaction.type === "BUY" && transaction.date,
+  );
+  const sources = purchases.length
+    ? purchases.map((transaction) => ({ date: transaction.date, quantity: normalizeNumber(transaction.quantity) }))
+    : [{ date: asset.purchaseDate, quantity: normalizeNumber(asset.quantity) }];
+  const accrued = sources.reduce((sum, source) => {
+    const startTime = new Date(`${source.date}T00:00:00Z`).getTime();
+    const days = Number.isFinite(startTime) ? Math.max(0, Math.floor((targetTime - startTime) / 86400000)) : 0;
+    return sum + source.quantity * ((1 + annualRate / 365) ** days);
+  }, 0);
+  const removed = (state.data.sales || []).filter((sale) => sale.assetId === asset.id && sale.sellDate).reduce((sum, sale) => {
+    const soldTime = new Date(`${sale.sellDate}T00:00:00Z`).getTime();
+    const days = Number.isFinite(soldTime) ? Math.max(0, Math.floor((targetTime - soldTime) / 86400000)) : 0;
+    return sum + normalizeNumber(sale.quantity) * ((1 + annualRate / 365) ** days);
+  }, 0);
+  return Math.max(0, accrued - removed);
+}
+
 function getAvailableQuantity(assetId) {
   const asset = state.data.assets.find((item) => item.id === assetId);
 
@@ -587,6 +616,8 @@ function getAvailableQuantity(assetId) {
   if (asset.closedAt || hasReceivedMaturity) {
     return 0;
   }
+
+  if (asset.type === "crypto_earn") return getCryptoEarnQuantity(asset);
 
   const originalQuantity = normalizeNumber(asset.quantity);
 
@@ -696,6 +727,11 @@ function calculatePortfolioXirr() {
 
 function getUnrealizedPriceGrowth(asset) {
   if (["savings", "novapay", "deposit"].includes(asset.type)) return 0;
+  if (asset.type === "crypto_earn") {
+    const available = getAvailableQuantity(asset.id);
+    const principal = Math.max(0, normalizeNumber(asset.quantity) - getSoldQuantity(asset.id));
+    return available * getCurrentPrice(asset) - principal * normalizeNumber(asset.purchasePrice);
+  }
   return getAvailableQuantity(asset.id) *
     (getCurrentPrice(asset) - normalizeNumber(asset.purchasePrice));
 }
@@ -812,8 +848,8 @@ function renderDashboard() {
           const available = asset._assets.reduce((sum, holding) => sum + getAvailableQuantity(holding.id), 0);
           const currencies = [...new Set(asset._assets.map((holding) => holding.currency || "UAH"))];
           const investedAsset = currencies.length === 1
-            ? asset._assets.reduce((sum, holding) => sum + getAvailableQuantity(holding.id) * normalizeNumber(holding.purchasePrice), 0)
-            : asset._assets.reduce((sum, holding) => sum + convertCurrency(getAvailableQuantity(holding.id) * normalizeNumber(holding.purchasePrice), holding.currency, "USD"), 0);
+            ? asset._assets.reduce((sum, holding) => sum + (holding.type === "crypto_earn" ? convertCurrency(getAssetInvestedUah(holding), "UAH", holding.currency) : getAvailableQuantity(holding.id) * normalizeNumber(holding.purchasePrice)), 0)
+            : asset._assets.reduce((sum, holding) => sum + (holding.type === "crypto_earn" ? convertCurrency(getAssetInvestedUah(holding), "UAH", "USD") : convertCurrency(getAvailableQuantity(holding.id) * normalizeNumber(holding.purchasePrice), holding.currency, "USD")), 0);
           const investedAssetUah = asset._assets.reduce(
             (sum, holding) => sum + getAssetInvestedUah(holding),
             0,
@@ -1031,7 +1067,9 @@ function renderPortfolio() {
       const available = asset._assets.reduce((sum, item) => sum + getAvailableQuantity(item.id), 0);
       const currencies = [...new Set(asset._assets.map((item) => item.currency || "UAH"))];
       const displayCurrency = currencies.length === 1 ? currencies[0] : "USD";
-      const invested = asset._assets.reduce((sum, item) => sum + convertCurrency(getAvailableQuantity(item.id) * normalizeNumber(item.purchasePrice), item.currency, displayCurrency), 0);
+      const invested = asset._assets.reduce((sum, item) => sum + (item.type === "crypto_earn"
+        ? convertCurrency(getAssetInvestedUah(item), "UAH", displayCurrency)
+        : convertCurrency(getAvailableQuantity(item.id) * normalizeNumber(item.purchasePrice), item.currency, displayCurrency)), 0);
       const investedUah = asset._assets.reduce(
         (sum, item) => sum + getAssetInvestedUah(item),
         0,
@@ -2219,6 +2257,7 @@ function openEditAssetModal(assetIds) {
   if (form.elements.novapayMaturityDate) form.elements.novapayMaturityDate.value = asset.type === "novapay" ? asset.maturityDate || "" : "";
   if (form.elements.maturityAmount) form.elements.maturityAmount.value = asset.maturityAmount || "";
   if (form.elements.annualRate) form.elements.annualRate.value = asset.annualRate ?? "";
+  if (form.elements.cryptoEarnApr) form.elements.cryptoEarnApr.value = asset.type === "crypto_earn" ? asset.annualRate ?? "" : "";
   if (form.elements.depositMaturityDate) form.elements.depositMaturityDate.value = asset.type === "deposit" ? asset.maturityDate || "" : "";
   if (form.elements.earlyWithdrawal) form.elements.earlyWithdrawal.checked = Boolean(asset.earlyWithdrawal);
 
@@ -2822,6 +2861,16 @@ function setupModal() {
       asset.maturityDate = formData.get("depositMaturityDate");
       asset.earlyWithdrawal = formData.get("earlyWithdrawal") === "on";
     }
+    if (type === "crypto_earn") {
+      asset.ticker = asset.name.toUpperCase();
+      asset.annualRate = normalizeNumber(formData.get("cryptoEarnApr"));
+      asset.currentPrice = asset.purchasePrice;
+      asset.paymentMethod = "crypto_earn";
+      if (asset.annualRate <= 0) {
+        showNotice("Enter a valid APR.");
+        return;
+      }
+    }
 
     /*
      * ======================================================
@@ -2841,7 +2890,7 @@ function setupModal() {
       return;
     }
 
-    if (!["etf", "stock"].includes(asset.type) && !Number.isInteger(asset.quantity)) {
+    if (!["etf", "stock", "crypto_earn"].includes(asset.type) && !Number.isInteger(asset.quantity)) {
       showNotice("Quantity must be a whole number.");
 
       return;
@@ -2974,6 +3023,7 @@ function updateAssetTypeFields() {
   );
   const novapaySettings = document.querySelector("#novapay-settings");
   const depositSettings = document.querySelector("#deposit-settings");
+  const cryptoEarnSettings = document.querySelector("#crypto-earn-settings");
 
   const dividendInput = document.querySelector("#dividend-per-unit");
 
@@ -2984,6 +3034,9 @@ function updateAssetTypeFields() {
   const s1CurrentPriceField = document.querySelector("#s1-current-price-field");
   const marketTickerField = document.querySelector("#market-ticker-field");
   const marketCurrentPriceField = document.querySelector("#market-current-price-field");
+  const assetNameLabel = document.querySelector("#asset-name-label");
+  const assetNameInput = document.querySelector("#asset-name");
+  const cryptoEarnAprInput = document.querySelector('[name="cryptoEarnApr"]');
 
   const couponInputs = document.querySelectorAll(
     ".coupon-date, .coupon-amount",
@@ -2994,15 +3047,19 @@ function updateAssetTypeFields() {
   }
 
   const type = typeElement.value;
+  if (assetNameLabel) assetNameLabel.textContent = type === "crypto_earn" ? "Ticker / asset name" : "Asset name";
+  if (assetNameInput) assetNameInput.placeholder = type === "crypto_earn" ? "e.g. USDT or BTC" : "e.g. OVDP 236624";
+  if (cryptoEarnAprInput) cryptoEarnAprInput.required = type === "crypto_earn";
   const quantityInput = document.querySelector('#asset-form [name="quantity"]');
   if (quantityInput) {
-    quantityInput.step = ["etf", "stock"].includes(type) ? "any" : "1";
+    quantityInput.step = ["etf", "stock", "crypto_earn"].includes(type) ? "any" : "1";
+    quantityInput.min = ["etf", "stock", "crypto_earn"].includes(type) ? "0.00000001" : "1";
   }
 
   /*
    * Hide all dynamic sections
    */
-  [reitSettings, ovdpSettings, capitalizationSettings, novapaySettings, depositSettings]
+  [reitSettings, ovdpSettings, capitalizationSettings, novapaySettings, depositSettings, cryptoEarnSettings]
     .filter(Boolean)
     .forEach((element) => {
       element.classList.remove("visible");
@@ -3104,6 +3161,7 @@ function updateAssetTypeFields() {
   }
   if (type === "novapay") novapaySettings?.classList.add("visible");
   if (type === "deposit") depositSettings?.classList.add("visible");
+  if (type === "crypto_earn") cryptoEarnSettings?.classList.add("visible");
 }
 
 /* ============================================================
@@ -3257,21 +3315,44 @@ function populateSellAssetSelect() {
         </option>
     `;
 
-  state.data.assets.forEach((asset) => {
+  const groups = Object.values(state.data.assets.reduce((result, asset) => {
     const available = getAvailableQuantity(asset.id);
+    if (available <= 0 || asset.type === "novapay" || (asset.type === "deposit" && !asset.earlyWithdrawal)) return result;
+    const key = `${asset.type}::${String(asset.name).trim().toLowerCase()}::${String(asset.currency || "UAH").toUpperCase()}`;
+    result[key] ||= [];
+    result[key].push(asset);
+    return result;
+  }, {}));
 
-    if (available <= 0 || asset.type === "novapay" || (asset.type === "deposit" && !asset.earlyWithdrawal)) {
-      return;
-    }
-
+  groups.forEach((assets) => {
     const option = document.createElement("option");
-
-    option.value = asset.id;
-
-    option.textContent = holdingOptionLabel(asset);
-
+    const first = assets[0];
+    const available = assets.reduce((sum, asset) => sum + getAvailableQuantity(asset.id), 0);
+    const instruments = [...new Set(assets.map((asset) => asset.instrumentName || "No instrument"))];
+    const instrument = instruments.length === 1 ? instruments[0] : `${instruments.length} instruments`;
+    option.value = assets.map((asset) => asset.id).join(",");
+    option.textContent = `${first.name} — ${instrument} — ${formatQuantity(available)} units`;
     select.appendChild(option);
   });
+}
+
+function getSelectedSellAssets() {
+  const ids = String(document.querySelector("#sell-asset")?.value || "").split(",").filter(Boolean);
+  return state.data.assets
+    .filter((asset) => ids.includes(asset.id))
+    .sort((a, b) => String(a.purchaseDate || "").localeCompare(String(b.purchaseDate || "")));
+}
+
+function getGroupedSaleCost(assets, quantity) {
+  let remaining = quantity;
+  let cost = 0;
+  assets.forEach((asset) => {
+    if (remaining <= 0) return;
+    const taken = Math.min(remaining, getAvailableQuantity(asset.id));
+    cost += taken * normalizeNumber(asset.purchasePrice);
+    remaining -= taken;
+  });
+  return cost;
 }
 
 function updateSalePreview() {
@@ -3285,13 +3366,12 @@ function updateSalePreview() {
     return;
   }
 
-  const assetId = assetSelect.value;
-
   const quantity = normalizeNumber(quantityInput.value);
 
   const price = normalizeNumber(priceInput.value);
 
-  const asset = state.data.assets.find((item) => item.id === assetId);
+  const assets = getSelectedSellAssets();
+  const asset = assets[0];
 
   const currency = asset?.currency || "UAH";
 
@@ -3341,9 +3421,11 @@ function updateSalePreview() {
     return;
   }
 
-  const purchasePrice = normalizeNumber(asset.purchasePrice);
-
-  const cost = quantity * purchasePrice;
+  const cost = getGroupedSaleCost(assets, quantity);
+  const purchasePrice = quantity > 0 ? cost / quantity : assets.reduce((sum, item) => {
+    const available = getAvailableQuantity(item.id);
+    return sum + available * normalizeNumber(item.purchasePrice);
+  }, 0) / Math.max(assets.reduce((sum, item) => sum + getAvailableQuantity(item.id), 0), 1);
 
   const proceeds = quantity * price;
 
@@ -3466,13 +3548,11 @@ function setupSellModal() {
 
   if (assetSelect) {
     assetSelect.addEventListener("change", () => {
-      const assetId = assetSelect.value;
-
-      const available = getAvailableQuantity(assetId);
-
-      const asset = state.data.assets.find((item) => item.id === assetId);
+      const assets = getSelectedSellAssets();
+      const available = assets.reduce((sum, asset) => sum + getAvailableQuantity(asset.id), 0);
+      const asset = assets[0];
       const sellQuantityInput = document.querySelector("#sell-quantity");
-      if (sellQuantityInput) sellQuantityInput.step = ["etf", "stock"].includes(asset?.type) ? "any" : "1";
+      if (sellQuantityInput) sellQuantityInput.step = ["etf", "stock", "crypto_earn"].includes(asset?.type) ? "any" : "1";
 
       const availableInput = document.querySelector("#sell-available");
 
@@ -3499,7 +3579,8 @@ function setupSellModal() {
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
 
-    const assetId = document.querySelector("#sell-asset")?.value;
+    const assets = getSelectedSellAssets();
+    const assetIds = assets.map((asset) => asset.id);
 
     const quantity = normalizeNumber(
       document.querySelector("#sell-quantity")?.value,
@@ -3511,7 +3592,7 @@ function setupSellModal() {
 
     const sellDate = document.querySelector("#sell-date")?.value;
 
-    const asset = state.data.assets.find((item) => item.id === assetId);
+    const asset = assets[0];
 
     if (!asset) {
       showNotice("Please select an asset.");
@@ -3519,7 +3600,7 @@ function setupSellModal() {
       return;
     }
 
-    const available = getAvailableQuantity(assetId);
+    const available = assets.reduce((sum, item) => sum + getAvailableQuantity(item.id), 0);
 
     if (quantity <= 0) {
       showNotice("Enter a valid quantity.");
@@ -3527,7 +3608,7 @@ function setupSellModal() {
       return;
     }
 
-    if (!Number.isInteger(quantity)) {
+    if (!["etf", "stock", "crypto_earn"].includes(asset.type) && !Number.isInteger(quantity)) {
       showNotice("Quantity must be a whole number.");
 
       return;
@@ -3563,7 +3644,8 @@ function setupSellModal() {
 
     try {
       await api.createSale({
-        assetId,
+        assetId: asset.id,
+        assetIds,
 
         quantity,
 
@@ -5381,7 +5463,11 @@ function openBuyMoreModal(assetId) {
 
   state.buyingAssetId = assetId;
   const buyQuantityInput = form.querySelector('[name="quantity"]');
-  if (buyQuantityInput) buyQuantityInput.step = ["etf", "stock"].includes(asset.type) ? "any" : "1";
+  if (buyQuantityInput) {
+    const supportsFractions = ["etf", "stock", "crypto_earn"].includes(asset.type);
+    buyQuantityInput.step = supportsFractions ? "any" : "1";
+    buyQuantityInput.min = supportsFractions ? "0.00000001" : "1";
+  }
 
   const assetNameInput = document.querySelector("#buy-more-asset-name");
 
@@ -5516,7 +5602,7 @@ function setupBuyMoreModal() {
     }
 
     const purchasedAsset = state.data.assets.find((asset) => asset.id === assetId);
-    if (!["etf", "stock"].includes(purchasedAsset?.type) && !Number.isInteger(purchase.quantity)) {
+    if (!["etf", "stock", "crypto_earn"].includes(purchasedAsset?.type) && !Number.isInteger(purchase.quantity)) {
       showNotice("Quantity must be a whole number.");
 
       return;

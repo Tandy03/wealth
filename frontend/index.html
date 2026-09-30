@@ -147,7 +147,7 @@
                   <th>Buy price</th>
                   <th>Current price</th>
                   <th>Invested</th>
-                  <th>Purchase date</th>
+                  <th>First P D</th>
                   <th></th>
                 </tr>
               </thead>
@@ -770,8 +770,8 @@
       <form id="asset-form">
         <div class="form-grid">
           <label>
-            <span>Asset name</span>
-            <input name="name" required placeholder="e.g. OVDP 236624" />
+            <span id="asset-name-label">Asset name</span>
+            <input id="asset-name" name="name" required placeholder="e.g. OVDP 236624" />
           </label>
 
           <label>
@@ -786,6 +786,7 @@
               <option value="savings">Savings</option>
               <option value="novapay">NovaPay bond</option>
               <option value="deposit">Bank deposit</option>
+              <option value="crypto_earn">Crypto Earn</option>
             </select>
           </label>
 
@@ -838,6 +839,14 @@
             <label><span>Maturity date</span><input name="depositMaturityDate" type="date" /></label>
             <label class="wallet-new-category"><input name="earlyWithdrawal" type="checkbox" /> Allow early withdrawal</label>
           </div></div>
+        </div>
+
+        <div id="crypto-earn-settings" class="dynamic-settings">
+          <h3>Crypto Earn</h3>
+          <div class="form-grid">
+            <label><span>APR, %</span><input name="cryptoEarnApr" type="number" min="0" step="0.01" /></label>
+          </div>
+          <p class="form-hint">The asset quantity grows daily without a maturity date.</p>
         </div>
 
         <!-- REIT settings -->

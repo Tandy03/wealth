@@ -91,3 +91,12 @@ test("Savings data is excluded without being mutated", () => {
   assert.equal(latest(buildWeeklyPerformance(data, { today: "2026-09-06" })), 0);
   assert.equal(JSON.stringify(data), before);
 });
+
+test("Crypto Earn compounds quantity daily at the configured APR", () => {
+  const data = {
+    assets: [asset("usdt", { type: "crypto_earn", annualRate: 36.5, currency: "UAH" })],
+    transactions: [buy("usdt", "2026-09-01", 10, 100)],
+  };
+  const expected = 10 * 100 * ((1 + 0.365 / 365) ** 10 - 1);
+  assert.ok(Math.abs(latest(buildWeeklyPerformance(data, { today: "2026-09-11" })) - expected) < 1e-8);
+});

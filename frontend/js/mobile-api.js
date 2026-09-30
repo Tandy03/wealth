@@ -13,6 +13,25 @@
   const clone = (value) => JSON.parse(JSON.stringify(value));
   const id = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const number = (value) => Number(value || 0);
+  const soldQuantity = (state, assetId) => (state.sales || []).filter((sale) => sale.assetId === assetId).reduce((sum, sale) => sum + number(sale.quantity), 0);
+  const availableQuantity = (state, asset) => {
+    if (asset.type !== "crypto_earn") return Math.max(0, number(asset.quantity) - soldQuantity(state, asset.id));
+    const rate = Math.max(0, number(asset.annualRate)) / 100;
+    const today = new Date(`${dateString(new Date())}T00:00:00Z`).getTime();
+    const purchases = (state.transactions || []).filter((tx) => tx.assetId === asset.id && tx.type === "BUY" && tx.date);
+    const sources = purchases.length ? purchases : [{ date: asset.purchaseDate, quantity: asset.quantity }];
+    const accrued = sources.reduce((sum, source) => {
+      const started = new Date(`${source.date}T00:00:00Z`).getTime();
+      const days = Number.isFinite(started) ? Math.max(0, Math.floor((today - started) / 86400000)) : 0;
+      return sum + number(source.quantity) * ((1 + rate / 365) ** days);
+    }, 0);
+    const removed = (state.sales || []).filter((sale) => sale.assetId === asset.id && sale.sellDate).reduce((sum, sale) => {
+      const soldAt = new Date(`${sale.sellDate}T00:00:00Z`).getTime();
+      const days = Number.isFinite(soldAt) ? Math.max(0, Math.floor((today - soldAt) / 86400000)) : 0;
+      return sum + number(sale.quantity) * ((1 + rate / 365) ** days);
+    }, 0);
+    return Math.max(0, accrued - removed);
+  };
   const isReceived = (payment) => payment.status === "received" || payment.status === "paid" || payment.received;
   const dateString = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 
@@ -538,6 +557,7 @@
 
       const symbolMap = { SPYB: "SPY", SMHB: "SMH", AAPLB: "AAPL" };
       const holdings = data.assets.filter((asset) => {
+        if (asset.type === "crypto_earn") return false;
         const code = String(asset.ticker || asset.symbol || asset.name || "").trim().toUpperCase();
         return String(asset.instrumentName || "").trim().toLowerCase() === "binance" || /^[A-Z0-9.-]+B$/.test(code);
       });
@@ -570,7 +590,31 @@
     async buyMoreAsset(assetId, purchase) { return mutate((state) => { const asset = state.assets.find((item) => item.id === assetId); if (!asset) throw new Error("Asset not found."); const oldQty = number(asset.quantity), qty = number(purchase.quantity), price = number(purchase.price ?? purchase.purchasePrice); asset.purchasePrice = oldQty + qty ? ((oldQty * number(asset.purchasePrice)) + qty * price) / (oldQty + qty) : price; asset.quantity = oldQty + qty; state.transactions.push({ id: id("tx"), assetId, assetName: asset.name, instrumentId: purchase.instrumentId || asset.instrumentId, type: "BUY", quantity: qty, purchasePrice: price, amount: qty * price, currency: purchase.currency || asset.currency || "UAH", date: purchase.date || purchase.purchaseDate }); rebuildPlannedPayments(state, asset); return asset; }); },
     async deleteAsset(assetId) { return mutate((state) => { state.assets = state.assets.filter((item) => item.id !== assetId); state.transactions = state.transactions.filter((item) => item.assetId !== assetId); state.payments = state.payments.filter((item) => item.assetId !== assetId); state.priceHistory = (state.priceHistory || []).filter((item) => item.assetId !== assetId); return { success: true }; }); },
     async getSales() { return clone((await loadLocal()).sales || []); },
-    async createSale(sale) { return mutate((state) => { const asset = state.assets.find((item) => item.id === sale.assetId); if (!asset) throw new Error("Asset not found."); const quantity = Number(sale.quantity || 0); if (quantity > Number(asset.quantity || 0)) throw new Error("Not enough units available."); asset.quantity = Number(asset.quantity || 0) - quantity; const created = { ...sale, id: id("sale") }; state.sales.push(created); state.transactions.push({ ...created, id: id("tx"), type: "SELL", assetName: asset.name }); return created; }); },
+    async createSale(sale) { return mutate((state) => {
+      const ids = [...new Set(Array.isArray(sale.assetIds) && sale.assetIds.length ? sale.assetIds : [sale.assetId])];
+      const assets = state.assets.filter((item) => ids.includes(item.id)).sort((a, b) => String(a.purchaseDate || "").localeCompare(String(b.purchaseDate || "")));
+      if (!assets.length || assets.length !== ids.length) throw new Error("Asset not found.");
+      let remaining = number(sale.quantity);
+      const totalAvailable = assets.reduce((sum, asset) => sum + availableQuantity(state, asset), 0);
+      if (remaining <= 0 || remaining > totalAvailable + 1e-10) throw new Error("Not enough units available.");
+      const created = [];
+      for (const asset of assets) {
+        if (remaining <= 1e-10) break;
+        const quantity = Math.min(remaining, availableQuantity(state, asset));
+        if (quantity <= 0) continue;
+        const sellPrice = number(sale.sellPrice);
+        const costBasis = quantity * number(asset.purchasePrice);
+        const saleProceeds = quantity * sellPrice;
+        const profit = saleProceeds - costBasis;
+        const roi = costBasis > 0 ? profit / costBasis * 100 : 0;
+        const record = { ...sale, assetIds: undefined, assetId: asset.id, assetName: asset.name, type: asset.type, quantity, currency: asset.currency || sale.currency || "UAH", costBasis, saleProceeds, profit, roi, id: id("sale") };
+        state.sales.push(record);
+        state.transactions.push({ ...record, id: id("tx"), date: sale.sellDate, amount: saleProceeds, type: "SELL" });
+        created.push(record);
+        remaining -= quantity;
+      }
+      return { sales: created, remainingQuantity: totalAvailable - number(sale.quantity) };
+    }); },
     async getTransactions() { return clone((await loadLocal()).transactions || []); },
     async getPayments() { return clone((await loadLocal()).payments || []); },
     async markPaymentReceived(paymentId) { return mutate((state) => {

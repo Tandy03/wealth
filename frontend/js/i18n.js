@@ -82,6 +82,7 @@
     ["Name","Name","Назва","Nombre","Nazwa","Nome"],
     ["Currency","Währung","Валюта","Moneda","Waluta","Valuta"],
     ["Purchase date","Kaufdatum","Дата купівлі","Fecha de compra","Data zakupu","Data di acquisto"],
+    ["First P D","Erstes Kaufdatum","Дата першої купівлі","Fecha de primera compra","Data pierwszego zakupu","Data del primo acquisto"],
     ["Purchase price","Kaufpreis","Ціна купівлі","Precio de compra","Cena zakupu","Prezzo di acquisto"],
     ["Current price","Aktueller Preis","Поточна ціна","Precio actual","Aktualna cena","Prezzo attuale"],
     ["Loading official macroeconomic data…","Offizielle Makrodaten werden geladen…","Завантаження офіційних макроданих…","Cargando datos macroeconómicos oficiales…","Ładowanie oficjalnych danych makroekonomicznych…","Caricamento dati macroeconomici ufficiali…"],
@@ -206,6 +207,10 @@
     ,["Asset name","Anlagename","Назва активу","Nombre del activo","Nazwa aktywa","Nome attività"]
     ,["Available quantity","Verfügbare Menge","Доступна кількість","Cantidad disponible","Dostępna ilość","Quantità disponibile"]
     ,["Bank deposit","Bankeinlage","Банківський депозит","Depósito bancario","Lokata bankowa","Deposito bancario"]
+    ,["Crypto Earn","Krypto Earn","Крипто Earn","Crypto Earn","Crypto Earn","Crypto Earn"]
+    ,["Ticker / asset name","Ticker / Assetname","Тікер / назва активу","Ticker / nombre del activo","Ticker / nazwa aktywa","Ticker / nome attività"]
+    ,["APR, %","APR, %","APR, %","APR, %","APR, %","APR, %"]
+    ,["The asset quantity grows daily without a maturity date.","Die Assetmenge wächst täglich ohne Fälligkeitsdatum.","Кількість активу зростає щодня без дати погашення.","La cantidad del activo crece diariamente sin fecha de vencimiento.","Liczba aktywów rośnie codziennie bez daty zapadalności.","La quantità dell'attività cresce ogni giorno senza scadenza."]
     ,["Buy price","Kaufpreis","Ціна купівлі","Precio de compra","Cena zakupu","Prezzo di acquisto"]
     ,["Capitalization","Kapitalisierung","Капіталізація","Capitalización","Kapitalizacja","Capitalizzazione"]
     ,["Comment","Kommentar","Коментар","Comentario","Komentarz","Commento"]

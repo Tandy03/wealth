@@ -263,7 +263,7 @@ function isPositiveInteger(value) {
 }
 
 function supportsFractionalQuantity(type) {
-  return type === "etf" || type === "stock";
+  return type === "etf" || type === "stock" || type === "crypto_earn";
 }
 
 function isValidQuantity(value, type) {
@@ -300,6 +300,28 @@ function getAvailableQuantity(data, assetId) {
 
   if (asset.closedAt || hasReceivedMaturity) {
     return 0;
+  }
+
+  if (asset.type === "crypto_earn") {
+    const annualRate = Math.max(0, normalizeNumber(asset.annualRate)) / 100;
+    const targetTime = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`).getTime();
+    const purchases = (data.transactions || []).filter(
+      (transaction) => transaction.assetId === asset.id && transaction.type === "BUY" && transaction.date,
+    );
+    const sources = purchases.length
+      ? purchases.map((transaction) => ({ date: transaction.date, quantity: normalizeNumber(transaction.quantity) }))
+      : [{ date: asset.purchaseDate, quantity: normalizeNumber(asset.quantity) }];
+    const accrued = sources.reduce((sum, source) => {
+      const startTime = new Date(`${source.date}T00:00:00Z`).getTime();
+      const days = Number.isFinite(startTime) ? Math.max(0, Math.floor((targetTime - startTime) / 86400000)) : 0;
+      return sum + source.quantity * ((1 + annualRate / 365) ** days);
+    }, 0);
+    const removed = (data.sales || []).filter((sale) => sale.assetId === asset.id && sale.sellDate).reduce((sum, sale) => {
+      const soldTime = new Date(`${sale.sellDate}T00:00:00Z`).getTime();
+      const days = Number.isFinite(soldTime) ? Math.max(0, Math.floor((targetTime - soldTime) / 86400000)) : 0;
+      return sum + normalizeNumber(sale.quantity) * ((1 + annualRate / 365) ** days);
+    }, 0);
+    return Math.max(0, accrued - removed);
   }
 
   const originalQuantity = normalizeNumber(asset.quantity);
@@ -902,7 +924,7 @@ app.post("/api/assets", serializeMutation(async (req, res) => {
       });
     }
 
-    const allowedTypes = ["ovdp", "inzhur_reit", "s1_reit", "inzhur_miltech", "etf", "stock", "savings", "novapay", "deposit"];
+    const allowedTypes = ["ovdp", "inzhur_reit", "s1_reit", "inzhur_miltech", "etf", "stock", "savings", "novapay", "deposit", "crypto_earn"];
 
     if (!allowedTypes.includes(type)) {
       return res.status(400).json({
@@ -946,7 +968,7 @@ app.post("/api/assets", serializeMutation(async (req, res) => {
       purchasePrice,
       purchaseDate,
       isin: type === "ovdp" ? isin : "",
-      currentPrice: ["s1_reit", "etf", "stock"].includes(type) && currentPrice > 0 ? currentPrice : undefined,
+      currentPrice: ["s1_reit", "etf", "stock", "crypto_earn"].includes(type) && currentPrice > 0 ? currentPrice : undefined,
       instrumentName: typeof body.instrumentName === "string" ? body.instrumentName.trim() : "",
       instrumentType: typeof body.instrumentType === "string" ? body.instrumentType.trim() : "",
     };
@@ -1064,6 +1086,17 @@ app.post("/api/assets", serializeMutation(async (req, res) => {
       const maturityDate = body.maturityDate;
       if (!isValidDateString(maturityDate) || annualRate < 0) return res.status(400).json({ error: "Deposit maturity date and annual rate are required." });
       Object.assign(asset, { annualRate, maturityDate, earlyWithdrawal: Boolean(body.earlyWithdrawal), paymentMethod: "deposit_interest" });
+    }
+
+    if (type === "crypto_earn") {
+      const annualRate = normalizeNumber(body.annualRate);
+      if (annualRate <= 0) return res.status(400).json({ error: "Crypto Earn APR must be greater than zero." });
+      Object.assign(asset, {
+        ticker: String(body.ticker || name).trim().toUpperCase(),
+        annualRate,
+        currentPrice: currentPrice > 0 ? currentPrice : purchasePrice,
+        paymentMethod: "crypto_earn",
+      });
     }
 
     /*
@@ -1375,7 +1408,7 @@ app.put("/api/assets/:id", serializeMutation(async (req, res) => {
       });
     }
 
-    const allowedTypes = ["ovdp", "inzhur_reit", "s1_reit", "inzhur_miltech", "etf", "stock", "savings", "novapay", "deposit"];
+    const allowedTypes = ["ovdp", "inzhur_reit", "s1_reit", "inzhur_miltech", "etf", "stock", "savings", "novapay", "deposit", "crypto_earn"];
 
     if (!allowedTypes.includes(type)) {
       return res.status(400).json({
@@ -1523,7 +1556,7 @@ app.put("/api/assets/:id", serializeMutation(async (req, res) => {
 
     asset.isin = type === "ovdp" ? isin : "";
 
-    if (["s1_reit", "etf", "stock"].includes(type) && body.currentPrice !== undefined && currentPrice > 0) {
+    if (["s1_reit", "etf", "stock", "crypto_earn"].includes(type) && body.currentPrice !== undefined && currentPrice > 0) {
       asset.currentPrice = currentPrice;
       asset.lastSyncedAt = new Date().toISOString();
       recordAssetPrice(data, asset, "edit", asset.lastSyncedAt);
@@ -1538,6 +1571,8 @@ app.put("/api/assets/:id", serializeMutation(async (req, res) => {
     delete asset.firstDividendDate;
     delete asset.maturityDate;
     delete asset.coupons;
+    delete asset.annualRate;
+    delete asset.earlyWithdrawal;
 
     asset.paymentMethod = paymentMethod;
 
@@ -1559,6 +1594,17 @@ app.put("/api/assets/:id", serializeMutation(async (req, res) => {
 
     if (type === "deposit") {
       Object.assign(asset, { annualRate: normalizeNumber(body.annualRate), maturityDate: body.maturityDate, earlyWithdrawal: Boolean(body.earlyWithdrawal), paymentMethod: "deposit_interest" });
+    }
+
+    if (type === "crypto_earn") {
+      const annualRate = normalizeNumber(body.annualRate);
+      if (annualRate <= 0) return res.status(400).json({ error: "Crypto Earn APR must be greater than zero." });
+      Object.assign(asset, {
+        ticker: String(body.ticker || name).trim().toUpperCase(),
+        annualRate,
+        currentPrice: currentPrice > 0 ? currentPrice : purchasePrice,
+        paymentMethod: "crypto_earn",
+      });
     }
 
     /*
@@ -2272,6 +2318,55 @@ app.get("/api/sales", async (req, res) => {
 app.post("/api/sales", serializeMutation(async (req, res) => {
   try {
     const data = await readData();
+
+    const groupedAssetIds = [...new Set(Array.isArray(req.body?.assetIds) ? req.body.assetIds.filter(Boolean) : [])];
+    if (groupedAssetIds.length) {
+      const groupedAssets = data.assets
+        .filter((item) => groupedAssetIds.includes(item.id))
+        .sort((a, b) => String(a.purchaseDate || "").localeCompare(String(b.purchaseDate || "")));
+      if (groupedAssets.length !== groupedAssetIds.length) return res.status(404).json({ error: "One or more holdings were not found." });
+      const first = groupedAssets[0];
+      if (first.type === "novapay" || (first.type === "deposit" && !first.earlyWithdrawal)) return res.status(400).json({ error: "This asset cannot be withdrawn before maturity." });
+      const sameHolding = groupedAssets.every((item) =>
+        item.type === first.type &&
+        String(item.name).trim().toLowerCase() === String(first.name).trim().toLowerCase() &&
+        normalizeCurrency(item.currency) === normalizeCurrency(first.currency));
+      if (!sameHolding) return res.status(400).json({ error: "Only matching holdings can be sold together." });
+
+      const soldQuantity = normalizeNumber(req.body.quantity);
+      const price = normalizeNumber(req.body.sellPrice);
+      const sellDate = req.body.sellDate;
+      if (!isValidQuantity(soldQuantity, first.type)) return res.status(400).json({ error: supportsFractionalQuantity(first.type) ? "Quantity must be greater than zero." : "Quantity must be a whole number greater than zero." });
+      if (price < 0) return res.status(400).json({ error: "Sell price cannot be negative." });
+      if (!isValidDateString(sellDate)) return res.status(400).json({ error: "Valid sell date is required." });
+      const availableQuantity = groupedAssets.reduce((sum, item) => sum + getAvailableQuantity(data, item.id), 0);
+      if (soldQuantity > availableQuantity + 1e-10) return res.status(400).json({ error: `You cannot sell ${soldQuantity} units. Only ${availableQuantity} units are available.` });
+
+      let remaining = soldQuantity;
+      const createdSales = [];
+      const createdTransactions = [];
+      for (const asset of groupedAssets) {
+        if (remaining <= 1e-10) break;
+        const quantity = Math.min(remaining, getAvailableQuantity(data, asset.id));
+        if (quantity <= 0) continue;
+        const purchasePrice = normalizeNumber(asset.purchasePrice);
+        const costBasis = quantity * purchasePrice;
+        const saleProceeds = quantity * price;
+        const profit = saleProceeds - costBasis;
+        const roi = costBasis > 0 ? (profit / costBasis) * 100 : 0;
+        const currency = asset.currency || normalizeCurrency(req.body.currency);
+        const createdAt = new Date().toISOString();
+        const sale = { id: createId("sale"), createdAt, assetId: asset.id, assetName: asset.name, type: asset.type, quantity, sellPrice: price, sellDate, currency, purchasePrice, costBasis, saleProceeds, profit, roi };
+        const transaction = { id: createId("tx"), createdAt, date: sellDate, assetId: asset.id, assetName: asset.name, type: "SELL", quantity, amount: saleProceeds, currency, costBasis, profit, roi };
+        data.sales.push(sale);
+        data.transactions.push(transaction);
+        createdSales.push(sale);
+        createdTransactions.push(transaction);
+        remaining -= quantity;
+      }
+      await writeData(data);
+      return res.status(201).json({ sales: createdSales, transactions: createdTransactions, remainingQuantity: availableQuantity - soldQuantity });
+    }
 
     const { assetId, quantity, sellPrice, sellDate, currency } = req.body || {};
 
