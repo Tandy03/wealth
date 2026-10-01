@@ -74,8 +74,6 @@
     ["Account","Konto","Обліковий запис","Cuenta","Konto","Account"],
     ["Log out","Abmelden","Вийти","Cerrar sesión","Wyloguj","Esci"],
     ["Save","Speichern","Зберегти","Guardar","Zapisz","Salva"],
-    ["XIRR · USD (UAH −5%/year)","XIRR · USD (UAH −5 %/Jahr)","XIRR · USD (гривня −5%/рік)","XIRR · USD (UAH −5 %/año)","XIRR · USD (UAH −5%/rok)","XIRR · USD (UAH −5%/anno)"],
-    ["XIRR in USD with 5% annual UAH depreciation","XIRR in USD bei 5 % jährlicher UAH-Abwertung","XIRR у доларах за річної девальвації гривні 5%","XIRR en USD con una depreciación anual del 5 % de la UAH","XIRR w USD przy rocznej dewaluacji UAH o 5%","XIRR in USD con svalutazione annua UAH del 5%"],
     ["Cancel","Abbrechen","Скасувати","Cancelar","Anuluj","Annulla"],
     ["Close","Schließen","Закрити","Cerrar","Zamknij","Chiudi"],
     ["Apply","Anwenden","Застосувати","Aplicar","Zastosuj","Applica"],

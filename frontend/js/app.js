@@ -313,34 +313,13 @@ function setReturnBenchmarkHover(element, portfolioReturn) {
   }
 }
 
-function setXirrDevaluationHover(element, xirr, annualDevaluation = 0.05) {
+function setXirrValue(element, xirr) {
   if (!element) return;
   const card = element.closest(".stat-card") || element;
-  const label = document.querySelector("#stat-xirr-label");
-  const unavailable = "Unavailable";
-  const uahValue = xirr == null ? unavailable : `${(xirr * 100).toFixed(2)}%`;
-  const usdXirr = xirr == null ? null : ((1 + xirr) / (1 + annualDevaluation)) - 1;
-  const usdValue = usdXirr == null ? unavailable : `${(usdXirr * 100).toFixed(2)}%`;
-  element.dataset.xirrUah = uahValue;
-  element.dataset.xirrUsd = usdValue;
-  element.textContent = uahValue;
-  card.classList.add("currency-hover-card");
-  card.title = "XIRR in USD with 5% annual UAH depreciation";
-  card.tabIndex = 0;
-  if (card.dataset.xirrHoverBound) return;
-  card.dataset.xirrHoverBound = "true";
-  const showUsd = () => {
-    if (label) label.textContent = "XIRR · USD (UAH −5%/year)";
-    element.textContent = element.dataset.xirrUsd;
-  };
-  const showUah = () => {
-    if (label) label.textContent = "XIRR";
-    element.textContent = element.dataset.xirrUah;
-  };
-  card.addEventListener("mouseenter", showUsd);
-  card.addEventListener("mouseleave", showUah);
-  card.addEventListener("focus", showUsd);
-  card.addEventListener("blur", showUah);
+  element.textContent = xirr == null ? "Unavailable" : `${(xirr * 100).toFixed(2)}%`;
+  card.classList.remove("currency-hover-card");
+  card.removeAttribute("title");
+  card.removeAttribute("tabindex");
 }
 
 function renderReinvestmentForecast(totalProfit, investedCapital) {
@@ -814,7 +793,7 @@ function renderDashboard() {
   }
   if (returnElement) {
     const xirr = calculatePortfolioXirr();
-    setXirrDevaluationHover(returnElement, xirr);
+    setXirrValue(returnElement, xirr);
   }
   renderReinvestmentForecast(totalProfit, roiBase);
 
