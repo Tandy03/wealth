@@ -1,20 +1,22 @@
-(function () {
+﻿(function () {
   const isNative = Boolean(window.Capacitor?.isNativePlatform?.());
   if (!isNative) return;
 
   const proxyConfig = window.FINO_MOBILE_CONFIG || {};
+  const validation = window.FinoValidation;
+  const { DAYS_PER_YEAR, MILLISECONDS_PER_DAY, QUANTITY_EPSILON, DEFAULT_BOND_REDEMPTION } = window.FinoConstants;
   const LEGACY_STORAGE_KEY = "fino-data-v1";
   const MIGRATION_OWNER_KEY = "fino-account-migration-owner";
   const emptyData = () => ({
+    ...window.FinoStateModel.createEmptyState(),
     sync: { revision: 0, updatedAt: new Date().toISOString(), deviceId: "android-phone" },
-    assets: [], transactions: [], payments: [], calendarNotes: [], sales: [], priceHistory: [],
-    wallet: { expenses: [], months: {}, loans: [] }, instruments: [],
   });
   const clone = (value) => JSON.parse(JSON.stringify(value));
   const id = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const number = (value) => Number(value || 0);
+  const number = (value) => { const result = Number(value || 0); return Number.isFinite(result) ? result : 0; };
   const soldQuantity = (state, assetId) => (state.sales || []).filter((sale) => sale.assetId === assetId).reduce((sum, sale) => sum + number(sale.quantity), 0);
   const availableQuantity = (state, asset) => {
+    if (asset.closedAt || (asset.type === "ovdp" && (state.payments || []).some((payment) => payment.assetId === asset.id && payment.type === "MATURITY" && isReceived(payment)))) return 0;
     if (asset.type !== "crypto_earn") return Math.max(0, number(asset.quantity) - soldQuantity(state, asset.id));
     const rate = Math.max(0, number(asset.annualRate)) / 100;
     const today = new Date(`${dateString(new Date())}T00:00:00Z`).getTime();
@@ -22,13 +24,13 @@
     const sources = purchases.length ? purchases : [{ date: asset.purchaseDate, quantity: asset.quantity }];
     const accrued = sources.reduce((sum, source) => {
       const started = new Date(`${source.date}T00:00:00Z`).getTime();
-      const days = Number.isFinite(started) ? Math.max(0, Math.floor((today - started) / 86400000)) : 0;
-      return sum + number(source.quantity) * ((1 + rate / 365) ** days);
+      const days = Number.isFinite(started) ? Math.max(0, Math.floor((today - started) / MILLISECONDS_PER_DAY)) : 0;
+      return sum + number(source.quantity) * ((1 + rate / DAYS_PER_YEAR) ** days);
     }, 0);
     const removed = (state.sales || []).filter((sale) => sale.assetId === asset.id && sale.sellDate).reduce((sum, sale) => {
       const soldAt = new Date(`${sale.sellDate}T00:00:00Z`).getTime();
-      const days = Number.isFinite(soldAt) ? Math.max(0, Math.floor((today - soldAt) / 86400000)) : 0;
-      return sum + number(sale.quantity) * ((1 + rate / 365) ** days);
+      const days = Number.isFinite(soldAt) ? Math.max(0, Math.floor((today - soldAt) / MILLISECONDS_PER_DAY)) : 0;
+      return sum + number(sale.quantity) * ((1 + rate / DAYS_PER_YEAR) ** days);
     }, 0);
     return Math.max(0, accrued - removed);
   };
@@ -74,9 +76,9 @@
     });
   }
 
+  function validateSnapshot(state) { return window.FinoStateModel.validateState(state); }
   function normalizeData(state) {
-    state.wallet ||= { expenses: [], months: {}, loans: [] };
-    state.priceHistory = Array.isArray(state.priceHistory) ? state.priceHistory : [];
+    Object.assign(state, window.FinoStateModel.normalizeState(state));
     const renamed = new Map();
     (state.assets || []).forEach((asset) => {
       if (String(asset.name || "").trim().toLowerCase() === "ovdp 1") {
@@ -136,15 +138,14 @@
         amount: number(coupon.amountPerUnit) * purchasedQuantityOnDate(state, asset.id, coupon.date),
       }));
       if (asset.maturityDate) add({
-        date: asset.maturityDate, type: "MATURITY", amountPerUnit: number(asset.redemptionValue) || 1000,
-        amount: (number(asset.redemptionValue) || 1000) * number(asset.quantity),
+        date: asset.maturityDate, type: "MATURITY", amountPerUnit: number(asset.redemptionValue) || DEFAULT_BOND_REDEMPTION,
+        amount: (number(asset.redemptionValue) || DEFAULT_BOND_REDEMPTION) * number(asset.quantity),
       });
     }
   }
   const Preferences = window.Capacitor.Plugins.Preferences;
   const DriveAuth = window.Capacitor.Plugins.GoogleDriveAuth;
   let data;
-  let lastSyncAt = null;
   let syncing = false;
   let authSession = null;
   let activeEmail = "";
@@ -153,16 +154,50 @@
 
   const accountSuffix = (email) => encodeURIComponent(String(email || "").trim().toLowerCase());
 
-  async function ensureAccount() {
-    const result = await DriveAuth.getAccessToken();
-    if (!result?.accessToken || !result?.email) throw new Error("Google Drive authorization required.");
+  async function ensureAccount(allowOffline = false) {
+    let result;
+    try { result = await DriveAuth.getAccessToken(); }
+    catch (error) {
+      if (!allowOffline) throw error;
+      const saved = await Preferences.get({ key: 'fino-active-account' });
+      const email = activeEmail || saved.value;
+      if (!email) throw error;
+      if (email !== activeEmail) {
+        activeEmail = email;
+        storageKey = LEGACY_STORAGE_KEY + ':' + accountSuffix(email);
+        fileId = (await Preferences.get({ key: 'fino-drive-file:' + accountSuffix(email) })).value || null;
+        data = undefined;
+        syncMeta = null;
+      }
+      if (operationActive) {
+        if (pinnedAccount && email !== pinnedAccount) {
+          const changed = new Error('Google account changed during synchronization. Reconnect and retry.');
+          changed.code = 'AUTHORIZATION_REQUIRED';
+          throw changed;
+        }
+        pinnedAccount = email;
+      }
+      connected = false;
+      return { email, accessToken: null };
+    }
+    if (!result?.accessToken || !result?.email) { const error = new Error("Google Drive authorization required."); error.code = "AUTHORIZATION_REQUIRED"; throw error; }
     const email = String(result.email).trim().toLowerCase();
+    if (operationActive) {
+      if (pinnedAccount && email !== pinnedAccount) {
+        const error = new Error('Google account changed during synchronization. Reconnect and retry; no portfolio was uploaded to the new account.');
+        error.code = 'AUTHORIZATION_REQUIRED';
+        throw error;
+      }
+      pinnedAccount = email;
+    }
     if (email !== activeEmail) {
       activeEmail = email;
       storageKey = `${LEGACY_STORAGE_KEY}:${accountSuffix(email)}`;
       const savedFile = await Preferences.get({ key: `fino-drive-file:${accountSuffix(email)}` });
       fileId = savedFile.value || null;
       data = undefined;
+      syncMeta = null;
+      connected = false;
       const accountData = await Preferences.get({ key: storageKey });
       const migrationOwner = await Preferences.get({ key: MIGRATION_OWNER_KEY });
       if (!accountData.value && !migrationOwner.value) {
@@ -171,25 +206,37 @@
         await Preferences.set({ key: MIGRATION_OWNER_KEY, value: email });
       }
     }
+    await Preferences.set({ key: "fino-active-account", value: email });
     authSession = { accessToken: result.accessToken, email };
     return authSession;
   }
 
   async function loadLocal() {
-    await ensureAccount();
+    await ensureAccount(true);
     if (data) return data;
     const stored = await Preferences.get({ key: storageKey });
-    try { data = stored.value ? JSON.parse(stored.value) : emptyData(); }
-    catch { data = emptyData(); }
-    normalizeData(data);
+    let loaded;
+    try { loaded = validateSnapshot(stored.value ? JSON.parse(stored.value) : emptyData()); }
+    catch { throw new Error('Local portfolio data is corrupted. Restore a backup before making changes.'); }
+    const baseline = stored.value ? signature(loaded) : null;
+    normalizeData(loaded);
+    const savedMeta = await Preferences.get({ key: metadataKey() });
+    let metadata;
+    try { metadata = savedMeta.value ? JSON.parse(savedMeta.value) : null; } catch { metadata = null; }
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata) || typeof metadata.pendingUpload !== 'boolean' || !(metadata.baseline === null || typeof metadata.baseline === 'string')) metadata = null;
+    syncMeta = metadata || { baseline, pendingUpload: Boolean(stored.value), conflict: false, error: null, lastSyncAt: null };
+    data = loaded;
     return data;
   }
 
   async function saveLocal() {
+    validateSnapshot(data);
     data.sync = {
       revision: Number(data.sync?.revision || 0) + 1,
       updatedAt: new Date().toISOString(), deviceId: "android-phone",
     };
+    syncMeta.pendingUpload = true;
+    await persistSyncMeta();
     await Preferences.set({ key: storageKey, value: JSON.stringify(data) });
   }
 
@@ -219,68 +266,191 @@
     return found || null;
   }
 
-  async function createDriveFile(accessToken) {
-    const response = await fetch("https://www.googleapis.com/drive/v3/files?fields=id", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "fino-data.json", mimeType: "application/json", appProperties: { finoApp: "true" } }),
+  async function createJsonFile(accessToken, metadata, snapshot) {
+    const boundary = 'fino_' + id('upload');
+    const body = '--' + boundary + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify(metadata)
+      + '\r\n--' + boundary + '\r\nContent-Type: application/json\r\n\r\n' + JSON.stringify(snapshot) + '\r\n--' + boundary + '--';
+    const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
+      method: 'POST', headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'multipart/related; boundary=' + boundary }, body,
     });
-    if (!response.ok) throw new Error(`Drive file creation failed (${response.status}).`);
+    if (!response.ok) throw new Error('Drive file creation failed (' + response.status + ').');
     const createdId = (await response.json()).id;
+    if (!createdId) throw new Error('Drive file creation returned no ID.');
+    return createdId;
+  }
+  async function createDriveFile(accessToken, snapshot) {
+    const createdId = await createJsonFile(accessToken, { name: 'fino-data.json', mimeType: 'application/json', appProperties: { finoApp: 'true' } }, snapshot);
     await rememberFileId(createdId);
     return createdId;
   }
 
-  async function downloadDrive() {
+  let syncMeta = null;
+  let connected = false;
+  let authorizationRequired = false;
+  let operationQueue = Promise.resolve();
+  let pinnedAccount = null;
+  let operationActive = false;
+  const queued = (operation) => {
+    const run = async () => {
+      operationActive = true;
+      pinnedAccount = null;
+      try { return await operation(); }
+      finally { operationActive = false; pinnedAccount = null; }
+    };
+    const result = operationQueue.then(run, run);
+    operationQueue = result.catch(() => {});
+    return result;
+  };
+  const metadataKey = () => 'fino-sync-v2:' + accountSuffix(activeEmail);
+  function signature(value) {
+    const canonical = (item) => Array.isArray(item) ? item.map(canonical)
+      : item && typeof item === 'object' ? Object.fromEntries(Object.keys(item).sort().map((key) => [key, canonical(item[key])])) : item;
+    return JSON.stringify(canonical(value));
+  }
+  async function persistSyncMeta() {
+    await Preferences.set({ key: metadataKey(), value: JSON.stringify(syncMeta) });
+  }
+  async function recordSyncError(error) {
+    connected = error.code === 'SYNC_CONFLICT';
+    authorizationRequired = error.code === 'AUTHORIZATION_REQUIRED';
+    if (syncMeta) {
+      syncMeta.error = error.message || 'Google Drive synchronization failed.';
+      syncMeta.conflict = error.code === 'SYNC_CONFLICT';
+      await persistSyncMeta();
+    }
+  }
+  function conflictError() {
+    const error = new Error('Conflict detected: both the local portfolio and Google Drive have changes. Choose Download or Upload to resolve it; a backup will be saved first.');
+    error.code = 'SYNC_CONFLICT';
+    return error;
+  }
+  function statusSnapshot() {
+    return { enabled: true, connected, authorizationRequired, syncing, pendingUpload: Boolean(syncMeta?.pendingUpload), conflict: Boolean(syncMeta?.conflict), error: syncMeta?.error || null,
+      lastSyncAt: syncMeta?.lastSyncAt || null, fileId, email: activeEmail,
+      status: syncing ? 'Syncing' : syncMeta?.conflict ? 'Conflict detected' : syncMeta?.error ? 'Offline — changes saved locally' : syncMeta?.pendingUpload ? 'Pending upload' : connected ? 'Synced' : 'Offline — changes saved locally' };
+  }
+  async function finishSync(snapshot) {
+    syncMeta = { baseline: signature(snapshot), pendingUpload: false, conflict: false, error: null, lastSyncAt: new Date().toISOString() };
+    connected = true;
+    authorizationRequired = false;
+    await persistSyncMeta();
+  }
+  async function readRemote(allowInvalid = false) {
     const accessToken = await token();
     const currentFileId = await locateDriveFile(accessToken);
-    if (!currentFileId) {
-      await createDriveFile(accessToken);
-      await uploadDrive(true);
-      return clone(data);
+    if (!currentFileId) return null;
+    const metadata = await fetch('https://www.googleapis.com/drive/v3/files/' + currentFileId + '?fields=id,version,md5Checksum', { headers: { Authorization: 'Bearer ' + accessToken } });
+    if (!metadata.ok) throw new Error('Drive metadata lookup failed (' + metadata.status + ').');
+    const response = await fetch('https://www.googleapis.com/drive/v3/files/' + currentFileId + '?alt=media', { headers: { Authorization: 'Bearer ' + accessToken } });
+    if (!response.ok) throw new Error('Drive download failed (' + response.status + ').');
+    let raw;
+    let remote;
+    try {
+      raw = typeof response.text === 'function' ? await response.text() : JSON.stringify(await response.json());
+      remote = validateSnapshot(JSON.parse(raw));
+    } catch (error) {
+      if (!allowInvalid) throw new Error('Drive file contains invalid data. Local data was preserved; use Upload to replace it after a backup.');
+      return { data: null, contentSignature: raw || '', etag: metadata.headers?.get?.('etag') || null, valid: false };
     }
-    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${currentFileId}?alt=media`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!response.ok) throw new Error(`Drive download failed (${response.status}).`);
-    const remote = await response.json();
-    if (!remote || !Array.isArray(remote.assets)) throw new Error("Drive file contains invalid data.");
-    return remote;
+    return { data: remote, contentSignature: signature(remote), etag: metadata.headers?.get?.('etag') || null, valid: true };
   }
 
-  function isRemoteNewer(remote, local) {
-    const remoteRevision = number(remote?.sync?.revision);
-    const localRevision = number(local?.sync?.revision);
-    if (remoteRevision !== localRevision) return remoteRevision > localRevision;
-    return String(remote?.sync?.updatedAt || "") > String(local?.sync?.updatedAt || "");
+  async function backupFolder(accessToken) {
+    const query = new URLSearchParams({ q: "name = 'fino-backups' and mimeType = 'application/vnd.google-apps.folder' and trashed = false", fields: 'files(id)', pageSize: '1' });
+    const found = await fetch('https://www.googleapis.com/drive/v3/files?' + query, { headers: { Authorization: 'Bearer ' + accessToken } });
+    if (!found.ok) throw new Error('Drive backup folder lookup failed (' + found.status + ').');
+    const folderId = (await found.json()).files?.[0]?.id;
+    if (folderId) return folderId;
+    const created = await fetch('https://www.googleapis.com/drive/v3/files?fields=id', { method: 'POST', headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'fino-backups', mimeType: 'application/vnd.google-apps.folder' }) });
+    if (!created.ok) throw new Error('Drive backup folder creation failed (' + created.status + ').');
+    return (await created.json()).id;
+  }
+  async function backupLocal(snapshot, reason) {
+    // Keep a recovery copy on the device even if the cloud backup fails.
+    await Preferences.set({ key: 'fino-recovery:' + accountSuffix(activeEmail) + ':' + Date.now(), value: JSON.stringify(snapshot) });
+    const accessToken = await token();
+    const folderId = await backupFolder(accessToken);
+    return createJsonFile(accessToken, { name: 'fino-data-' + Date.now() + '-' + id('backup') + '.json', mimeType: 'application/json', parents: [folderId], description: 'fino ' + reason + ' backup' }, snapshot);
   }
 
+  async function backupRemote(accessToken, remoteId) {
+    const folderId = await backupFolder(accessToken);
+    const response = await fetch('https://www.googleapis.com/drive/v3/files/' + remoteId + '/copy?fields=id', { method: 'POST', headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'fino-data-' + Date.now() + '-' + id('backup') + '.json', parents: [folderId], description: 'fino backup before replacement' }) });
+    if (!response.ok) throw new Error('Drive remote backup failed (' + response.status + ').');
+  }
+  async function adoptRemote(remote) {
+    const next = normalizeData(clone(remote));
+    await Preferences.set({ key: storageKey, value: JSON.stringify(next) });
+    data = next;
+    await finishSync(remote);
+  }
   async function uploadDrive(force = false) {
     await loadLocal();
+    const snapshot = clone(data);
+    const remote = await readRemote(force);
+    if (!force && remote && signature(remote.data) !== syncMeta.baseline && signature(remote.data) !== signature(snapshot)) throw conflictError();
+    if (!force && !remote && syncMeta.baseline && syncMeta.pendingUpload) throw conflictError();
+    if (remote && signature(remote.data) === signature(snapshot)) { await finishSync(snapshot); return; }
     const accessToken = await token();
-    let currentFileId = await locateDriveFile(accessToken);
-    if (!currentFileId) currentFileId = await createDriveFile(accessToken);
-    if (!force && currentFileId) {
-      const remote = await downloadDrive();
-      if (Number(remote.sync?.revision || 0) > Number(data.sync?.revision || 0)) {
-        throw new Error("Conflict detected: Google Drive contains newer data. Download it first.");
-      }
+    if (remote) {
+      await backupRemote(accessToken, fileId);
+      const checked = await readRemote(force);
+      if (!checked || checked.contentSignature !== remote.contentSignature) throw conflictError();
+      remote.etag = checked.etag;
     }
-    const response = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${currentFileId}?uploadType=media`, {
-      method: "PATCH",
-      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-    if (!response.ok) throw new Error(`Drive upload failed (${response.status}).`);
-    lastSyncAt = new Date().toISOString();
+    if (!fileId) { await createDriveFile(accessToken, snapshot); await finishSync(snapshot); return; }
+    const headers = { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' };
+    if (remote?.etag) headers['If-Match'] = remote.etag;
+    const response = await fetch('https://www.googleapis.com/upload/drive/v3/files/' + fileId + '?uploadType=media', { method: 'PATCH', headers, body: JSON.stringify(snapshot) });
+    if (response.status === 412) throw conflictError();
+    if (!response.ok) throw new Error('Drive upload failed (' + response.status + ').');
+    await finishSync(snapshot);
   }
-
+  function scheduleUpload() {
+    queued(async () => {
+      syncing = true;
+      try { await uploadDrive(); } catch (error) { await recordSyncError(error); }
+      finally { syncing = false; }
+    }).catch((error) => console.error('Could not persist Drive sync status:', error.message));
+  }
+  async function synchronize(action = 'sync') {
+    syncing = true;
+    try {
+      await loadLocal();
+      if (action === 'reconnect') {
+        await DriveAuth.signOut(); await Preferences.remove({ key: 'fino-active-account' }); authSession = null; activeEmail = ''; fileId = null; data = undefined; syncMeta = null; connected = false; authorizationRequired = true;
+      } else if (action === 'backup') {
+        await backupLocal(clone(data), 'manual');
+        connected = true;
+        syncMeta.error = null;
+        await persistSyncMeta();
+      } else if (action === 'upload') await uploadDrive(true);
+      else {
+        const remote = await readRemote();
+        if (action === 'download') {
+          if (!remote) throw new Error('fino-data.json was not found on Google Drive.');
+          await backupLocal(clone(data), 'before download');
+          await adoptRemote(remote.data);
+        } else if (syncMeta.pendingUpload) {
+          await uploadDrive();
+        } else if (remote) await adoptRemote(remote.data);
+        else await uploadDrive();
+      }
+    } catch (error) { await recordSyncError(error); throw error; }
+    finally { syncing = false; }
+    return { success: true, action, status: statusSnapshot() };
+  }
   async function mutate(operation) {
-    await loadLocal();
-    const result = operation(data);
-    await saveLocal();
-    uploadDrive().catch(() => {});
-    return clone(result);
+    return queued(async () => {
+      await loadLocal();
+      const draft = clone(data);
+      const result = operation(draft);
+      const previous = data;
+      data = draft;
+      try { await saveLocal(); } catch (error) { data = previous; throw error; }
+      scheduleUpload();
+      return clone(result);
+    });
   }
 
   async function proxy(action, parameters = {}) {
@@ -439,50 +609,21 @@
 
   window.mobileApi = {
     isNative: true,
-    async getData() {
-      await loadLocal();
-      try {
-        const remote = await downloadDrive();
-        if (isRemoteNewer(remote, data) || (!data.assets.length && number(data.sync?.revision) === 0)) {
-          data = normalizeData(remote);
-          await Preferences.set({ key: storageKey, value: JSON.stringify(data) });
-        }
-        lastSyncAt = new Date().toISOString();
-      } catch (_) { /* Offline-first: retain the local snapshot. */ }
-      return clone(data);
+    async getData({ sync = true } = {}) {
+      return queued(async () => {
+        await loadLocal();
+        if (sync) try { await synchronize(); } catch (_) { /* Status retains the error; local data remains available. */ }
+        return clone(data);
+      });
     },
     async getGoogleDriveStatus() {
-      await loadLocal();
-      return { enabled: true, connected: true, syncing, lastSyncAt, status: syncing ? "Syncing" : "Synced", fileId, email: activeEmail };
+      if (syncMeta) return statusSnapshot();
+      return queued(async () => {
+        try { await loadLocal(); } catch (error) { await recordSyncError(error); }
+        return statusSnapshot();
+      });
     },
-    async syncGoogleDrive(action = "sync") {
-      syncing = true;
-      try {
-        await loadLocal();
-        if (action === "reconnect") {
-          await DriveAuth.signOut();
-          authSession = null;
-          activeEmail = "";
-          fileId = null;
-          data = undefined;
-          return { success: true, action, status: { enabled: true, connected: false, authorizationRequired: true, lastSyncAt: null, fileId: null } };
-        } else if (action === "download") {
-          const remote = await downloadDrive();
-          data = normalizeData(remote);
-          await Preferences.set({ key: storageKey, value: JSON.stringify(data) });
-        } else if (action === "upload") await uploadDrive(true);
-        else if (action === "backup") await uploadDrive(false);
-        else {
-          const remote = await downloadDrive();
-          if (isRemoteNewer(remote, data)) {
-            data = normalizeData(remote);
-            await Preferences.set({ key: storageKey, value: JSON.stringify(data) });
-          } else await uploadDrive(false);
-        }
-        lastSyncAt = new Date().toISOString();
-        return { success: true, action, status: await this.getGoogleDriveStatus() };
-      } finally { syncing = false; }
-    },
+    async syncGoogleDrive(action = 'sync') { return queued(() => synchronize(action)); },
     async getMarketTimeSeries(parameters) { return proxy("twelve", parameters); },
     async getMarketCurrencies() { return mobileMarketCurrencies(); },
     async getCurrencyHistory(parameters) { return mobileCurrencyHistory(parameters); },
@@ -492,6 +633,7 @@
     async getNbuPolicyRate() { return mobileNbuPolicyRate(); },
     async getBinanceEquityPrice(symbol) { return proxy("binance", { symbol }); },
     async syncApiAssets() {
+      return queued(async () => {
       await loadLocal();
       const synced = [];
       const skipped = [];
@@ -580,26 +722,56 @@
       }
       if (synced.length || binanceSynced.length) {
         await saveLocal();
-        uploadDrive().catch(() => {});
+        scheduleUpload();
       }
       return { synced, skipped, binanceSynced, binanceSkipped };
+      });
     },
     async createAsset(asset) { return mutate((state) => { const created = { ...asset, id: id("asset") }; state.assets.push(created); state.transactions.push({ id: id("tx"), assetId: created.id, assetName: created.name, type: "BUY", quantity: number(created.quantity), purchasePrice: number(created.purchasePrice), amount: number(created.quantity) * number(created.purchasePrice), currency: created.currency || "UAH", date: created.purchaseDate }); rebuildPlannedPayments(state, created); return created; }); },
-    async updateAsset(assetId, patch) { return mutate((state) => { const asset = state.assets.find((item) => item.id === assetId); if (!asset) throw new Error("Asset not found."); Object.assign(asset, patch, { id: assetId, updatedAt: new Date().toISOString() }); (state.transactions || []).forEach((tx) => { if (tx.assetId === assetId) { tx.assetName = asset.name; tx.currency = asset.currency || tx.currency; } }); if (patch.currentPrice !== undefined && number(asset.currentPrice) > 0) recordAssetPrice(state, asset, "edit", asset.updatedAt); rebuildPlannedPayments(state, asset); return asset; }); },
-    async mergeAssets(assetIds) { return mutate((state) => { const ids = [...new Set(assetIds)]; const items = state.assets.filter((item) => ids.includes(item.id)); if (items.length < 2) throw new Error("At least two holdings are required to merge."); const primary = items[0]; const removedIds = new Set(items.slice(1).map((item) => item.id)); const totalQuantity = items.reduce((sum, item) => sum + number(item.quantity), 0); const totalCost = items.reduce((sum, item) => sum + number(item.quantity) * number(item.purchasePrice), 0); primary.quantity = totalQuantity; primary.purchasePrice = totalQuantity ? totalCost / totalQuantity : 0; primary.purchaseDate = items.map((item) => item.purchaseDate).filter(Boolean).sort()[0] || primary.purchaseDate; primary.firstDividendDate = items.map((item) => item.firstDividendDate).filter(Boolean).sort()[0] || primary.firstDividendDate; const reassign = (values = []) => values.map((item) => removedIds.has(item.assetId) ? { ...item, assetId: primary.id, assetName: primary.name } : item); state.transactions = reassign(state.transactions); state.sales = reassign(state.sales); state.payments = reassign(state.payments); state.calendarNotes = reassign(state.calendarNotes); state.priceHistory = reassign(state.priceHistory); state.assets = state.assets.filter((item) => !removedIds.has(item.id)); rebuildPlannedPayments(state, primary); return primary; }); },
-    async buyMoreAsset(assetId, purchase) { return mutate((state) => { const asset = state.assets.find((item) => item.id === assetId); if (!asset) throw new Error("Asset not found."); const oldQty = number(asset.quantity), qty = number(purchase.quantity), price = number(purchase.price ?? purchase.purchasePrice); asset.purchasePrice = oldQty + qty ? ((oldQty * number(asset.purchasePrice)) + qty * price) / (oldQty + qty) : price; asset.quantity = oldQty + qty; state.transactions.push({ id: id("tx"), assetId, assetName: asset.name, instrumentId: purchase.instrumentId || asset.instrumentId, type: "BUY", quantity: qty, purchasePrice: price, amount: qty * price, currency: purchase.currency || asset.currency || "UAH", date: purchase.date || purchase.purchaseDate }); rebuildPlannedPayments(state, asset); return asset; }); },
-    async deleteAsset(assetId) { return mutate((state) => { state.assets = state.assets.filter((item) => item.id !== assetId); state.transactions = state.transactions.filter((item) => item.assetId !== assetId); state.payments = state.payments.filter((item) => item.assetId !== assetId); state.priceHistory = (state.priceHistory || []).filter((item) => item.assetId !== assetId); return { success: true }; }); },
-    async getSales() { return clone((await loadLocal()).sales || []); },
+    async updateAsset(assetId, patch) { return mutate((state) => { const asset = state.assets.find((item) => item.id === assetId); if (!asset) throw new Error("Asset not found."); validation.validateAssetInput({ ...asset, ...patch }, { partial: true }); Object.assign(asset, patch, { id: assetId, updatedAt: new Date().toISOString() }); (state.transactions || []).forEach((tx) => { if (tx.assetId === assetId) { tx.assetName = asset.name; tx.currency = asset.currency || tx.currency; } }); if (patch.currentPrice !== undefined && number(asset.currentPrice) > 0) recordAssetPrice(state, asset, "edit", asset.updatedAt); rebuildPlannedPayments(state, asset); return asset; }); },
+    async mergeAssets(assetIds) { return mutate((state) => { const ids = [...new Set(assetIds)]; const items = state.assets.filter((item) => ids.includes(item.id)); if (items.length < 2) throw new Error("At least two holdings are required to merge."); if (items.length !== ids.length) throw new Error('Asset not found.'); const primary = items[0]; if (!items.every(item => item.type === primary.type && String(item.name).trim().toLowerCase() === String(primary.name).trim().toLowerCase() && (item.currency || 'UAH') === (primary.currency || 'UAH'))) throw new Error('Only matching holdings can be merged.'); const removedIds = new Set(items.slice(1).map((item) => item.id)); const totalQuantity = items.reduce((sum, item) => sum + number(item.quantity), 0); const totalCost = items.reduce((sum, item) => sum + number(item.quantity) * number(item.purchasePrice), 0); primary.quantity = totalQuantity; primary.purchasePrice = totalQuantity ? totalCost / totalQuantity : 0; primary.purchaseDate = items.map((item) => item.purchaseDate).filter(Boolean).sort()[0] || primary.purchaseDate; primary.firstDividendDate = items.map((item) => item.firstDividendDate).filter(Boolean).sort()[0] || primary.firstDividendDate; const reassign = (values = []) => values.map((item) => removedIds.has(item.assetId) ? { ...item, assetId: primary.id, assetName: primary.name } : item); state.transactions = reassign(state.transactions); state.sales = reassign(state.sales); state.payments = reassign(state.payments); state.calendarNotes = reassign(state.calendarNotes); state.priceHistory = reassign(state.priceHistory); state.assets = state.assets.filter((item) => !removedIds.has(item.id)); rebuildPlannedPayments(state, primary); return primary; }); },
+    async buyMoreAsset(assetId, purchase) { return mutate((state) => {
+      const asset = state.assets.find((item) => item.id === assetId);
+      if (!asset) throw new Error("Asset not found.");
+      validation.validateQuantity(purchase.quantity, asset.type);
+      validation.validateAssetCurrency(purchase, asset);
+      const oldQty = number(asset.quantity), qty = number(purchase.quantity);
+      // Canonical fields take precedence over legacy aliases, exactly as in validation.
+      const price = number(purchase.purchasePrice ?? purchase.price);
+      const date = purchase.purchaseDate ?? purchase.date;
+      asset.purchasePrice = ((oldQty * number(asset.purchasePrice)) + qty * price) / (oldQty + qty);
+      asset.quantity = oldQty + qty;
+      state.transactions.push({ id: id("tx"), assetId, assetName: asset.name, instrumentId: purchase.instrumentId || asset.instrumentId, type: "BUY", quantity: qty, purchasePrice: price, amount: qty * price, currency: purchase.currency || asset.currency || "UAH", date });
+      rebuildPlannedPayments(state, asset);
+      return asset;
+    }); },
+    async deleteAsset(assetId) { return mutate((state) => {
+      if (!state.assets.some(item => item.id === assetId)) throw new Error("Asset not found.");
+      state.assets = state.assets.filter(item => item.id !== assetId);
+      for (const collection of ['transactions', 'payments', 'sales', 'calendarNotes', 'priceHistory']) {
+        state[collection] = (state[collection] || []).filter(item => item.assetId !== assetId);
+      }
+      return { success: true };
+    }); },
+    async getSales() { return queued(async () => clone((await loadLocal()).sales || [])); },
     async createSale(sale) { return mutate((state) => {
+      validation.validateRequest('sale', sale);
       const ids = [...new Set(Array.isArray(sale.assetIds) && sale.assetIds.length ? sale.assetIds : [sale.assetId])];
       const assets = state.assets.filter((item) => ids.includes(item.id)).sort((a, b) => String(a.purchaseDate || "").localeCompare(String(b.purchaseDate || "")));
       if (!assets.length || assets.length !== ids.length) throw new Error("Asset not found.");
+      if (assets.some((asset) => asset.type === 'novapay' || (asset.type === 'deposit' && !asset.earlyWithdrawal))) throw new Error('This asset cannot be withdrawn before maturity.');
+      const reference = assets[0];
+      validation.validateAssetCurrency(sale, reference);
+      if (!assets.every((asset) => asset.type === reference.type && String(asset.name).trim().toLowerCase() === String(reference.name).trim().toLowerCase() && (asset.currency || 'UAH') === (reference.currency || 'UAH'))) throw new Error('Only matching holdings can be sold together.');
+      if (!Number.isFinite(Number(sale.quantity)) || !Number.isFinite(Number(sale.sellPrice)) || Number(sale.sellPrice) < 0) throw new Error('Valid quantity and sell price are required.');
+      if (!['stock', 'etf', 'crypto_earn'].includes(reference.type) && !Number.isInteger(Number(sale.quantity))) throw new Error('Quantity must be a whole number greater than zero.');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(sale.sellDate || '')) || Number.isNaN(new Date(sale.sellDate + 'T00:00:00Z').getTime())) throw new Error('Valid sell date is required.');
       let remaining = number(sale.quantity);
       const totalAvailable = assets.reduce((sum, asset) => sum + availableQuantity(state, asset), 0);
-      if (remaining <= 0 || remaining > totalAvailable + 1e-10) throw new Error("Not enough units available.");
+      if (remaining <= 0 || remaining > totalAvailable + QUANTITY_EPSILON) throw new Error("Not enough units available.");
       const created = [];
       for (const asset of assets) {
-        if (remaining <= 1e-10) break;
+        if (remaining <= QUANTITY_EPSILON) break;
         const quantity = Math.min(remaining, availableQuantity(state, asset));
         if (quantity <= 0) continue;
         const sellPrice = number(sale.sellPrice);
@@ -615,8 +787,8 @@
       }
       return { sales: created, remainingQuantity: totalAvailable - number(sale.quantity) };
     }); },
-    async getTransactions() { return clone((await loadLocal()).transactions || []); },
-    async getPayments() { return clone((await loadLocal()).payments || []); },
+    async getTransactions() { return queued(async () => clone((await loadLocal()).transactions || [])); },
+    async getPayments() { return queued(async () => clone((await loadLocal()).payments || [])); },
     async markPaymentReceived(paymentId) { return mutate((state) => {
       const payment = state.payments.find((item) => item.id === paymentId);
       if (!payment) throw new Error("Payment not found.");
@@ -627,6 +799,8 @@
       payment.received = true;
       payment.receivedAt = receivedNow.toISOString();
       payment.receivedDate = receivedDate;
+      const asset = state.assets.find((item) => item.id === payment.assetId);
+      if (payment.type === "MATURITY" && asset) asset.closedAt = payment.receivedAt;
       state.transactions.push({
         id: id("tx"), createdAt: payment.receivedAt, date: receivedDate,
         assetId: payment.assetId, assetName: payment.assetName, paymentId: payment.id,
@@ -634,8 +808,21 @@
       });
       return payment;
     }); },
-    async getCalendarNotes() { return clone((await loadLocal()).calendarNotes || []); },
+    async getCalendarNotes() { return queued(async () => clone((await loadLocal()).calendarNotes || [])); },
     async createCalendarNote(note) { return mutate((state) => { const created = { ...note, id: id("note") }; state.calendarNotes.push(created); return created; }); },
     async saveWallet(wallet) { return mutate((state) => { state.wallet = clone(wallet); return state.wallet; }); },
   };
+  // Validate before entering the mutation queue; failed raw input never touches local state.
+  for (const [method, check] of Object.entries({
+    createAsset: asset => validation.validateAssetInput(asset),
+    updateAsset: (_id, patch) => validation.validateRequest('patch', patch),
+    buyMoreAsset: (_id, purchase) => validation.validateRequest('buy', { ...purchase, purchasePrice: purchase.purchasePrice ?? purchase.price, purchaseDate: purchase.purchaseDate ?? purchase.date }),
+    createCalendarNote: note => validation.validateRequest('note', note),
+    saveWallet: wallet => validation.validateWallet(wallet),
+    syncGoogleDrive: (action = 'sync') => validation.validateSyncAction(action),
+    mergeAssets: assetIds => validation.validateRequest('merge', { assetIds }),
+  })) {
+    const operation = window.mobileApi[method];
+    window.mobileApi[method] = async function (...args) { check(...args); return operation.apply(this, args); };
+  }
 })();

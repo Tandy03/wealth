@@ -256,4 +256,4 @@ async function reconnect() {
 
 function getStatus() { return { ...status }; }
 
-module.exports = { initialize, uploadData, queueUpload, downloadData, createManualBackup, reconnect, getStatus, isEnabled, validateData, hasConflict, retryOperation };
+module.exports = { initialize, read: downloadData, write: uploadData, ...require('./merge'), uploadData, queueUpload, downloadData, createManualBackup, reconnect, getStatus, isEnabled, validateData, hasConflict, retryOperation };

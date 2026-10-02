@@ -9,8 +9,8 @@ async function readApiJson(response, fallbackMessage) {
 }
 
 const api = {
-  async getData() {
-    if (window.mobileApi) return window.mobileApi.getData();
+  async getData(options) {
+    if (window.mobileApi) return window.mobileApi.getData(options);
     const response = await fetch("/api/data");
 
     if (!response.ok) {
