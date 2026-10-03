@@ -1,5 +1,6 @@
 // renderers/calendar.js
-function renderCalendar() {
+function renderCalendar(state = stateStore.getState()) {
+  const { getCalendarEvents } = createRenderServices(state);
   const title = document.querySelector("#calendar-month-title");
 
   const grid = document.querySelector("#calendar-grid");
@@ -12,7 +13,7 @@ function renderCalendar() {
 
   const month = state.calendarDate.getMonth();
 
-  title.textContent = `${monthNames[month]} ${year}`;
+  title.textContent = state.calendarDate.toLocaleDateString(window.FinoI18n?.locale || "en", { month: "long", year: "numeric" });
 
   grid.innerHTML = "";
 
@@ -117,7 +118,7 @@ function renderCalendar() {
                     <div
                         class="calendar-event-title"
                     >
-                        ${escapeHtml(event.title)}
+                        <span translate="no">${escapeHtml(event.title)}</span>
                     </div>
 
                     ${
@@ -144,11 +145,7 @@ function renderCalendar() {
                     }
                 `;
 
-      eventButton.addEventListener("click", (clickEvent) => {
-        clickEvent.stopPropagation();
-
-        showCalendarEvent(event);
-      });
+      bindCalendarEventButton(eventButton, event);
 
       eventsContainer.appendChild(eventButton);
     });
@@ -170,9 +167,7 @@ function renderCalendar() {
      * -> planned purchase note
      */
 
-    dayElement.addEventListener("dblclick", () => {
-      openNoteModal(dateString);
-    });
+    bindCalendarDay(dayElement, dateString);
 
     grid.appendChild(dayElement);
   }
@@ -190,6 +185,7 @@ function showCalendarEvent(event) {
   }
 
   title.textContent = event.title || "Event";
+  title.setAttribute("translate", event.title ? "no" : "yes");
 
   let html = `
         <div class="event-details">
@@ -281,7 +277,7 @@ function showCalendarEvent(event) {
                 </div>
 
                 <div class="event-detail-value">
-                    ${escapeHtml(event.text)}
+                    <span translate="no">${escapeHtml(event.text)}</span>
                 </div>
 
             </div>
@@ -349,13 +345,7 @@ function showCalendarEvent(event) {
    * Mark received button
    */
 
-  const markReceivedButton = document.querySelector("#mark-payment-received");
-
-  if (markReceivedButton) {
-    markReceivedButton.addEventListener("click", async () => {
-      await markPaymentAsReceived(event.paymentIds || [event.id], markReceivedButton);
-    });
-  }
+  bindCalendarPaymentAction(event);
 
   modal.classList.add("open");
 }

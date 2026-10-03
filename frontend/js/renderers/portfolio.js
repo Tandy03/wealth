@@ -10,7 +10,8 @@ function setupPortfolioCurrencyHover(container) {
   });
 }
 
-function renderPortfolio() {
+function renderPortfolio(state = stateStore.getState()) {
+  const { convertCurrency, getAssetInvestedUah, getAvailableQuantity, getCurrentPrice } = createRenderServices(state);
   const tbody = document.querySelector("#portfolio-table");
 
   if (!tbody) {
@@ -102,7 +103,7 @@ function renderPortfolio() {
 
                         <td>
                             <strong>
-                                ${escapeHtml(asset.name)}
+                                <span translate="no">${escapeHtml(asset.name)}</span>
                             </strong>
                         </td>
 
@@ -169,31 +170,12 @@ function renderPortfolio() {
 
   setupPortfolioCurrencyHover(tbody);
 
-  tbody.querySelectorAll("[data-buy-assets]").forEach((button) => {
-    button.addEventListener("click", () => {
-      openHoldingSelectionModal(button.dataset.buyAssets.split(","), "buy");
-    });
-  });
+  bindPortfolioActions(tbody);
 
-  tbody.querySelectorAll("[data-edit-assets]").forEach((button) => {
-    button.addEventListener("click", () => {
-      openHoldingSelectionModal(button.dataset.editAssets.split(","), "edit");
-    });
-  });
-
-  tbody.querySelectorAll("[data-delete-assets]").forEach((button) => {
-    button.addEventListener("click", () => {
-      openHoldingSelectionModal(button.dataset.deleteAssets.split(","), "delete");
-    });
-  });
-
-  tbody.querySelectorAll("[data-asset-group]").forEach((row) => row.addEventListener("click", (event) => {
-    if (event.target.closest("button")) return;
-    openAssetTransactions(row.dataset.assetGroup.split(","));
-  }));
 }
 
-function renderAssetTransactionsModal() {
+function renderAssetTransactionsModal(state = stateStore.getState()) {
+  const { getAvailableQuantity, getTransactionEffectiveDate } = createRenderServices(state);
   const body = document.querySelector("#asset-transactions-body");
   const ids = state.assetDetailIds || [];
   if (!body) return;
@@ -201,14 +183,8 @@ function renderAssetTransactionsModal() {
   const onlyCurrent = document.querySelector("#asset-only-current")?.checked;
   if (onlyCurrent) {
     const holdings = state.data.assets.filter((asset) => ids.includes(asset.id) && getAvailableQuantity(asset.id) > 0);
-    body.innerHTML = holdings.length ? holdings.map((asset) => `<tr><td>${formatDate(asset.purchaseDate)}</td><td>${escapeHtml(asset.instrumentName || "—")} — ${escapeHtml(asset.instrumentType || "")}</td><td>AVAILABLE</td><td>${getAvailableQuantity(asset.id)}</td><td>${money(getAvailableQuantity(asset.id) * asset.purchasePrice, asset.currency)}</td><td><button class="secondary-btn" data-detail-edit="${escapeHtml(asset.id)}">Edit</button> <button class="danger-btn" data-detail-delete="${escapeHtml(asset.id)}">Delete</button></td></tr>`).join("") : '<tr><td colspan="6" class="empty-state">No current holdings.</td></tr>';
-    body.querySelectorAll("[data-detail-edit]").forEach((button) => button.addEventListener("click", () => openEditAssetModal(button.dataset.detailEdit)));
-    body.querySelectorAll("[data-detail-delete]").forEach((button) => button.addEventListener("click", async () => {
-      if (!(await showConfirm("Delete this holding and all related records?"))) return;
-      await api.deleteAsset(button.dataset.detailDelete);
-      document.querySelector("#asset-transactions-modal")?.classList.remove("open");
-      await loadData();
-    }));
+    body.innerHTML = holdings.length ? holdings.map((asset) => `<tr><td>${formatDate(asset.purchaseDate)}</td><td><span translate="no">${escapeHtml(asset.instrumentName || "—")}</span> — ${escapeHtml(asset.instrumentType || "")}</td><td>AVAILABLE</td><td>${getAvailableQuantity(asset.id)}</td><td>${money(getAvailableQuantity(asset.id) * asset.purchasePrice, asset.currency)}</td><td><button class="secondary-btn" data-detail-edit="${escapeHtml(asset.id)}">Edit</button> <button class="danger-btn" data-detail-delete="${escapeHtml(asset.id)}">Delete</button></td></tr>`).join("") : '<tr><td colspan="6" class="empty-state">No current holdings.</td></tr>';
+    bindHoldingDetailActions(body);
     return;
   }
   let transactions = (state.data.transactions || []).filter((transaction) => ids.includes(transaction.assetId));
@@ -216,6 +192,6 @@ function renderAssetTransactionsModal() {
   transactions.sort((a, b) => String(getTransactionEffectiveDate(b) || "").localeCompare(String(getTransactionEffectiveDate(a) || "")));
   body.innerHTML = transactions.length ? transactions.map((transaction) => {
     const asset = state.data.assets.find((item) => item.id === transaction.assetId);
-    return `<tr><td>${formatDate(getTransactionEffectiveDate(transaction))}</td><td>${escapeHtml(asset?.instrumentName || "—")}</td><td>${escapeHtml(transaction.type)}</td><td>${transaction.quantity ?? "—"}</td><td>${money(transaction.amount, transaction.currency || asset?.currency)}</td><td></td></tr>`;
+    return `<tr><td>${formatDate(getTransactionEffectiveDate(transaction))}</td><td><span translate="no">${escapeHtml(asset?.instrumentName || "—")}</span></td><td>${escapeHtml(transaction.type)}</td><td>${transaction.quantity ?? "—"}</td><td>${money(transaction.amount, transaction.currency || asset?.currency)}</td><td></td></tr>`;
   }).join("") : '<tr><td colspan="6" class="empty-state">No matching transactions.</td></tr>';
 }

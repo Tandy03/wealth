@@ -20,11 +20,12 @@ Writes update caller sync metadata only after a successful atomic commit. Tempor
 
 ## Frontend
 
-- `api.js`: transport wrappers and selection of desktop or mobile API.
+- `state-store.js`: validated document actions, selectors and subscriptions; `state.js` supplies initial UI state and the compatibility alias.
+- `api.js`: thin facade selecting `api/desktop.js` or `api/mobile.js` at call time; `api/fetchers.js` owns HTTP response/error handling.
 - `data-loader.js`: data loading, historical exchange-rate cache and benchmark loading.
-- `app.js`: initialization, application event listeners and render orchestration.
+- `app.js`: bootstrap and loading orchestration. `controllers/` owns section interactions, render orchestration and persistence actions.
 - `forms/`: collect input, invoke services/API and handle feedback.
-- `renderers/`: display data and calculated results.
+- `renderers/`: display explicit state snapshots without API requests or financial mutations. `views/` contains reusable HTML templates.
 - `charts/`: chart configuration and lifecycle.
 - `models.js`: compose DOM-free analytics against the application's state.
 

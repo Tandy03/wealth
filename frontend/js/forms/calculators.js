@@ -1,3 +1,5 @@
+(function () {
+const state = stateStore.getState();
 // forms/calculators.js
 function setupProfitCalculator() {
   const calculateButton = document.querySelector("#calculate-profit");
@@ -40,16 +42,16 @@ function setupProfitCalculator() {
   const allocationMode = document.querySelector("#asset-allocation-mode");
 
   if (from) {
-    from.addEventListener("change", renderProfitCalculator);
+    from.addEventListener("change", () => renderProfitCalculator());
   }
 
   if (to) {
-    to.addEventListener("change", renderProfitCalculator);
+    to.addEventListener("change", () => renderProfitCalculator());
   }
 
-  historyMode?.addEventListener("change", renderPortfolioHistoryChart);
-  allocationMode?.addEventListener("change", renderAssetAllocationChart);
-  document.querySelector("#asset-price-history-select")?.addEventListener("change", renderAssetPriceHistoryChart);
+  historyMode?.addEventListener("change", () => renderPortfolioHistoryChart());
+  allocationMode?.addEventListener("change", () => renderAssetAllocationChart());
+  document.querySelector("#asset-price-history-select")?.addEventListener("change", () => renderAssetPriceHistoryChart());
 }
 
 function updateRebalanceTotal() {
@@ -126,3 +128,5 @@ function setupRebalanceCalculator() {
     renderRebalanceCalculator();
   });
 }
+Object.assign(window, { setupProfitCalculator, updateRebalanceTotal, calculateRebalance, setupRebalanceCalculator });
+})();

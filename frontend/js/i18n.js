@@ -256,16 +256,321 @@
     ,["Year to date","Seit Jahresbeginn","Від початку року","Desde inicio de año","Od początku roku","Da inizio anno"]
     ,["Mon","Mo","Пн","Lun","Pon","Lun"],["Tue","Di","Вт","Mar","Wt","Mar"],["Wed","Mi","Ср","Mié","Śr","Mer"],["Thu","Do","Чт","Jue","Czw","Gio"],["Fri","Fr","Пт","Vie","Pt","Ven"],["Sat","Sa","Сб","Sáb","Sob","Sab"],["Sun","So","Нд","Dom","Niedz","Dom"]
   ];
+  rows.push(...`
+Income and realized profit by month|Erträge und realisierter Gewinn pro Monat|Дохід і реалізований прибуток за місяцями|Ingresos y beneficio realizado por mes|Dochód i zrealizowany zysk miesięcznie|Reddito e profitto realizzato mensili
+Realized and unrealized profit by week|Realisierter und unrealisierter Gewinn pro Woche|Реалізований і нереалізований прибуток за тижнями|Beneficio realizado y no realizado por semana|Zrealizowany i niezrealizowany zysk tygodniowo|Profitto realizzato e non realizzato settimanale
+Weekly profit. Gaps indicate missing historical data.|Wöchentlicher Gewinn. Lücken zeigen fehlende historische Daten.|Прибуток за тижнями. Пропуски означають відсутні історичні дані.|Beneficio semanal. Los huecos indican datos históricos ausentes.|Zysk tygodniowy. Luki oznaczają brak danych historycznych.|Profitto settimanale. Le lacune indicano dati storici mancanti.
+Purchases minus the cost of units sold, by month (UAH)|Käufe minus Anschaffungskosten verkaufter Einheiten pro Monat (UAH)|Купівлі мінус собівартість проданого за місяцями (грн)|Compras menos coste de unidades vendidas por mes (UAH)|Zakupy minus koszt sprzedanych jednostek miesięcznie (UAH)|Acquisti meno costo delle unità vendute per mese (UAH)
+Money earned|Einnahmen|Зароблено|Ingresos|Zarobki|Guadagni
+Asset price|Anlagepreis|Ціна активу|Precio del activo|Cena aktywa|Prezzo attività
+Price today|Heutiger Preis|Ціна сьогодні|Precio actual|Cena dzisiaj|Prezzo odierno
+Exchange rate|Wechselkurs|Курс валют|Tipo de cambio|Kurs walutowy|Tasso di cambio
+Official exchange rate|Offizieller Wechselkurs|Офіційний курс валют|Tipo de cambio oficial|Oficjalny kurs walutowy|Tasso di cambio ufficiale
+Annual CPI|Jährlicher VPI|Річний ІСЦ|IPC anual|Roczny CPI|IPC annuale
+Spending by category|Ausgaben nach Kategorie|Витрати за категоріями|Gastos por categoría|Wydatki według kategorii|Spese per categoria
+Other expenses|Sonstige Ausgaben|Інші витрати|Otros gastos|Inne wydatki|Altre spese
+Cumulative expenses|Kumulierte Ausgaben|Накопичені витрати|Gastos acumulados|Skumulowane wydatki|Spese cumulative
+Cumulative total|Kumulierte Summe|Накопичена сума|Total acumulado|Suma skumulowana|Totale cumulativo
+Expenses excluding Tithe and Save+invest|Ausgaben ohne Zehnt und Sparen+investieren|Витрати без десятини й заощаджень+інвестицій|Gastos sin diezmo ni ahorro+inversión|Wydatki bez dziesięciny i oszczędności+inwestycji|Spese escluse decima e risparmio+investimenti
+Cumulative expenses excluding Tithe and Save+invest by day.|Kumulierte Ausgaben ohne Zehnt und Sparen+investieren pro Tag.|Накопичені витрати без десятини й заощаджень+інвестицій за днями.|Gastos acumulados sin diezmo ni ahorro+inversión por día.|Skumulowane wydatki bez dziesięciny i oszczędności+inwestycji według dni.|Spese cumulative escluse decima e risparmio+investimenti per giorno.
+Monthly budget usage|Monatliche Budgetnutzung|Використання місячного бюджету|Uso del presupuesto mensual|Wykorzystanie budżetu miesięcznego|Utilizzo del budget mensile
+Total to invest|Gesamtinvestition|Сума для інвестування|Total a invertir|Suma do zainwestowania|Totale da investire
+Compare with S&P 500|Mit S&P 500 vergleichen|Порівняти з S&P 500|Comparar con S&P 500|Porównaj z S&P 500|Confronta con S&P 500
+Unavailable|Nicht verfügbar|Недоступно|No disponible|Niedostępne|Non disponibile
+Insufficient positive return|Unzureichende positive Rendite|Недостатня додатна дохідність|Rentabilidad positiva insuficiente|Niewystarczająca dodatnia stopa zwrotu|Rendimento positivo insufficiente
+Average monthly profit: insufficient history|Durchschnittlicher Monatsgewinn: unzureichende Historie|Середній місячний прибуток: недостатньо історії|Beneficio mensual medio: historial insuficiente|Średni miesięczny zysk: za mało danych historycznych|Profitto mensile medio: storico insufficiente
+No active assets.|Keine aktiven Anlagen.|Активних активів немає.|No hay activos vigentes.|Brak aktywnych aktywów.|Nessuna attività attiva.
+No active portfolio assets|Keine aktiven Portfolioanlagen|Немає активних активів у портфелі|No hay activos vigentes en la cartera|Brak aktywnych aktywów w portfelu|Nessuna attività attiva in portafoglio
+No upcoming payments.|Keine bevorstehenden Zahlungen.|Майбутніх виплат немає.|No hay pagos próximos.|Brak nadchodzących płatności.|Nessun pagamento in arrivo.
+No upcoming loan payments.|Keine bevorstehenden Kreditraten.|Майбутніх платежів за позиками немає.|No hay pagos de préstamos próximos.|Brak nadchodzących spłat pożyczek.|Nessuna rata in arrivo.
+No current holdings.|Keine aktuellen Positionen.|Поточних позицій немає.|No hay posiciones actuales.|Brak bieżących pozycji.|Nessuna posizione corrente.
+No available holdings found.|Keine verfügbaren Positionen gefunden.|Доступних позицій не знайдено.|No se encontraron posiciones disponibles.|Nie znaleziono dostępnych pozycji.|Nessuna posizione disponibile trovata.
+No matching transactions.|Keine passenden Transaktionen.|Відповідних транзакцій немає.|No hay transacciones coincidentes.|Brak pasujących transakcji.|Nessuna transazione corrispondente.
+No expenses for this month.|Keine Ausgaben für diesen Monat.|Цього місяця витрат немає.|No hay gastos este mes.|Brak wydatków w tym miesiącu.|Nessuna spesa questo mese.
+No recorded expenses this month.|Keine erfassten Ausgaben diesen Monat.|Цього місяця немає записаних витрат.|No hay gastos registrados este mes.|Brak zapisanych wydatków w tym miesiącu.|Nessuna spesa registrata questo mese.
+No profit data for selected period.|Keine Gewinndaten für diesen Zeitraum.|Немає даних про прибуток за вибраний період.|No hay datos de beneficio para este período.|Brak danych o zysku za wybrany okres.|Nessun dato sui profitti per il periodo scelto.
+No prices are available for this period.|Keine Preise für diesen Zeitraum verfügbar.|Немає цін за цей період.|No hay precios para este período.|Brak cen za ten okres.|Nessun prezzo disponibile per questo periodo.
+No current market price is available.|Kein aktueller Marktpreis verfügbar.|Поточна ринкова ціна недоступна.|No hay precio de mercado actual.|Bieżąca cena rynkowa jest niedostępna.|Prezzo di mercato corrente non disponibile.
+No policy-rate data returned|Keine Leitzinsdaten erhalten|Немає даних про облікову ставку|No se recibieron datos de la tasa oficial|Brak danych o stopie referencyjnej|Nessun dato sul tasso ufficiale ricevuto
+No purchase|Kein Kauf|Немає купівлі|Sin compra|Brak zakupu|Nessun acquisto
+No instrument|Kein Instrument|Без інструмента|Sin instrumento|Bez instrumentu|Nessuno strumento
+Buy holding|Position kaufen|Купити позицію|Comprar posición|Kup pozycję|Acquista posizione
+Edit holding|Position bearbeiten|Редагувати позицію|Editar posición|Edytuj pozycję|Modifica posizione
+Edit asset|Anlage bearbeiten|Редагувати актив|Editar activo|Edytuj aktywo|Modifica attività
+Edit expense|Ausgabe bearbeiten|Редагувати витрату|Editar gasto|Edytuj wydatek|Modifica spesa
+Edit loan|Kredit bearbeiten|Редагувати позику|Editar préstamo|Edytuj pożyczkę|Modifica prestito
+Delete loan|Kredit löschen|Видалити позику|Eliminar préstamo|Usuń pożyczkę|Elimina prestito
+Delete note|Notiz löschen|Видалити нотатку|Eliminar nota|Usuń notatkę|Elimina nota
+Remove|Entfernen|Прибрати|Quitar|Usuń|Rimuovi
+Save changes|Änderungen speichern|Зберегти зміни|Guardar cambios|Zapisz zmiany|Salva modifiche
+Saving...|Speichern…|Збереження…|Guardando…|Zapisywanie…|Salvataggio…
+Saving changes...|Änderungen speichern…|Збереження змін…|Guardando cambios…|Zapisywanie zmian…|Salvataggio modifiche…
+Selling...|Verkaufen…|Продаж…|Vendiendo…|Sprzedaż…|Vendita…
+Syncing...|Synchronisierung…|Синхронізація…|Sincronizando…|Synchronizacja…|Sincronizzazione…
+Mark as received|Als erhalten markieren|Позначити як отримане|Marcar como recibido|Oznacz jako otrzymane|Segna come ricevuto
+✓ Payment received|✓ Zahlung erhalten|✓ Виплату отримано|✓ Pago recibido|✓ Płatność otrzymana|✓ Pagamento ricevuto
+Sale successfully recorded.|Verkauf erfolgreich erfasst.|Продаж успішно записано.|Venta registrada.|Sprzedaż zapisana.|Vendita registrata.
+Pending upload|Upload ausstehend|Очікує вивантаження|Carga pendiente|Oczekuje na przesłanie|Caricamento in attesa
+Connected|Verbunden|Підключено|Conectado|Połączono|Connesso
+Offline|Offline|Без з’єднання|Sin conexión|Bez połączenia|Non connesso
+Google Drive: Offline|Google Drive: Offline|Google Drive: без з’єднання|Google Drive: sin conexión|Google Drive: bez połączenia|Google Drive: non connesso
+Status|Status|Статус|Estado|Stan|Stato
+Please confirm|Bitte bestätigen|Підтвердьте|Confirma|Potwierdź|Conferma
+Confirm deletion|Löschen bestätigen|Підтвердження видалення|Confirmar eliminación|Potwierdź usunięcie|Conferma eliminazione
+Delete this expense?|Diese Ausgabe löschen?|Видалити цю витрату?|¿Eliminar este gasto?|Usunąć ten wydatek?|Eliminare questa spesa?
+Delete this holding and all related records?|Diese Position und alle zugehörigen Einträge löschen?|Видалити цю позицію та всі пов’язані записи?|¿Eliminar esta posición y sus registros?|Usunąć tę pozycję i powiązane wpisy?|Eliminare questa posizione e tutti i dati collegati?
+Delete this loan and its repayment history?|Diesen Kredit und seinen Rückzahlungsverlauf löschen?|Видалити цю позику та історію погашення?|¿Eliminar este préstamo y su historial de pagos?|Usunąć tę pożyczkę i historię spłat?|Eliminare questo prestito e lo storico dei rimborsi?
+Biometric authentication is not available on this device|Biometrische Authentifizierung auf diesem Gerät nicht verfügbar|Біометрична автентифікація недоступна на цьому пристрої|La autenticación biométrica no está disponible en este dispositivo|Uwierzytelnianie biometryczne jest niedostępne na tym urządzeniu|Autenticazione biometrica non disponibile su questo dispositivo
+Biometric settings are unavailable|Biometrische Einstellungen nicht verfügbar|Біометричні налаштування недоступні|Ajustes biométricos no disponibles|Ustawienia biometryczne są niedostępne|Impostazioni biometriche non disponibili
+Log out is not available yet.|Abmelden ist noch nicht verfügbar.|Вихід ще недоступний.|Cerrar sesión aún no está disponible.|Wylogowanie jest jeszcze niedostępne.|La disconnessione non è ancora disponibile.
+Crypto exchange|Kryptobörse|Криптобіржа|Bolsa de criptomonedas|Giełda kryptowalut|Exchange di criptovalute
+New instrument...|Neues Instrument…|Новий інструмент…|Nuevo instrumento…|Nowy instrument…|Nuovo strumento…
+Bank, broker, exchange...|Bank, Broker, Börse…|Банк, брокер, біржа…|Banco, bróker, bolsa…|Bank, broker, giełda…|Banca, broker, borsa…
+Add a note for this month|Notiz für diesen Monat hinzufügen|Додайте нотатку на цей місяць|Añadir nota para este mes|Dodaj notatkę na ten miesiąc|Aggiungi nota per questo mese
+Add an asset to calculate a rebalance.|Anlage hinzufügen, um die Neugewichtung zu berechnen.|Додайте актив для розрахунку ребалансу.|Añade un activo para calcular el reequilibrio.|Dodaj aktywo, aby obliczyć rebalans.|Aggiungi un'attività per calcolare il ribilanciamento.
+Choose a valid custom date range.|Gültigen Datumsbereich wählen.|Виберіть коректний діапазон дат.|Elige un intervalo de fechas válido.|Wybierz poprawny zakres dat.|Scegli un intervallo di date valido.
+e.g. Buy Inzhur REIT for 20 000 ₴|z. B. Inzhur REIT für 20 000 ₴ kaufen|напр. Купити Inzhur REIT на 20 000 ₴|p. ej. Comprar Inzhur REIT por 20 000 ₴|np. Kup Inzhur REIT za 20 000 ₴|es. Acquista Inzhur REIT per 20 000 ₴
+e.g. OVDP 236624|z. B. OVDP 236624|напр. ОВДП 236624|p. ej. OVDP 236624|np. OVDP 236624|es. OVDP 236624
+e.g. VWCE ETF|z. B. VWCE ETF|напр. VWCE ETF|p. ej. VWCE ETF|np. VWCE ETF|es. VWCE ETF
+e.g. VWCE or AAPL|z. B. VWCE oder AAPL|напр. VWCE або AAPL|p. ej. VWCE o AAPL|np. VWCE lub AAPL|es. VWCE o AAPL
+e.g. USDT or BTC|z. B. USDT oder BTC|напр. USDT або BTC|p. ej. USDT o BTC|np. USDT lub BTC|es. USDT o BTC
+Type USD, EUR, AAPL…|USD, EUR, AAPL eingeben…|Введіть USD, EUR, AAPL…|Escribe USD, EUR, AAPL…|Wpisz USD, EUR, AAPL…|Digita USD, EUR, AAPL…
+Stock / ETF|Aktie / ETF|Акція / ETF|Acción / ETF|Akcja / ETF|Azione / ETF
+Security|Wertpapier|Цінний папір|Valor|Papier wartościowy|Titolo
+cached|zwischengespeichert|з кешу|en caché|z pamięci podręcznej|dalla cache
+latest|aktuell|останній|último|najnowszy|ultimo
+State Statistics Service of Ukraine|Staatlicher Statistikdienst der Ukraine|Державна служба статистики України|Servicio Estatal de Estadística de Ucrania|Państwowa Służba Statystyki Ukrainy|Servizio Statistico Statale dell'Ucraina
+Canadian dollar|Kanadischer Dollar|Канадський долар|Dólar canadiense|Dolar kanadyjski|Dollaro canadese
+Czech koruna|Tschechische Krone|Чеська крона|Corona checa|Korona czeska|Corona ceca
+Japanese yen|Japanischer Yen|Японська єна|Yen japonés|Jen japoński|Yen giapponese
+Polish zloty|Polnischer Zloty|Польський злотий|Zloty polaco|Złoty polski|Zloty polacco
+Pound sterling|Pfund Sterling|Фунт стерлінгів|Libra esterlina|Funt szterling|Sterlina britannica
+Swedish krona|Schwedische Krone|Шведська крона|Corona sueca|Korona szwedzka|Corona svedese
+Swiss franc|Schweizer Franken|Швейцарський франк|Franco suizo|Frank szwajcarski|Franco svizzero
+YTD|Seit Jahresbeginn|Від початку року|Desde inicio de año|Od początku roku|Da inizio anno
+OVDP|Ukrainische Staatsanleihen|ОВДП|Bonos del Estado ucraniano|Ukraińskie obligacje skarbowe|Titoli di Stato ucraini
+APR, %|Jahreszins, %|Річна ставка, %|Tasa anual, %|Roczna stopa, %|Tasso annuo, %
+NovaPay bond|NovaPay-Anleihe|Облігація NovaPay|Bono NovaPay|Obligacja NovaPay|Obbligazione NovaPay
+NovaPay fixed payout|Feste NovaPay-Auszahlung|Фіксована виплата NovaPay|Pago fijo NovaPay|Stała wypłata NovaPay|Pagamento fisso NovaPay
+Asset transactions|Anlagetransaktionen|Транзакції активу|Transacciones del activo|Transakcje aktywa|Transazioni attività
+Application section|Anwendungsbereich|Розділ застосунку|Sección de la aplicación|Sekcja aplikacji|Sezione applicazione
+Asset form|Anlageformular|Форма активу|Formulario de activo|Formularz aktywa|Modulo attività
+Buy form|Kaufformular|Форма купівлі|Formulario de compra|Formularz zakupu|Modulo acquisto
+Sale form|Verkaufsformular|Форма продажу|Formulario de venta|Formularz sprzedaży|Modulo vendita
+Note form|Notizformular|Форма нотатки|Formulario de nota|Formularz notatki|Modulo nota
+Event modal|Ereignisdialog|Вікно події|Diálogo de evento|Okno wydarzenia|Finestra evento
+Notice modal|Mitteilungsdialog|Вікно повідомлення|Diálogo de aviso|Okno powiadomienia|Finestra avviso
+Modal backdrop|Dialoghintergrund|Тло вікна|Fondo del diálogo|Tło okna|Sfondo finestra
+Holding selection|Positionsauswahl|Вибір позиції|Selección de posición|Wybór pozycji|Selezione posizione
+Chart period|Diagrammzeitraum|Період відображення|Período del gráfico|Okres wykresu|Periodo del grafico
+Historical market price chart|Historischer Marktpreis|Історія ринкової ціни|Historial de precios de mercado|Historia cen rynkowych|Storico prezzi di mercato
+Portfolio sort|Portfoliosortierung|Сортування портфеля|Orden de cartera|Sortowanie portfela|Ordinamento portafoglio
+Profit calculator|Gewinnrechner|Калькулятор прибутку|Calculadora de beneficio|Kalkulator zysku|Calcolatore profitto
+Loan repayment|Kreditrückzahlung|Погашення позики|Reembolso de préstamo|Spłata pożyczki|Rimborso prestito
+ASSET|ANLAGE|АКТИВ|ACTIVO|AKTYWO|ATTIVITÀ
+AVAILABLE|VERFÜGBAR|ДОСТУПНО|DISPONIBLE|DOSTĘPNE|DISPONIBILE
+CALENDAR|KALENDER|КАЛЕНДАР|CALENDARIO|KALENDARZ|CALENDARIO
+CALENDAR EVENT|KALENDEREREIGNIS|ПОДІЯ КАЛЕНДАРЯ|EVENTO DEL CALENDARIO|WYDARZENIE KALENDARZA|EVENTO CALENDARIO
+MARKET|MARKT|РИНОК|MERCADO|RYNEK|MERCATO
+PORTFOLIO|PORTFOLIO|ПОРТФЕЛЬ|CARTERA|PORTFEL|PORTAFOGLIO
+REBALANCE|NEUGEWICHTUNG|РЕБАЛАНС|REEQUILIBRIO|REBALANS|RIBILANCIAMENTO
+TRANSACTION|TRANSAKTION|ТРАНЗАКЦІЯ|TRANSACCIÓN|TRANSAKCJA|TRANSAZIONE
+WALLET|HAUSHALT|ГАМАНЕЦЬ|CARTERA|PORTFEL|PORTAFOGLIO
+  `.trim().split('\n').map((line) => line.trim().split('|')));
+  rows.push(...`
+Asset sync|Anlagensynchronisierung|Синхронізація активів|Sincronización de activos|Synchronizacja aktywów|Sincronizzazione attività
+Conflict detected|Konflikt erkannt|Виявлено конфлікт|Conflicto detectado|Wykryto konflikt|Conflitto rilevato
+Google Drive backup created.|Google Drive-Sicherung erstellt.|Резервну копію в Google Drive створено.|Copia de seguridad creada en Google Drive.|Utworzono kopię zapasową w Google Drive.|Backup creato su Google Drive.
+Google Drive operation failed.|Google Drive-Vorgang fehlgeschlagen.|Операція Google Drive не вдалася.|Falló la operación de Google Drive.|Operacja Google Drive nie powiodła się.|Operazione Google Drive non riuscita.
+Google Drive synchronization failed.|Google Drive-Synchronisierung fehlgeschlagen.|Синхронізація Google Drive не вдалася.|Falló la sincronización de Google Drive.|Synchronizacja Google Drive nie powiodła się.|Sincronizzazione Google Drive non riuscita.
+Google account changed during synchronization. Reconnect and retry.|Google-Konto während der Synchronisierung geändert. Erneut verbinden und versuchen.|Обліковий запис Google змінився під час синхронізації. Перепідключіться й повторіть.|La cuenta de Google cambió durante la sincronización. Reconecta y reintenta.|Konto Google zmieniło się podczas synchronizacji. Połącz ponownie i spróbuj jeszcze raz.|Account Google cambiato durante la sincronizzazione. Riconnettiti e riprova.
+Select the Google account whose portfolio you want to open.|Google-Konto auswählen, dessen Portfolio geöffnet werden soll.|Виберіть обліковий запис Google, портфель якого хочете відкрити.|Selecciona la cuenta de Google cuya cartera quieres abrir.|Wybierz konto Google, którego portfel chcesz otworzyć.|Seleziona l'account Google del portafoglio da aprire.
+Disconnect the current Google account? You will choose an account when opening your portfolio again.|Aktuelles Google-Konto trennen? Beim nächsten Öffnen des Portfolios wählen Sie ein Konto.|Від’єднати поточний обліковий запис Google? Під час наступного відкриття портфеля ви виберете обліковий запис.|¿Desconectar la cuenta actual de Google? Elegirás una cuenta al volver a abrir tu cartera.|Odłączyć bieżące konto Google? Wybierzesz konto przy ponownym otwarciu portfela.|Disconnettere l'account Google corrente? Sceglierai un account alla prossima apertura del portafoglio.
+Disconnect the current Google authorization? You will need to run npm run google-auth again.|Aktuelle Google-Autorisierung trennen? npm run google-auth muss erneut ausgeführt werden.|Від’єднати поточну авторизацію Google? Потрібно буде знову виконати npm run google-auth.|¿Desconectar la autorización de Google? Tendrás que ejecutar npm run google-auth de nuevo.|Odłączyć autoryzację Google? Trzeba będzie ponownie uruchomić npm run google-auth.|Disconnettere l'autorizzazione Google? Dovrai eseguire di nuovo npm run google-auth.
+Run npm run google-auth in the project console, then restart the server.|npm run google-auth in der Projektkonsole ausführen und den Server neu starten.|Виконайте npm run google-auth у консолі проєкту, потім перезапустіть сервер.|Ejecuta npm run google-auth en la consola del proyecto y reinicia el servidor.|Uruchom npm run google-auth w konsoli projektu i zrestartuj serwer.|Esegui npm run google-auth nella console del progetto, poi riavvia il server.
+Download from Drive and replace the local data file? A backup of the local data will be created first.|Von Drive herunterladen und lokale Daten ersetzen? Zuerst wird eine lokale Sicherung erstellt.|Завантажити з Drive й замінити локальний файл даних? Спочатку буде створено резервну копію локальних даних.|¿Descargar de Drive y reemplazar los datos locales? Primero se creará una copia de seguridad local.|Pobrać z Drive i zastąpić dane lokalne? Najpierw powstanie lokalna kopia zapasowa.|Scaricare da Drive e sostituire i dati locali? Prima verrà creato un backup locale.
+Upload local data and replace fino-data.json on Google Drive? A backup of the Drive data will be created first.|Lokale Daten hochladen und fino-data.json auf Google Drive ersetzen? Zuerst wird eine Drive-Sicherung erstellt.|Вивантажити локальні дані й замінити fino-data.json у Google Drive? Спочатку буде створено резервну копію даних Drive.|¿Subir datos locales y reemplazar fino-data.json en Google Drive? Primero se creará una copia de los datos de Drive.|Przesłać dane lokalne i zastąpić fino-data.json w Google Drive? Najpierw powstanie kopia danych Drive.|Caricare i dati locali e sostituire fino-data.json su Google Drive? Prima verrà creato un backup dei dati Drive.
+Could not connect to the local API. Start the server with npm run dev.|Keine Verbindung zur lokalen API. Server mit npm run dev starten.|Не вдалося підключитися до локального API. Запустіть сервер командою npm run dev.|No se pudo conectar con la API local. Inicia el servidor con npm run dev.|Nie udało się połączyć z lokalnym API. Uruchom serwer przez npm run dev.|Impossibile connettersi all'API locale. Avvia il server con npm run dev.
+Could not load your local portfolio. Reconnect Google Drive or restore a backup.|Lokales Portfolio konnte nicht geladen werden. Google Drive erneut verbinden oder Sicherung wiederherstellen.|Не вдалося завантажити локальний портфель. Перепідключіть Google Drive або відновіть резервну копію.|No se pudo cargar la cartera local. Reconecta Google Drive o restaura una copia.|Nie udało się wczytać lokalnego portfela. Połącz ponownie Google Drive lub przywróć kopię.|Impossibile caricare il portafoglio locale. Riconnetti Google Drive o ripristina un backup.
+Local portfolio data is corrupted. Restore a backup before making changes.|Lokale Portfoliodaten beschädigt. Vor Änderungen eine Sicherung wiederherstellen.|Локальні дані портфеля пошкоджено. Відновіть резервну копію перед змінами.|Los datos locales están dañados. Restaura una copia antes de modificarlos.|Lokalne dane portfela są uszkodzone. Przywróć kopię przed wprowadzeniem zmian.|Dati locali del portafoglio danneggiati. Ripristina un backup prima di modificarli.
+Could not save your changes.|Änderungen konnten nicht gespeichert werden.|Не вдалося зберегти зміни.|No se pudieron guardar los cambios.|Nie udało się zapisać zmian.|Impossibile salvare le modifiche.
+Could not synchronize assets.|Anlagen konnten nicht synchronisiert werden.|Не вдалося синхронізувати активи.|No se pudieron sincronizar los activos.|Nie udało się zsynchronizować aktywów.|Impossibile sincronizzare le attività.
+Official macroeconomic data is temporarily unavailable.|Offizielle Makrodaten vorübergehend nicht verfügbar.|Офіційні макроекономічні дані тимчасово недоступні.|Los datos macroeconómicos oficiales no están disponibles temporalmente.|Oficjalne dane makroekonomiczne są chwilowo niedostępne.|Dati macroeconomici ufficiali temporaneamente non disponibili.
+The backend is running an older version. Restart the server and try again.|Server verwendet eine ältere Version. Neu starten und erneut versuchen.|Сервер працює на старішій версії. Перезапустіть його й повторіть.|El servidor usa una versión anterior. Reinícialo y reintenta.|Serwer używa starszej wersji. Zrestartuj go i spróbuj ponownie.|Il server usa una versione precedente. Riavvialo e riprova.
+The market-data proxy is not configured in this APK.|Marktdaten-Proxy in dieser APK nicht konfiguriert.|Проксі ринкових даних не налаштовано в цьому APK.|El proxy de datos de mercado no está configurado en este APK.|Proxy danych rynkowych nie jest skonfigurowane w tym APK.|Proxy dati di mercato non configurato in questo APK.
+This asset cannot be withdrawn before maturity.|Diese Anlage kann nicht vor Fälligkeit ausgezahlt werden.|Цей актив не можна зняти до погашення.|Este activo no se puede retirar antes del vencimiento.|Tego aktywa nie można wypłacić przed terminem wykupu.|Questa attività non può essere ritirata prima della scadenza.
+Only matching holdings can be merged.|Nur übereinstimmende Positionen können zusammengeführt werden.|Об’єднати можна лише відповідні позиції.|Solo se pueden fusionar posiciones coincidentes.|Można łączyć tylko zgodne pozycje.|Si possono unire solo posizioni corrispondenti.
+Only matching holdings can be sold together.|Nur übereinstimmende Positionen können gemeinsam verkauft werden.|Разом можна продати лише відповідні позиції.|Solo se pueden vender juntas posiciones coincidentes.|Można sprzedawać razem tylko zgodne pozycje.|Si possono vendere insieme solo posizioni corrispondenti.
+Target shares must total 100% and stay between 0 and 100.|Zielanteile müssen zusammen 100% ergeben und zwischen 0 und 100 liegen.|Цільові частки мають становити разом 100% і бути в межах від 0 до 100.|Las proporciones objetivo deben sumar 100% y estar entre 0 y 100.|Docelowe udziały muszą sumować się do 100% i mieścić się między 0 a 100.|Le quote obiettivo devono totalizzare il 100% e restare tra 0 e 100.
+Quantity must be a whole number.|Menge muss eine ganze Zahl sein.|Кількість має бути цілим числом.|La cantidad debe ser un número entero.|Ilość musi być liczbą całkowitą.|La quantità deve essere un numero intero.
+Quantity must be a whole number greater than zero.|Menge muss eine ganze Zahl größer als null sein.|Кількість має бути цілим числом більшим за нуль.|La cantidad debe ser un entero mayor que cero.|Ilość musi być liczbą całkowitą większą od zera.|La quantità deve essere un intero maggiore di zero.
+Quantity must be greater than zero and use the supported precision for this asset.|Menge muss größer als null sein und die unterstützte Genauigkeit verwenden.|Кількість має бути більшою за нуль і мати підтримувану для цього активу точність.|La cantidad debe ser mayor que cero y usar la precisión admitida para este activo.|Ilość musi być większa od zera i używać obsługiwanej precyzji dla tego aktywa.|La quantità deve essere maggiore di zero e usare la precisione supportata per questa attività.
+Currency must match the asset.|Währung muss zur Anlage passen.|Валюта має відповідати активу.|La moneda debe coincidir con el activo.|Waluta musi odpowiadać aktywu.|La valuta deve corrispondere all'attività.
+Asset not found.|Anlage nicht gefunden.|Актив не знайдено.|Activo no encontrado.|Nie znaleziono aktywa.|Attività non trovata.
+Holding not found.|Position nicht gefunden.|Позицію не знайдено.|Posición no encontrada.|Nie znaleziono pozycji.|Posizione non trovata.
+Loan not found.|Kredit nicht gefunden.|Позику не знайдено.|Préstamo no encontrado.|Nie znaleziono pożyczki.|Prestito non trovato.
+Payment not found.|Zahlung nicht gefunden.|Виплату не знайдено.|Pago no encontrado.|Nie znaleziono płatności.|Pagamento non trovato.
+Asset was not selected.|Keine Anlage ausgewählt.|Актив не вибрано.|No se seleccionó un activo.|Nie wybrano aktywa.|Nessuna attività selezionata.
+Please select an asset.|Bitte Anlage auswählen.|Виберіть актив.|Selecciona un activo.|Wybierz aktywo.|Seleziona un'attività.
+Please select a holding.|Bitte Position auswählen.|Виберіть позицію.|Selecciona una posición.|Wybierz pozycję.|Seleziona una posizione.
+Please enter valid asset data.|Bitte gültige Anlagedaten eingeben.|Введіть коректні дані активу.|Introduce datos válidos del activo.|Wprowadź poprawne dane aktywa.|Inserisci dati validi dell'attività.
+Cannot edit missing asset.|Fehlende Anlage kann nicht bearbeitet werden.|Неможливо редагувати відсутній актив.|No se puede editar un activo inexistente.|Nie można edytować nieistniejącego aktywa.|Impossibile modificare un'attività inesistente.
+Add at least one coupon.|Mindestens einen Kupon hinzufügen.|Додайте принаймні один купон.|Añade al menos un cupón.|Dodaj co najmniej jeden kupon.|Aggiungi almeno una cedola.
+Enter a new category name.|Neuen Kategorienamen eingeben.|Введіть назву нової категорії.|Introduce un nombre de categoría.|Wprowadź nazwę nowej kategorii.|Inserisci il nome della nuova categoria.
+Enter a purchase date.|Kaufdatum eingeben.|Введіть дату купівлі.|Introduce la fecha de compra.|Wprowadź datę zakupu.|Inserisci la data di acquisto.
+Enter a valid APR.|Gültigen Jahreszins eingeben.|Введіть коректну річну ставку.|Introduce una tasa anual válida.|Wprowadź poprawną roczną stopę.|Inserisci un tasso annuo valido.
+Enter a valid purchase price.|Gültigen Kaufpreis eingeben.|Введіть коректну ціну купівлі.|Introduce un precio de compra válido.|Wprowadź poprawną cenę zakupu.|Inserisci un prezzo di acquisto valido.
+Enter a valid quantity.|Gültige Menge eingeben.|Введіть коректну кількість.|Introduce una cantidad válida.|Wprowadź poprawną ilość.|Inserisci una quantità valida.
+Enter a valid repayment amount.|Gültigen Rückzahlungsbetrag eingeben.|Введіть коректну суму погашення.|Introduce un importe de reembolso válido.|Wprowadź poprawną kwotę spłaty.|Inserisci un importo di rimborso valido.
+Enter a valid sale price.|Gültigen Verkaufspreis eingeben.|Введіть коректну ціну продажу.|Introduce un precio de venta válido.|Wprowadź poprawną cenę sprzedaży.|Inserisci un prezzo di vendita valido.
+Enter dividend per unit.|Dividende je Einheit eingeben.|Введіть дивіденд за одиницю.|Introduce el dividendo por unidad.|Wprowadź dywidendę na jednostkę.|Inserisci il dividendo per unità.
+Enter first dividend date.|Erstes Dividendendatum eingeben.|Введіть дату першого дивіденду.|Introduce la fecha del primer dividendo.|Wprowadź datę pierwszej dywidendy.|Inserisci la data del primo dividendo.
+Enter maturity date.|Fälligkeitsdatum eingeben.|Введіть дату погашення.|Introduce la fecha de vencimiento.|Wprowadź datę wykupu.|Inserisci la data di scadenza.
+Select sale date.|Verkaufsdatum auswählen.|Виберіть дату продажу.|Selecciona la fecha de venta.|Wybierz datę sprzedaży.|Seleziona la data di vendita.
+Request failed.|Anfrage fehlgeschlagen.|Запит не вдався.|Falló la solicitud.|Żądanie nie powiodło się.|Richiesta non riuscita.
+Invalid asset type.|Ungültiger Anlagetyp.|Некоректний тип активу.|Tipo de activo inválido.|Niepoprawny typ aktywa.|Tipo di attività non valido.
+Invalid portfolio|Ungültiges Portfolio|Некоректний портфель|Cartera inválida|Niepoprawny portfel|Portafoglio non valido
+Invalid wallet|Ungültiger Haushalt|Некоректний гаманець|Cartera inválida|Niepoprawny portfel|Portafoglio non valido
+Invalid wallet month.|Ungültiger Haushaltsmonat.|Некоректний місяць гаманця.|Mes de cartera inválido.|Niepoprawny miesiąc portfela.|Mese del portafoglio non valido.
+Invalid wallet months.|Ungültige Haushaltsmonate.|Некоректні місяці гаманця.|Meses de cartera inválidos.|Niepoprawne miesiące portfela.|Mesi del portafoglio non validi.
+Invalid sync metadata.|Ungültige Synchronisierungsmetadaten.|Некоректні метадані синхронізації.|Metadatos de sincronización inválidos.|Niepoprawne metadane synchronizacji.|Metadati di sincronizzazione non validi.
+Unsupported schemaVersion.|Nicht unterstützte Schemaversion.|Непідтримувана версія схеми даних.|Versión de esquema no admitida.|Nieobsługiwana wersja schematu.|Versione dello schema non supportata.
+Portfolio must contain an assets collection.|Portfolio muss eine Anlagensammlung enthalten.|Портфель має містити колекцію активів.|La cartera debe contener una colección de activos.|Portfel musi zawierać kolekcję aktywów.|Il portafoglio deve contenere una raccolta di attività.
+Binance API request failed|Binance-API-Anfrage fehlgeschlagen|Запит до API Binance не вдався|Falló la solicitud a la API de Binance|Żądanie API Binance nie powiodło się|Richiesta API Binance non riuscita
+Binance did not return a current bid/ask quote|Binance hat keinen aktuellen Geld-/Briefkurs geliefert|Binance не повернула поточні ціни купівлі/продажу|Binance no devolvió una cotización actual de compra/venta|Binance nie zwróciło bieżącej ceny kupna/sprzedaży|Binance non ha restituito una quotazione attuale di acquisto/vendita
+Inzhur API returned an invalid response.|Inzhur-API hat eine ungültige Antwort geliefert.|API Inzhur повернув некоректну відповідь.|La API de Inzhur devolvió una respuesta inválida.|API Inzhur zwróciło niepoprawną odpowiedź.|L'API Inzhur ha restituito una risposta non valida.
+Unsupported Frankfurter market ticker.|Nicht unterstützter Frankfurter-Marktticker.|Непідтримуваний ринковий тикер Frankfurter.|Ticker de mercado Frankfurter no admitido.|Nieobsługiwany ticker rynkowy Frankfurter.|Ticker di mercato Frankfurter non supportato.
+Asset modal or form was not found.|Anlagedialog oder Formular nicht gefunden.|Вікно або форму активу не знайдено.|No se encontró el diálogo o formulario de activo.|Nie znaleziono okna lub formularza aktywa.|Finestra o modulo attività non trovato.
+Buy more modal or form was not found.|Dialog oder Formular für Nachkauf nicht gefunden.|Вікно або форму докупівлі не знайдено.|No se encontró el diálogo o formulario de compra adicional.|Nie znaleziono okna lub formularza dokupienia.|Finestra o modulo di acquisto aggiuntivo non trovato.
+  `.trim().split('\n').map((line) => line.trim().split('|')));
+  rows.push(...`
+Received|Erhalten|Отримано|Recibido|Otrzymano|Ricevuto
+Drive backup folder creation failed|Drive-Sicherungsordner konnte nicht erstellt werden|Не вдалося створити папку резервних копій Drive|Falló la creación de la carpeta de copias Drive|Tworzenie folderu kopii Drive nie powiodło się|Creazione cartella backup Drive non riuscita
+Drive backup folder lookup failed|Drive-Sicherungsordner konnte nicht gefunden werden|Не вдалося знайти папку резервних копій Drive|Falló la búsqueda de la carpeta de copias Drive|Wyszukiwanie folderu kopii Drive nie powiodło się|Ricerca cartella backup Drive non riuscita
+Drive download failed|Drive-Download fehlgeschlagen|Завантаження з Drive не вдалося|Falló la descarga de Drive|Pobieranie z Drive nie powiodło się|Download da Drive non riuscito
+Drive file creation failed|Drive-Dateierstellung fehlgeschlagen|Не вдалося створити файл Drive|Falló la creación del archivo Drive|Tworzenie pliku Drive nie powiodło się|Creazione file Drive non riuscita
+Drive metadata lookup failed|Drive-Metadatenabfrage fehlgeschlagen|Не вдалося отримати метадані Drive|Falló la consulta de metadatos Drive|Odczyt metadanych Drive nie powiódł się|Lettura metadati Drive non riuscita
+Drive remote backup failed|Drive-Sicherung fehlgeschlagen|Резервне копіювання Drive не вдалося|Falló la copia remota de Drive|Zdalna kopia Drive nie powiodła się|Backup remoto Drive non riuscito
+Drive upload failed|Drive-Upload fehlgeschlagen|Вивантаження в Drive не вдалося|Falló la carga a Drive|Przesyłanie do Drive nie powiodło się|Caricamento su Drive non riuscito
+Unassigned|Nicht zugewiesen|Не призначено|Sin asignar|Nieprzypisane|Non assegnato
+Bank|Bank|Банк|Banco|Bank|Banca
+Broker|Broker|Брокер|Bróker|Broker|Broker
+Cash|Bargeld|Готівка|Efectivo|Gotówka|Contanti
+cash|Bargeld|Готівка|Efectivo|Gotówka|Contanti
+Authorization required|Autorisierung erforderlich|Потрібна авторизація|Se requiere autorización|Wymagana autoryzacja|Autorizzazione richiesta
+Offline — changes saved locally|Offline — Änderungen lokal gespeichert|Без з’єднання — зміни збережено локально|Sin conexión — cambios guardados localmente|Bez połączenia — zmiany zapisano lokalnie|Non connesso — modifiche salvate localmente
+e.g. 0.09|z. B. 0,09|напр. 0,09|p. ej. 0,09|np. 0,09|es. 0,09
+Mono|Monochrom|Монохромна|Monocromático|Monochromatyczny|Monocromatico
+Not enough units available.|Nicht genügend Einheiten verfügbar.|Недостатньо доступних одиниць.|No hay suficientes unidades disponibles.|Za mało dostępnych jednostek.|Unità disponibili insufficienti.
+Asset name is required.|Anlagename ist erforderlich.|Назва активу обов’язкова.|El nombre del activo es obligatorio.|Nazwa aktywa jest wymagana.|Il nome dell'attività è obbligatorio.
+Asset and note text are required.|Anlage und Notiztext sind erforderlich.|Актив і текст нотатки обов’язкові.|El activo y el texto de la nota son obligatorios.|Aktywo i tekst notatki są wymagane.|Attività e testo della nota sono obbligatori.
+Valid purchase date is required.|Gültiges Kaufdatum ist erforderlich.|Потрібна коректна дата купівлі.|Se requiere una fecha de compra válida.|Wymagana jest poprawna data zakupu.|È richiesta una data di acquisto valida.
+Valid maturityDate is required.|Gültiges Fälligkeitsdatum ist erforderlich.|Потрібна коректна дата погашення.|Se requiere una fecha de vencimiento válida.|Wymagana jest poprawna data wykupu.|È richiesta una data di scadenza valida.
+spent|ausgegeben|витрачено|gastado|wydano|speso
+of|von|із|de|z|di
+1D|1T|1Д|1D|1D|1G
+5D|5T|5Д|5D|5D|5G
+1M|1M|1М|1M|1M|1M
+6M|6M|6М|6M|6M|6M
+1Y|1J|1Р|1A|1R|1A
+5Y|5J|5Р|5A|5L|5A
+MAX|MAX.|МАКС.|MÁX.|MAKS.|MAX
+1day|1 Tag|1 день|1 día|1 dzień|1 giorno
+1week|1 Woche|1 тиждень|1 semana|1 tydzień|1 settimana
+1month|1 Monat|1 місяць|1 mes|1 miesiąc|1 mese
+5min|5 Min.|5 хв|5 min|5 min|5 min
+30min|30 Min.|30 хв|30 min|30 min|30 min
+stock|Aktie|Акція|Acción|Akcja|Azione
+currency|Währung|Валюта|Moneda|Waluta|Valuta
+index|Index|Індекс|Índice|Indeks|Indice
+Loan|Kredit|Позика|Préstamo|Pożyczka|Prestito
+Drive file creation returned no ID.|Drive-Dateierstellung lieferte keine ID.|Створення файлу Drive не повернуло ідентифікатор.|La creación de archivo Drive no devolvió un ID.|Tworzenie pliku Drive nie zwróciło identyfikatora.|La creazione del file Drive non ha restituito un ID.
+  `.trim().split('\n').map((line) => line.trim().split('|')));
+  rows.push(...`
+Invalid wallet data.|Ungültige Haushaltsdaten.|Некоректні дані гаманця.|Datos de cartera inválidos.|Niepoprawne dane portfela.|Dati del portafoglio non validi.
+Valid note date is required.|Gültiges Notizdatum ist erforderlich.|Потрібна коректна дата нотатки.|Se requiere una fecha válida para la nota.|Wymagana jest poprawna data notatki.|È richiesta una data valida per la nota.
+Dividend per unit must be greater than zero.|Dividende je Einheit muss größer als null sein.|Дивіденд за одиницю має бути більшим за нуль.|El dividendo por unidad debe ser mayor que cero.|Dywidenda na jednostkę musi być większa od zera.|Il dividendo per unità deve essere maggiore di zero.
+Valid first dividend date is required.|Gültiges erstes Dividendendatum ist erforderlich.|Потрібна коректна дата першого дивіденду.|Se requiere una fecha válida del primer dividendo.|Wymagana jest poprawna data pierwszej dywidendy.|È richiesta una data valida del primo dividendo.
+Valid maturity date is required.|Gültiges Fälligkeitsdatum ist erforderlich.|Потрібна коректна дата погашення.|Se requiere una fecha de vencimiento válida.|Wymagana jest poprawna data wykupu.|È richiesta una data di scadenza valida.
+At least one coupon is required.|Mindestens ein Kupon ist erforderlich.|Потрібен принаймні один купон.|Se requiere al menos un cupón.|Wymagany jest co najmniej jeden kupon.|È richiesta almeno una cedola.
+No valid coupons were provided.|Keine gültigen Kupons angegeben.|Коректних купонів не вказано.|No se proporcionaron cupones válidos.|Nie podano poprawnych kuponów.|Nessuna cedola valida fornita.
+At least one valid coupon is required.|Mindestens ein gültiger Kupon ist erforderlich.|Потрібен принаймні один коректний купон.|Se requiere al menos un cupón válido.|Wymagany jest co najmniej jeden poprawny kupon.|È richiesta almeno una cedola valida.
+NovaPay maturity date and payout are required.|NovaPay-Fälligkeitsdatum und Auszahlung sind erforderlich.|Дата погашення та виплата NovaPay обов’язкові.|La fecha de vencimiento y el pago NovaPay son obligatorios.|Data wykupu i wypłata NovaPay są wymagane.|Data di scadenza e pagamento NovaPay obbligatori.
+Deposit maturity date and annual rate are required.|Fälligkeitsdatum und Jahreszins der Einlage sind erforderlich.|Дата завершення депозиту й річна ставка обов’язкові.|La fecha de vencimiento y la tasa anual del depósito son obligatorias.|Data zapadalności lokaty i roczna stopa są wymagane.|Data di scadenza e tasso annuo del deposito obbligatori.
+Crypto Earn APR must be greater than zero.|Crypto Earn-Jahreszins muss größer als null sein.|Річна ставка Crypto Earn має бути більшою за нуль.|La tasa anual de Crypto Earn debe ser mayor que cero.|Roczna stopa Crypto Earn musi być większa od zera.|Il tasso annuo Crypto Earn deve essere maggiore di zero.
+At least two holdings are required to merge.|Zum Zusammenführen sind mindestens zwei Positionen erforderlich.|Для об’єднання потрібні принаймні дві позиції.|Se requieren al menos dos posiciones para fusionar.|Do połączenia wymagane są co najmniej dwie pozycje.|Servono almeno due posizioni da unire.
+Only the same asset on the same instrument can be merged.|Nur dieselbe Anlage beim selben Instrument kann zusammengeführt werden.|Об’єднати можна лише однаковий актив на одному інструменті.|Solo se puede fusionar el mismo activo en el mismo instrumento.|Można łączyć tylko to samo aktywo na tym samym instrumencie.|Si può unire solo la stessa attività sullo stesso strumento.
+One or more holdings were not found.|Eine oder mehrere Positionen nicht gefunden.|Одну або кілька позицій не знайдено.|No se encontraron una o más posiciones.|Nie znaleziono co najmniej jednej pozycji.|Una o più posizioni non trovate.
+Quantity must be greater than zero.|Menge muss größer als null sein.|Кількість має бути більшою за нуль.|La cantidad debe ser mayor que cero.|Ilość musi być większa od zera.|La quantità deve essere maggiore di zero.
+Sell price cannot be negative.|Verkaufspreis darf nicht negativ sein.|Ціна продажу не може бути від’ємною.|El precio de venta no puede ser negativo.|Cena sprzedaży nie może być ujemna.|Il prezzo di vendita non può essere negativo.
+Valid sell date is required.|Gültiges Verkaufsdatum ist erforderlich.|Потрібна коректна дата продажу.|Se requiere una fecha de venta válida.|Wymagana jest poprawna data sprzedaży.|È richiesta una data di vendita valida.
+Cannot sell {quantity} units; available: {available}.|{quantity} Einheiten können nicht verkauft werden; verfügbar: {available}.|Неможливо продати {quantity} од.; доступно: {available}.|No se pueden vender {quantity} unidades; disponibles: {available}.|Nie można sprzedać {quantity} jedn.; dostępne: {available}.|Impossibile vendere {quantity} unità; disponibili: {available}.
+Asset quantity cannot be less than already sold quantity ({value}).|Anlagemenge darf nicht kleiner als die bereits verkaufte Menge sein ({value}).|Кількість активу не може бути меншою за вже продану ({value}).|La cantidad del activo no puede ser menor que la ya vendida ({value}).|Ilość aktywa nie może być mniejsza niż już sprzedana ({value}).|La quantità dell'attività non può essere inferiore a quella già venduta ({value}).
+  `.trim().split('\n').map((line) => line.trim().split('|')));
+  const actions = `
+buy more asset|die Anlage nachzukaufen|докупити актив|comprar más del activo|dokupić aktywo|acquistare altre unità
+create asset|die Anlage zu erstellen|створити актив|crear el activo|utworzyć aktywo|creare l'attività
+create calendar note|die Kalendernotiz zu erstellen|створити нотатку календаря|crear la nota del calendario|utworzyć notatkę kalendarza|creare la nota del calendario
+create sale|den Verkauf zu erstellen|створити продаж|crear la venta|utworzyć sprzedaż|creare la vendita
+delete asset|die Anlage zu löschen|видалити актив|eliminar el activo|usunąć aktywo|eliminare l'attività
+delete holding|die Position zu löschen|видалити позицію|eliminar la posición|usunąć pozycję|eliminare la posizione
+load Frankfurter exchange-rate history|den Frankfurter-Wechselkursverlauf zu laden|завантажити історію курсів Frankfurter|cargar el historial de tipos de cambio de Frankfurter|wczytać historię kursów Frankfurter|caricare lo storico dei cambi Frankfurter
+load Google Drive status|den Google Drive-Status zu laden|завантажити статус Google Drive|cargar el estado de Google Drive|wczytać stan Google Drive|caricare lo stato Google Drive
+load NBU currencies|die NBU-Währungen zu laden|завантажити валюти НБУ|cargar las monedas del NBU|wczytać waluty NBU|caricare le valute NBU
+load NBU currency history|den NBU-Wechselkursverlauf zu laden|завантажити історію курсів НБУ|cargar el historial de monedas del NBU|wczytać historię kursów NBU|caricare lo storico delle valute NBU
+load NBU exchange rates|die NBU-Wechselkurse zu laden|завантажити курси НБУ|cargar los tipos de cambio del NBU|wczytać kursy NBU|caricare i cambi NBU
+load calendar notes|die Kalendernotizen zu laden|завантажити нотатки календаря|cargar las notas del calendario|wczytać notatki kalendarza|caricare le note del calendario
+load data|die Daten zu laden|завантажити дані|cargar los datos|wczytać dane|caricare i dati
+load index history from FRED|den Indexverlauf von FRED zu laden|завантажити історію індексу з FRED|cargar el historial del índice de FRED|wczytać historię indeksu z FRED|caricare lo storico dell'indice da FRED
+load macroeconomic data|die Makrodaten zu laden|завантажити макроекономічні дані|cargar los datos macroeconómicos|wczytać dane makroekonomiczne|caricare i dati macroeconomici
+load market prices|die Marktpreise zu laden|завантажити ринкові ціни|cargar los precios de mercado|wczytać ceny rynkowe|caricare i prezzi di mercato
+load payments|die Zahlungen zu laden|завантажити виплати|cargar los pagos|wczytać płatności|caricare i pagamenti
+load sales|die Verkäufe zu laden|завантажити продажі|cargar las ventas|wczytać sprzedaże|caricare le vendite
+load the Inzhur catalog|den Inzhur-Katalog zu laden|завантажити каталог Inzhur|cargar el catálogo de Inzhur|wczytać katalog Inzhur|caricare il catalogo Inzhur
+load the NBU key policy rate|den NBU-Leitzins zu laden|завантажити облікову ставку НБУ|cargar la tasa oficial del NBU|wczytać stopę referencyjną NBU|caricare il tasso ufficiale NBU
+load transactions|die Transaktionen zu laden|завантажити транзакції|cargar las transacciones|wczytać transakcje|caricare le transazioni
+mark payment as received|die Zahlung als erhalten zu markieren|позначити виплату як отриману|marcar el pago como recibido|oznaczyć płatność jako otrzymaną|segnare il pagamento come ricevuto
+merge duplicate holdings|doppelte Positionen zusammenzuführen|об’єднати дублікати позицій|fusionar posiciones duplicadas|połączyć zduplikowane pozycje|unire le posizioni duplicate
+record sale|den Verkauf zu erfassen|записати продаж|registrar la venta|zapisać sprzedaż|registrare la vendita
+save asset|die Anlage zu speichern|зберегти актив|guardar el activo|zapisać aktywo|salvare l'attività
+save expense|die Ausgabe zu speichern|зберегти витрату|guardar el gasto|zapisać wydatek|salvare la spesa
+save note|die Notiz zu speichern|зберегти нотатку|guardar la nota|zapisać notatkę|salvare la nota
+save wallet|den Haushalt zu speichern|зберегти гаманець|guardar la cartera|zapisać portfel|salvare il portafoglio
+synchronize Inzhur assets|die Inzhur-Anlagen zu synchronisieren|синхронізувати активи Inzhur|sincronizar los activos de Inzhur|zsynchronizować aktywa Inzhur|sincronizzare le attività Inzhur
+update asset|die Anlage zu aktualisieren|оновити актив|actualizar el activo|zaktualizować aktywo|aggiornare l'attività
+load GDP data|die BIP-Daten zu laden|завантажити дані ВВП|cargar los datos del PIB|wczytać dane PKB|caricare i dati PIL
+load NBU data|die NBU-Daten zu laden|завантажити дані НБУ|cargar los datos del NBU|wczytać dane NBU|caricare i dati NBU
+  `.trim().split('\n').map((line) => line.trim().split('|'));
+  actions.forEach((action) => ['Failed to ', 'Could not '].forEach((prefix) => rows.push([
+    `${prefix}${action[0]}.`, `Es ist nicht gelungen, ${action[1]}.`, `Не вдалося ${action[2]}.`,
+    `No se pudo ${action[3]}.`, `Nie udało się ${action[4]}.`, `Impossibile ${action[5]}.`
+  ])));
+  const templates = `
+Loading {value}…|{value} wird geladen…|Завантаження {value}…|Cargando {value}…|Ładowanie {value}…|Caricamento {value}…
+Buy {value}|Kaufen: {value}|Купити на {value}|Comprar por {value}|Kup za {value}|Acquista per {value}
+Expenses for {value}|Ausgaben für {value}|Витрати за {value}|Gastos de {value}|Wydatki za {value}|Spese per {value}
+Notes for {value}|Notizen für {value}|Нотатки за {value}|Notas de {value}|Notatki za {value}|Note di {value}
+{value} by month|{value} pro Monat|{value} за місяцями|{value} por mes|{value} miesięcznie|{value} per mese
+{value} remaining|{value} verbleibend|Залишилося {value}|Quedan {value}|Pozostało {value}|Restano {value}
++ {value} more|+ {value} weitere|+ ще {value}|+ {value} más|+ jeszcze {value}|+ altri {value}
+{value} units|{value} Einheiten|{value} од.|{value} unidades|{value} jedn.|{value} unità
+{value}: price history will appear after the next edit or synchronization|{value}: Kursverlauf erscheint nach der nächsten Bearbeitung oder Synchronisierung|{value}: історія ціни з’явиться після наступного редагування або синхронізації|{value}: el historial aparecerá tras la próxima edición o sincronización|{value}: historia ceny pojawi się po następnej edycji lub synchronizacji|{value}: lo storico apparirà dopo la prossima modifica o sincronizzazione
+{value} recorded price points|{value} gespeicherte Kurspunkte|{value} записаних точок ціни|{value} puntos de precio registrados|{value} zapisanych punktów ceny|{value} punti prezzo registrati
+{value} recorded price point|{value} gespeicherter Kurspunkt|{value} записана точка ціни|{value} punto de precio registrado|{value} zapisany punkt ceny|{value} punto prezzo registrato
+Some sources are temporarily unavailable: {value}.|Einige Quellen sind vorübergehend nicht verfügbar: {value}.|Деякі джерела тимчасово недоступні: {value}.|Algunas fuentes no están disponibles temporalmente: {value}.|Niektóre źródła są chwilowo niedostępne: {value}.|Alcune fonti sono temporaneamente non disponibili: {value}.
+Delete {value} and all related payments, transactions and sales?|{value} und alle zugehörigen Zahlungen, Transaktionen und Verkäufe löschen?|Видалити {value} та всі пов’язані виплати, транзакції й продажі?|¿Eliminar {value} y todos los pagos, transacciones y ventas relacionados?|Usunąć {value} i wszystkie powiązane płatności, transakcje i sprzedaże?|Eliminare {value} e tutti i pagamenti, transazioni e vendite collegati?
+{value} is required.|{value} ist erforderlich.|Обов’язкове поле: {value}.|Se requiere: {value}.|Wymagane pole: {value}.|Campo obbligatorio: {value}.
+Invalid {value}.|Ungültiges Feld: {value}.|Некоректне поле: {value}.|Campo inválido: {value}.|Niepoprawne pole: {value}.|Campo non valido: {value}.
+{value} must be an object.|{value} muss ein Objekt sein.|Поле {value} має бути об’єктом.|{value} debe ser un objeto.|{value} musi być obiektem.|{value} deve essere un oggetto.
+{value} must be a finite nonnegative number.|{value} muss eine endliche nichtnegative Zahl sein.|Поле {value} має бути скінченним невід’ємним числом.|{value} debe ser un número finito no negativo.|{value} musi być skończoną liczbą nieujemną.|{value} deve essere un numero finito non negativo.
+{value} must be a valid YYYY-MM-DD date.|{value} muss ein gültiges Datum im Format YYYY-MM-DD sein.|Поле {value} має містити коректну дату у форматі РРРР-ММ-ДД.|{value} debe ser una fecha válida AAAA-MM-DD.|{value} musi być poprawną datą RRRR-MM-DD.|{value} deve essere una data valida AAAA-MM-GG.
+{value} must occur once and be a string.|{value} darf nur einmal vorkommen und muss Text sein.|Поле {value} має бути текстом і траплятися лише один раз.|{value} debe aparecer una sola vez y ser texto.|{value} musi wystąpić raz i być tekstem.|{value} deve comparire una sola volta ed essere testo.
+  `.trim().split('\n').map((line) => line.trim().split('|'));
   const dictionaries = Object.fromEntries(languages.map((language, index) => [language, new Map(rows.map((row) => [row[0], row[index]]))]));
   let locale = localStorage.getItem("fino-language") || "en";
   if (!languages.includes(locale)) locale = "en";
-  const substitutions = {
-    de: [[/\bunits\b/g,"Einheiten"],[/\bReceived\b/g,"Erhalten"],[/\bDividend\b/g,"Dividende"],[/\bNotes for\b/g,"Notizen für"],[/\brecorded price points\b/g,"gespeicherte Kurspunkte"],[/\bremaining\b/g,"verbleibend"],[/Average monthly profit:/g,"Durchschnittlicher Monatsgewinn:"],[/Last sync:/g,"Letzte Synchronisierung:"]],
-    uk: [[/\bunits\b/g,"од."],[/\bReceived\b/g,"Отримано"],[/\bDividend\b/g,"Дивіденд"],[/\bNotes for\b/g,"Нотатки за"],[/\brecorded price points\b/g,"записаних точок ціни"],[/\bremaining\b/g,"залишилося"],[/Average monthly profit:/g,"Середній місячний прибуток:"],[/Last sync:/g,"Остання синхронізація:"]],
-    es: [[/\bunits\b/g,"unidades"],[/\bReceived\b/g,"Recibido"],[/\bDividend\b/g,"Dividendo"],[/\bNotes for\b/g,"Notas de"],[/\brecorded price points\b/g,"puntos de precio registrados"],[/\bremaining\b/g,"restantes"],[/Average monthly profit:/g,"Beneficio mensual medio:"],[/Last sync:/g,"Última sincronización:"]],
-    pl: [[/\bunits\b/g,"jedn."],[/\bReceived\b/g,"Otrzymano"],[/\bDividend\b/g,"Dywidenda"],[/\bNotes for\b/g,"Notatki za"],[/\brecorded price points\b/g,"zapisanych punktów ceny"],[/\bremaining\b/g,"pozostało"],[/Average monthly profit:/g,"Średni miesięczny zysk:"],[/Last sync:/g,"Ostatnia synchronizacja:"]],
-    it: [[/\bunits\b/g,"unità"],[/\bReceived\b/g,"Ricevuto"],[/\bDividend\b/g,"Dividendo"],[/\bNotes for\b/g,"Note di"],[/\brecorded price points\b/g,"punti prezzo registrati"],[/\bremaining\b/g,"rimanenti"],[/Average monthly profit:/g,"Profitto mensile medio:"],[/Last sync:/g,"Ultima sincronizzazione:"]]
-  };
+  const fieldLabels = { quantity: 'Quantity', purchasePrice: 'Purchase price', sellPrice: 'Sell price per unit', currentPrice: 'Current price', amount: 'Amount', annualRate: 'Annual interest, %', maturityAmount: 'Fixed payout', redemptionValue: 'Redemption value per bond', dividendPerUnit: 'Dividend per unit', termMonths: 'Term (months)', purchaseDate: 'Purchase date', sellDate: 'Sell date', date: 'Date', maturityDate: 'Maturity date', firstDividendDate: 'First dividend date', name: 'Name', type: 'Type', assetId: 'Asset', text: 'Note', ticker: 'Ticker', isin: 'ISIN', instrumentName: 'Instrument', instrumentType: 'Instrument type', currency: 'Currency', coupons: 'Coupons', earlyWithdrawal: 'Allow early withdrawal', isNewInstrument: 'New instrument...', assetIds: 'Assets', wallet: 'Wallet', expenses: 'Expenses', loans: 'Loans', notes: 'Notes', plannedAmount: 'Planned amount', monthlyPayment: 'Monthly payment', paymentDay: 'Payment day', dueDate: 'Due date / first payment', lastPaymentDate: 'Last payment', startDate: 'From', endDate: 'To', 'planned amount': 'Planned amount', 'expense category': 'Expense category', 'expense amount': 'Amount', 'expense date': 'Date', 'expense note': 'Note', 'coupon date': 'Coupon date', 'coupon amountPerUnit': 'Amount per unit' };
+  const templatePatterns = templates.map((row) => ({ row, pattern: new RegExp('^' + row[0].split('{value}').map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('(.+?)') + '$') }));
   const t = (text) => {
     const source = String(text);
     const trimmed = source.trim();
@@ -273,16 +578,41 @@
     const lookup = prefix ? trimmed.slice(2) : trimmed;
     const exact = dictionaries[locale].get(lookup);
     if (exact) return source.replace(trimmed, `${prefix}${exact}`);
-    let translated = source;
-    (substitutions[locale] || []).forEach(([pattern, replacement]) => { translated = translated.replace(pattern, replacement); });
-    return translated;
+    const driveFailure = trimmed.match(/^(Drive .+ failed)( \(\d+\))$/);
+    if (driveFailure && dictionaries[locale].has(driveFailure[1])) return source.replace(trimmed, dictionaries[locale].get(driveFailure[1]) + driveFailure[2]);
+    const sale = trimmed.match(/^You cannot sell ([\d.,]+) units\. Only ([\d.,]+) units are available\.$/);
+    if (sale) return format('Cannot sell {quantity} units; available: {available}.', { quantity: sale[1], available: sale[2] });
+    const quantity = trimmed.match(/^Asset quantity cannot be less than already sold quantity \(([\d.,]+)\)\.$/);
+    if (quantity) return format('Asset quantity cannot be less than already sold quantity ({value}).', { value: quantity[1] });
+    if (locale === 'en') return source;
+    for (const { row, pattern } of templatePatterns) {
+      const match = trimmed.match(pattern);
+      if (match && (row[0] !== '{value} units' || /\d$/.test(match[1]))) return source.replace(trimmed, row[languages.indexOf(locale)].replace('{value}', () => /by month|is required|must be|must occur|^Invalid/.test(row[0]) ? t(fieldLabels[match[1]] || match[1]) : match[1]));
+    }
+    // Translate complete UI labels around values; never replace words inside names.
+    const parts = trimmed.split(/( — | · |: )/);
+    if (parts.length > 1) return source.replace(trimmed, parts.map((part, index) => {
+      if (index % 2) return part;
+      const label = parts[index + 1] === ': ' ? dictionaries[locale].get(part + ':') : null;
+      return label ? label.replace(/:$/, '') : t(part);
+    }).join(''));
+    const colon = trimmed.match(/^(Failed to .+):$/);
+    if (colon) return source.replace(trimmed, t(colon[1] + '.').replace(/\.$/, ':'));
+    return source;
   };
   const translateObject = (value, seen = new WeakSet()) => {
     if (typeof value === "string") return t(value);
     if (!value || typeof value !== "object" || seen.has(value)) return value;
     seen.add(value);
     Object.keys(value).forEach((key) => {
-      if (typeof value[key] === "string") value[key] = t(value[key]);
+      if (value.finoSkipLabels && ['label', 'labels', 'title'].includes(key)) return;
+      if (typeof value[key] === "function" && ['label', 'title', 'footer', 'afterLabel', 'beforeLabel'].includes(key)) {
+        const callback = value[key];
+        value[key] = function (...args) {
+          const result = callback.apply(this, args);
+          return Array.isArray(result) ? result.map((item) => typeof item === 'string' ? t(item) : item) : typeof result === 'string' ? t(result) : result;
+        };
+      } else if (typeof value[key] === "string") value[key] = t(value[key]);
       else translateObject(value[key], seen);
     });
     return value;
@@ -293,14 +623,14 @@
     const nodes = [];
     while (walker.nextNode()) nodes.push(walker.currentNode);
     nodes.forEach((node) => {
-      if (["SCRIPT", "STYLE", "TEXTAREA"].includes(node.parentElement?.tagName)) return;
+      if (node.parentElement?.closest('script, style, textarea, [translate="no"], [data-no-translate]')) return;
       const raw = node.nodeValue;
       const trimmed = raw.trim();
       if (!trimmed) return;
       const translated = t(raw);
       if (translated !== raw) node.nodeValue = translated;
     });
-    root.querySelectorAll("[placeholder],[title],[aria-label]").forEach((element) => ["placeholder", "title", "aria-label"].forEach((attribute) => {
+    [root, ...root.querySelectorAll("[placeholder],[title],[aria-label],[aria-valuetext],[data-label]")].forEach((element) => ["placeholder", "title", "aria-label", "aria-valuetext", "data-label"].forEach((attribute) => {
       if (element.hasAttribute(attribute)) element.setAttribute(attribute, t(element.getAttribute(attribute)));
     }));
   };
@@ -314,7 +644,8 @@
     localStorage.setItem("fino-language", language);
     location.reload();
   };
-  window.FinoI18n = { get locale() { return locale; }, t, apply, setLanguage };
+  const format = (key, values) => t(key).replace(/\{(\w+)\}/g, (match, name) => String(values[name] ?? match));
+  window.FinoI18n = { get locale() { return locale; }, t, format, apply, setLanguage };
   document.addEventListener("DOMContentLoaded", () => {
     apply();
     if (locale !== "en" && window.Chart && !window.Chart.__finoTranslated) {
@@ -326,17 +657,23 @@
       window.Chart.__finoTranslated = true;
     }
     new MutationObserver((records) => records.forEach((record) => {
-      if (record.type === "characterData") {
+      if (record.type === "attributes") {
+        const raw = record.target.getAttribute(record.attributeName);
+        const translated = t(raw);
+        if (translated !== raw) record.target.setAttribute(record.attributeName, translated);
+      }
+      if (record.type === "characterData" && !record.target.parentElement?.closest('script, style, textarea, [translate="no"], [data-no-translate]')) {
         const translated = t(record.target.nodeValue);
         if (translated !== record.target.nodeValue) record.target.nodeValue = translated;
       }
       record.addedNodes.forEach((node) => {
         if (node.nodeType === 1) translateNode(node);
         else if (node.nodeType === 3) {
+          if (node.parentElement?.closest('script, style, textarea, [translate="no"], [data-no-translate]')) return;
           const translated = t(node.nodeValue);
           if (translated !== node.nodeValue) node.nodeValue = translated;
         }
       });
-    })).observe(document.body, { childList: true, characterData: true, subtree: true });
+    })).observe(document.body, { childList: true, characterData: true, attributes: true, attributeFilter: ['placeholder', 'title', 'aria-label', 'aria-valuetext', 'data-label'], subtree: true });
   });
 })();

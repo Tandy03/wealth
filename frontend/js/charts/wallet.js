@@ -1,3 +1,5 @@
+(function () {
+const state = stateStore.getState();
 // charts/wallet.js
 let walletCategoryChart = null;
 
@@ -38,7 +40,8 @@ function applyWalletPeriodPreset() {
   [fromInput.value, toInput.value] = ranges[preset] || ranges.all;
 }
 
-function renderWalletPeriodChart() {
+function renderWalletPeriodChart(state = stateStore.getState()) {
+  if (typeof Chart === "undefined") return;
   const fromInput = document.querySelector("#wallet-period-from");
   const toInput = document.querySelector("#wallet-period-to");
   const totalElement = document.querySelector("#wallet-period-total");
@@ -100,7 +103,9 @@ function renderWalletPeriodChart() {
   });
 }
 
-function renderWalletCategoryChart(key) {
+function renderWalletCategoryChart(key, state = stateStore.getState()) {
+  if (typeof Chart === "undefined") return;
+  const { walletExpenses } = createRenderServices(state);
   const expenses = walletExpenses(key).filter((expense) => expense.category !== "Salary");
   const categories = [...new Set(expenses.map((expense) => expense.category))];
   const categoryValues = categories.map((category) => expenses.filter((expense) => expense.category === category).reduce((sum, expense) => sum + normalizeNumber(expense.amount), 0));
@@ -127,7 +132,9 @@ function renderWalletCategoryChart(key) {
   });
 }
 
-function renderWalletDailyChart(key) {
+function renderWalletDailyChart(key, state = stateStore.getState()) {
+  if (typeof Chart === "undefined") return;
+  const { walletExpenses } = createRenderServices(state);
   const expenses = walletExpenses(key).filter((expense) => expense.category !== "Salary");
   const dayCount = new Date(Number(key.slice(0, 4)), Number(key.slice(5, 7)), 0).getDate();
   const days = Array.from({ length: dayCount }, (_, index) => index + 1);
@@ -136,7 +143,8 @@ function renderWalletDailyChart(key) {
   walletDailyChart = new Chart(document.querySelector("#wallet-daily-chart"), { type: "line", data: { labels: days, datasets: [{ label: "Daily expenses", data: dailyValues, borderColor: "#7395DD", backgroundColor: "rgba(115,149,221,.18)", fill: true, tension: .25 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, title: { display: false } }, scales: { x: { ticks: { autoSkip: true, maxTicksLimit: window.innerWidth <= 700 ? 6 : 10, maxRotation: 0 } } } } });
 }
 
-function renderWalletMonthlyChart() {
+function renderWalletMonthlyChart(state = stateStore.getState()) {
+  if (typeof Chart === "undefined") return;
   const allExpenses = (state.data.wallet.expenses || []).filter((expense) => expense.category !== "Salary");
   const monthlyCategorySelect = document.querySelector("#wallet-monthly-category");
   const previousSelection = monthlyCategorySelect?.value || "__total__";
@@ -161,14 +169,18 @@ function renderWalletMonthlyChart() {
   walletMonthlyChart = new Chart(document.querySelector("#wallet-monthly-chart"), { type: "line", data: { labels: months, datasets: [{ label: seriesLabel, data: months.map((month) => monthTotals[month]), borderColor: "#7c8cff", backgroundColor: "rgba(124,140,255,.18)", fill: true, tension: .3, pointRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, title: { display: true, text: `${seriesLabel} by month` } }, scales: { x: { ticks: walletMonthAxisTicks() } } } });
 }
 
-function renderWalletCharts() {
+function renderWalletCharts(state = stateStore.getState()) {
+  const { walletMonthKey } = createRenderServices(state);
   if (typeof Chart === "undefined") return;
   const input = document.querySelector("#wallet-chart-month");
   if (!input) return;
   input.value ||= walletMonthKey();
   const key = input.value;
-  renderWalletCategoryChart(key);
-  renderWalletDailyChart(key);
-  renderWalletMonthlyChart();
-  renderWalletPeriodChart();
+  renderWalletCategoryChart(key, state);
+  renderWalletDailyChart(key, state);
+  renderWalletMonthlyChart(state);
+  renderWalletPeriodChart(state);
 }
+
+Object.assign(window, { walletMonthAxisTicks, applyWalletPeriodPreset, renderWalletPeriodChart, renderWalletCategoryChart, renderWalletDailyChart, renderWalletMonthlyChart, renderWalletCharts });
+})();

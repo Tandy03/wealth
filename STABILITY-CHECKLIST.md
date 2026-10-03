@@ -25,6 +25,10 @@ For every new feature attach five pieces of evidence to its change:
 
 Automated module tests do not prove visual layout or native Android behavior. Record manual checks before a release; do not mark them passed from Node tests alone.
 
+`npm run test:ui` executes the real HTML and local scripts in a DOM harness: populated/empty startup, offline providers, navigation, buy submission, wallet saves, filter events and read-only rendering of explicit snapshots. It is also included in `npm test`. For manual visual checks, `npm run smoke:serve` serves isolated in-memory fixtures on http://127.0.0.1:4317 without real financial storage or Drive credentials.
+
+Compatibility exports remain available through `window.ui` and the original public function names. Wallet actions persist a draft before committing store data; failed saves and responses from an obsolete account snapshot cannot replace current data. Historical market responses also check snapshot identity. Remove compatibility aliases only after callers migrate and smoke checks pass.
+
 Future APK preparation: finish the manual web checks, run `npm.cmd run mobile:sync`, verify packaged assets using `backend/scripts/verifyMobileAssets.ps1`, then build/install Android and perform the device checks. This maintenance change does not run synchronization or an APK build.
 
 ## Errors and diagnostics

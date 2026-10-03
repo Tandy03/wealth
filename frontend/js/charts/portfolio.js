@@ -1,3 +1,5 @@
+(function () {
+const state = stateStore.getState();
 // charts/portfolio.js
 let assetAllocationChart = null;
 
@@ -22,6 +24,7 @@ const stackedDoughnutLegendPlugin = {
       marker.className = "doughnut-legend-marker";
       marker.style.background = item.fillStyle;
       label.textContent = item.text;
+      label.setAttribute("translate", "no");
 
       button.append(marker, label);
       button.addEventListener("click", () => {
@@ -36,7 +39,8 @@ const stackedDoughnutLegendPlugin = {
   },
 };
 
-function renderAssetAllocationChart() {
+function renderAssetAllocationChart(state = stateStore.getState()) {
+  const { toUAH, getAvailableQuantity, getCurrentPrice } = createRenderServices(state);
   const canvas = document.querySelector("#asset-allocation-chart");
 
   if (!canvas || typeof Chart === "undefined") {
@@ -91,6 +95,7 @@ function renderAssetAllocationChart() {
     type: "doughnut",
 
     data: {
+      finoSkipLabels: mode === "tools",
       labels,
 
       datasets: [
@@ -160,6 +165,7 @@ function renderAssetAllocationChart() {
 
         tooltip: {
           callbacks: {
+            finoSkipLabels: mode === "tools",
             label: function (context) {
               const value = context.raw || 0;
 
@@ -185,7 +191,8 @@ function renderAssetAllocationChart() {
 
 let portfolioHistoryChart = null;
 
-function renderPortfolioHistoryChart() {
+function renderPortfolioHistoryChart(state = stateStore.getState()) {
+  const { toUAH, toUAHAtDate, getAssetPurchaseDate, toUAHPurchaseCost, getMaturityCostBasis, getCurrentPrice } = createRenderServices(state);
   const canvas = document.querySelector("#portfolio-history-chart");
 
   if (!canvas || typeof Chart === "undefined") {
@@ -322,8 +329,8 @@ function renderPortfolioHistoryChart() {
     profit: {
       label: "Cumulative portfolio profit",
       description: weeklyPerformance.limitations.length
-        ? "Cumulative portfolio profit by week. Gaps mean historical price or FX data is unavailable."
-        : "Cumulative realized income and profit plus unrealized profit by week",
+        ? "Weekly profit. Gaps indicate missing historical data."
+        : "Realized and unrealized profit by week",
       values: weeklyDifferenceValues,
       labels: weeklyDifferenceLabels,
       type: "line",
@@ -332,7 +339,7 @@ function renderPortfolioHistoryChart() {
     },
     earned: {
       label: "Money earned",
-      description: "Received income and realized profit by month",
+      description: "Income and realized profit by month",
       values: earnedValues,
       type: "bar",
       color: "#e8a33a",
@@ -340,7 +347,7 @@ function renderPortfolioHistoryChart() {
     },
     invested: {
       label: "Invested by month",
-      description: "Monthly purchases minus the original cost of units sold (UAH). Excludes savings and income; sale proceeds differ from cost basis.",
+      description: "Purchases minus the cost of units sold, by month (UAH)",
       values: monthlyInvestedValues,
       type: "bar",
       color: "#7c8cff",
@@ -348,7 +355,7 @@ function renderPortfolioHistoryChart() {
     },
   };
   const selected = chartModes[mode] || chartModes.value;
-  if (description) description.textContent = selected.description;
+  if (description) description.textContent = window.FinoI18n.t(selected.description);
 
   const chartText = getComputedStyle(document.documentElement).getPropertyValue("--text").trim();
   const gridColor = getComputedStyle(document.documentElement).getPropertyValue("--border").trim();
@@ -373,7 +380,7 @@ function renderPortfolioHistoryChart() {
       maintainAspectRatio: false,
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { label: (context) => `${selected.label}: ${money(context.raw)}` } },
+        tooltip: { callbacks: { label: (context) => `${window.FinoI18n.t(selected.label)}: ${money(context.raw)}` } },
       },
       scales: {
         x: { ticks: { color: chartText }, grid: { color: gridColor } },
@@ -385,7 +392,8 @@ function renderPortfolioHistoryChart() {
 
 let assetPriceHistoryChart = null;
 
-function renderAssetPriceHistoryChart() {
+function renderAssetPriceHistoryChart(state = stateStore.getState()) {
+  const { getAvailableQuantity } = createRenderServices(state);
   const canvas = document.querySelector("#asset-price-history-chart");
   const select = document.querySelector("#asset-price-history-select");
   const description = document.querySelector("#asset-price-history-description");
@@ -402,7 +410,7 @@ function renderAssetPriceHistoryChart() {
 
   const previousValue = select.value;
   select.innerHTML = [...groups.values()]
-    .map((group) => `<option value="${escapeHtml(group.key)}">${escapeHtml(group.name)}</option>`)
+    .map((group) => `<option translate="no" value="${escapeHtml(group.key)}">${escapeHtml(group.name)}</option>`)
     .join("");
   if (groups.has(previousValue)) select.value = previousValue;
 
@@ -413,11 +421,14 @@ function renderAssetPriceHistoryChart() {
     .filter((point) => group.assetIds.includes(point.assetId) && normalizeNumber(point.price) > 0)
     .sort((a, b) => String(a.recordedAt || a.date).localeCompare(String(b.recordedAt || b.date))) : [];
   const currency = points.at(-1)?.currency || "UAH";
-  if (description) description.textContent = group
-    ? points.length
-      ? `${group.name}: ${points.length} recorded price point${points.length === 1 ? "" : "s"}`
-      : `${group.name}: price history will appear after the next edit or synchronization`
-    : "No active portfolio assets";
+  if (description) {
+    description.setAttribute("translate", "no");
+    description.textContent = group
+      ? points.length
+        ? `${group.name}: ${window.FinoI18n.t(`${points.length} recorded price point${points.length === 1 ? "" : "s"}`)}`
+        : window.FinoI18n.t("{value}: price history will appear after the next edit or synchronization").replace("{value}", group.name)
+      : window.FinoI18n.t("No active portfolio assets");
+  }
 
   const chartText = getComputedStyle(document.documentElement).getPropertyValue("--text").trim();
   const gridColor = getComputedStyle(document.documentElement).getPropertyValue("--border").trim();
@@ -426,6 +437,7 @@ function renderAssetPriceHistoryChart() {
     data: {
       datasets: [{
         label: group?.name || "Asset price",
+        finoSkipLabels: Boolean(group),
         data: points.map((point) => ({
           x: new Date(point.recordedAt || `${point.date}T00:00:00`).getTime(),
           y: normalizeNumber(point.price),
@@ -463,3 +475,6 @@ function renderAssetPriceHistoryChart() {
     },
   });
 }
+
+Object.assign(window, { renderAssetAllocationChart, renderPortfolioHistoryChart, renderAssetPriceHistoryChart });
+})();

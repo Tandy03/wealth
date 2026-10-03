@@ -1,3 +1,5 @@
+(function () {
+const state = stateStore.getState();
 // forms/calendar.js
 async function markPaymentAsReceived(paymentIds, button = null) {
   const ids = Array.isArray(paymentIds) ? paymentIds : [paymentIds];
@@ -148,6 +150,7 @@ function populateAssetSelect() {
     option.value = asset.id;
 
     option.textContent = asset.name;
+    option.setAttribute("translate", "no");
 
     select.appendChild(option);
   });
@@ -262,3 +265,5 @@ function setupNoteModal() {
     }
   });
 }
+Object.assign(window, { markPaymentAsReceived, setupEventModal, setupCalendarNavigation, populateAssetSelect, openNoteModal, setupNoteModal });
+})();

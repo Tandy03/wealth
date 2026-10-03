@@ -4,13 +4,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const appSource = fs.readFileSync(path.join(__dirname, '../../frontend/js/renderers/dashboard.js'), 'utf8');
-const dashboard = appSource.slice(appSource.indexOf('function renderDashboard()'), appSource.indexOf('function renderUpcomingPayments()'));
+const dashboard = appSource.slice(appSource.indexOf('function renderDashboard('), appSource.indexOf('function renderUpcomingPayments('));
 const financeSource = fs.readFileSync(path.join(__dirname, '../../frontend/js/analytics/portfolio-finance.js'), 'utf8');
 const price = financeSource.slice(financeSource.indexOf('function getCurrentPrice('), financeSource.indexOf('function calculatePortfolioValue('));
 function render(assets) {
   const container = { innerHTML: '', querySelectorAll: () => [] };
   const rates = { UAH: 1, USD: 40, EUR: 45 };
   const context = { state: { data: { assets, sales: [], payments: [] } }, document: { querySelector: (selector) => selector === '#dashboard-assets' ? container : null },
+    stateStore: { getState: () => context.state }, createRenderServices: () => context, bindDashboardHoldings: () => {},
     calculateInvested: () => 0, calculatePortfolioValue: () => 0, getUnrealizedPriceGrowth: () => 0, getMaturityCostBasis: () => 0, toUAHPurchaseCost: () => 0, renderReinvestmentForecast: () => {}, renderUpcomingPayments: () => {}, setupPortfolioCurrencyHover: () => {},
     getAvailableQuantity: (id) => { const asset = assets.find(item => item.id === id); return asset.closedAt ? 0 : asset.quantity - (asset.sold || 0); },
     normalizeNumber: (value) => Number(value) || 0, convertCurrency: (amount, from = 'UAH', to = 'UAH') => amount * rates[from] / rates[to], toUAH: (amount, currency = 'UAH') => amount * rates[currency],

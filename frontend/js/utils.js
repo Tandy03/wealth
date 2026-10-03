@@ -76,9 +76,9 @@ function portfolioMoneyWithUahHover(value, currency = "UAH", valueInUah = null) 
 
 function holdingOptionLabel(asset) {
   const available = getAvailableQuantity(asset.id);
-  const instrument = asset.instrumentName || "No instrument";
-  const instrumentType = asset.instrumentType ? ` · ${asset.instrumentType}` : "";
-  return `${asset.name} — ${instrument}${instrumentType} — ${formatQuantity(available)} units`;
+  const instrument = asset.instrumentName || window.FinoI18n.t("No instrument");
+  const instrumentType = asset.instrumentType ? ` · ${window.FinoI18n.t(asset.instrumentType)}` : "";
+  return `${asset.name} — ${instrument}${instrumentType} — ${window.FinoI18n.t(`${formatQuantity(available)} units`)}`;
 }
 
 function groupHoldingsByInstrument(holdings) {
@@ -96,8 +96,9 @@ function groupHoldingsByInstrument(holdings) {
 function holdingGroupLabel(group) {
   const first = group.assets[0];
   const quantity = group.assets.reduce((sum, asset) => sum + getAvailableQuantity(asset.id), 0);
-  const instrumentType = group.instrumentType ? ` · ${group.instrumentType}` : "";
-  return `${first.name} — ${group.instrumentName}${instrumentType} · ${group.currency} — ${formatQuantity(quantity)} units`;
+  const instrumentType = group.instrumentType ? ` · ${window.FinoI18n.t(group.instrumentType)}` : "";
+  const instrument = group.instrumentName === "No instrument" ? window.FinoI18n.t("No instrument") : group.instrumentName;
+  return `${first.name} — ${instrument}${instrumentType} · ${group.currency} — ${window.FinoI18n.t(`${formatQuantity(quantity)} units`)}`;
 }
 
 function formatMarketPrice(value, currency = "USD") {

@@ -1,3 +1,5 @@
+(function () {
+const state = stateStore.getState();
 // charts/macroeconomics.js
 let macroCharts = [];
 
@@ -55,7 +57,7 @@ async function renderMacroeconomics() {
     const errorNode = document.querySelector("#macro-errors");
     errorNode.hidden = !errors.length;
     errorNode.textContent = errors.length ? `Some sources are temporarily unavailable: ${errors.map(([name]) => name.toUpperCase()).join(", ")}.` : "";
-    content.hidden = false; state.hidden = true; macroLoaded = true;
+    content.hidden = false; state.hidden = true; macroLoaded = true; stateStore.setUI({ macroLoaded: true });
     const policyState = document.querySelector("#macro-policy-rate-state");
     api.getNbuPolicyRate().then((result) => {
       const rawSeries = result?.policyRate || [];
@@ -69,3 +71,6 @@ async function renderMacroeconomics() {
     state.textContent = error.message || "Could not load macroeconomic data.";
   }
 }
+
+Object.assign(window, { macroYearTick, macroLineChart, macroMultiChart, renderMacroeconomics });
+})();

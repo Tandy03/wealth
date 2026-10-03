@@ -20,7 +20,7 @@ function setDashboardCurrencyHover(element, valueInUah, valueInUsd = null) {
   card.addEventListener("blur", showUah);
 }
 
-function setReturnBenchmarkHover(element, portfolioReturn) {
+function setReturnBenchmarkHover(element, portfolioReturn, state = stateStore.getState()) {
   if (!element) return;
   const card = element.closest(".stat-card") || element;
   const label = document.querySelector("#stat-roi-label");
@@ -55,35 +55,31 @@ function setXirrValue(element, xirr) {
   card.removeAttribute("tabindex");
 }
 
-function renderReinvestmentForecast(totalProfit, investedCapital) {
+function renderReinvestmentForecast(totalProfit, investedCapital, state = stateStore.getState()) {
   const amountElement = document.querySelector("#stat-reinvestment");
   const averageElement = document.querySelector("#stat-average-monthly-profit");
   if (!amountElement || !averageElement) return;
   const dates = (state.data.transactions || []).map((item) => item.date).filter(Boolean).sort();
-  if (!dates.length || investedCapital <= 0) {
+  const forecast = FinoDashboardAnalytics.reinvestmentForecast({ totalProfit, investedCapital, firstDate: dates[0], usdRate: EXCHANGE_RATES.USD });
+  if (forecast.reason === 'history') {
     amountElement.dataset.valueUah = "—";
     amountElement.dataset.valueUsd = "—";
     amountElement.textContent = "—";
     averageElement.textContent = "Average monthly profit: insufficient history";
     return;
   }
-  const firstDate = new Date(`${dates[0]}T00:00:00`);
-  const elapsedMonths = Math.max(1, (Date.now() - firstDate.getTime()) / (30.4375 * 86400000));
-  const averageMonthlyProfit = totalProfit / elapsedMonths;
-  const monthlyReturnRate = averageMonthlyProfit / investedCapital;
-  averageElement.textContent = `Average monthly profit: ${money(averageMonthlyProfit)}`;
-  if (monthlyReturnRate <= 0) {
+  averageElement.textContent = `Average monthly profit: ${money(forecast.averageMonthlyProfit)}`;
+  if (forecast.reason === 'return') {
     amountElement.dataset.valueUah = "Insufficient positive return";
     amountElement.dataset.valueUsd = "Insufficient positive return";
     amountElement.textContent = "Insufficient positive return";
     return;
   }
-  const targetMonthlyIncome = 1000 * EXCHANGE_RATES.USD;
-  const additionalInvestment = Math.max(0, targetMonthlyIncome / monthlyReturnRate - investedCapital);
-  setDashboardCurrencyHover(amountElement, additionalInvestment);
+  setDashboardCurrencyHover(amountElement, forecast.additionalInvestment);
 }
 
-function renderDashboard() {
+function renderDashboard(state = stateStore.getState()) {
+  const { toUAH, getAssetPurchaseDate, toUAHPurchaseCost, convertCurrency, getAvailableQuantity, getMaturityCostBasis, calculateInvested, calculateInvestedUsd, getCurrentPrice, calculatePortfolioValue, getUnrealizedPriceGrowth, calculatePortfolioXirr } = createRenderServices(state);
   const invested = calculateInvested();
   const portfolioValue = calculatePortfolioValue();
 
@@ -153,13 +149,13 @@ function renderDashboard() {
   const roiBase = invested + totalCostBasis;
   const roi = roiBase > 0 ? (totalProfit / roiBase) * 100 : 0;
   if (roiElement) {
-    setReturnBenchmarkHover(roiElement, roi);
+    setReturnBenchmarkHover(roiElement, roi, state);
   }
   if (returnElement) {
     const xirr = calculatePortfolioXirr();
     setXirrValue(returnElement, xirr);
   }
-  renderReinvestmentForecast(totalProfit, roiBase);
+  renderReinvestmentForecast(totalProfit, roiBase, state);
 
   /*
    * Dashboard assets
@@ -200,7 +196,7 @@ function renderDashboard() {
 
                             <div>
                                 <div class="asset-name">
-                                    ${escapeHtml(asset.name)}
+                                    <span translate="no">${escapeHtml(asset.name)}</span>
                                 </div>
 
                                 <div class="asset-meta">
@@ -226,11 +222,12 @@ function renderDashboard() {
     }
   }
 
-  renderUpcomingPayments();
-  assetsContainer?.querySelectorAll("[data-asset-group]").forEach((row) => row.addEventListener("click", () => openAssetTransactions(row.dataset.assetGroup.split(","))));
+  renderUpcomingPayments(state);
+  bindDashboardHoldings(assetsContainer);
 }
 
-function renderUpcomingPayments() {
+function renderUpcomingPayments(state = stateStore.getState()) {
+  const { groupPaymentEvents } = createRenderServices(state);
   const container = document.querySelector("#dashboard-payments");
 
   if (!container) {
@@ -271,7 +268,7 @@ function renderUpcomingPayments() {
                         <div>
 
                             <div class="asset-name">
-                                ${escapeHtml(payment.title)}
+                                <span translate="no">${escapeHtml(payment.title)}</span>
                             </div>
 
                             <div class="payment-meta">
@@ -291,15 +288,6 @@ function renderUpcomingPayments() {
     )
     .join("");
 
-  container.querySelectorAll("[data-payment-ids]").forEach((element) => {
-    element.addEventListener("click", () => {
-      const payment = payments.find(
-        (item) => item.paymentIds.join(",") === element.dataset.paymentIds,
-      );
+  bindUpcomingPaymentActions(container, payments);
 
-      if (payment) {
-        showCalendarEvent(payment);
-      }
-    });
-  });
 }

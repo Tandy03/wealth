@@ -1,3 +1,5 @@
+(function () {
+const state = stateStore.getState();
 // charts/market.js
 let marketPriceChart = null;
 
@@ -162,9 +164,12 @@ function setupMarket() {
       showNotice("Choose a valid custom date range.");
       return;
     }
-    marketCustomRange = { startDate, endDate };
+    marketCustomRange = { startDate, endDate }; stateStore.setUI({ marketCustomRange });
     marketRange = "CUSTOM";
     document.querySelectorAll("[data-market-range]").forEach((item) => item.classList.remove("active"));
     renderMarketChart();
   });
 }
+
+Object.assign(window, { populateMarketSymbols, renderMarketChart, setupMarket });
+})();

@@ -1,3 +1,5 @@
+(function () {
+const state = stateStore.getState();
 // forms/settings.js
 let noticeResolver = null;
 
@@ -140,3 +142,5 @@ function setupThemeToggle() {
     });
   });
 }
+Object.assign(window, { showNotice, showConfirm, setupNoticeModal, setupModalBackdropClosing, setupGoogleDriveSync, setupSettingsModal, setupThemeToggle });
+})();

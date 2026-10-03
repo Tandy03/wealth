@@ -1,0 +1,25 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const model = require('../../frontend/js/state-model');
+const { createStore } = require('../../frontend/js/state-store');
+test('state store isolates instances, validates atomic updates and keeps the compatibility reference', () => {
+  const store = createStore({ model, initialState: { portfolioSort: 'purchase-date' } });
+  const other = createStore({ model });
+  const state = store.getState();
+  const events = [];
+  const unsubscribe = store.subscribe(event => events.push(event.type));
+  store.updateData(draft => draft.assets.push({ id: 'asset', quantity: 2 }));
+  assert.equal(state.data.assets[0].quantity, 2);
+  assert.equal(other.getData().assets.length, 0);
+  const before = store.getData();
+  assert.throws(() => store.updateData(draft => { draft.assets[0].quantity = Infinity; }), /finite/);
+  assert.equal(store.getData(), before);
+  assert.throws(() => store.setUI({ data: {} }));
+  store.setUI({ portfolioSort: 'invested' });
+  assert.equal(store.select(state => state.portfolioSort), 'invested');
+  assert.equal(store.getState(), state);
+  assert.deepEqual(events, ['data:changed', 'ui:changed']);
+  unsubscribe();
+  store.replaceData(model.createEmptyState());
+  assert.equal(events.length, 2);
+});

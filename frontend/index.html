@@ -438,8 +438,7 @@
               <p id="portfolio-history-description">Portfolio value by month</p>
             </div>
             <label class="portfolio-history-mode">
-              <span>Chart</span>
-              <select id="portfolio-history-mode">
+              <select id="portfolio-history-mode" aria-label="Portfolio investment dynamics">
                 <option value="value">Portfolio value</option>
                 <option value="profit">Cumulative portfolio profit</option>
                 <option value="earned">Money earned by month</option>
@@ -1222,9 +1221,13 @@
   <script src="/js/mobile-config.generated.js"></script>
   <script src="/js/i18n.js"></script>
   <script src="/js/state-model.js"></script>
+  <script src="/js/state-store.js"></script>
   <script src="/js/constants.js"></script>
   <script src="/js/validation.js"></script>
   <script src="/js/mobile-api.js"></script>
+  <script src="/js/api/fetchers.js"></script>
+  <script src="/js/api/desktop.js"></script>
+  <script src="/js/api/mobile.js"></script>
   <script src="/js/api.js"></script>
   <script src="/js/portfolio-performance.js"></script>
   <script src="/js/analytics/values.js"></script>
@@ -1234,6 +1237,8 @@
   <script src="/js/analytics/portfolio-finance.js"></script>
   <script src="/js/cashflow.js"></script>
   <script src="/js/wallet-analytics.js"></script>
+  <script src="/js/analytics/dashboard.js"></script>
+  <script src="/js/views/wallet.js"></script>
   <script src="/js/models.js"></script>
   <script src="/js/data-loader.js"></script>
   <script src="/js/renderers/dashboard.js"></script>
@@ -1244,6 +1249,7 @@
   <script src="/js/renderers/sync.js"></script>
   <script src="/js/renderers/wallet.js"></script>
   <script src="/js/forms/assets.js"></script>
+  <script src="/js/forms/buy.js"></script>
   <script src="/js/forms/calendar.js"></script>
   <script src="/js/forms/sales.js"></script>
   <script src="/js/forms/calculators.js"></script>
@@ -1254,6 +1260,16 @@
   <script src="/js/charts/macroeconomics.js"></script>
   <script src="/js/charts/portfolio.js"></script>
   <script src="/js/charts/wallet.js"></script>
+  <script src="/js/controllers/wallet-actions.js"></script>
+  <script src="/js/controllers/actions.js"></script>
+  <script src="/js/controllers/dashboard.js"></script>
+  <script src="/js/controllers/wallet.js"></script>
+  <script src="/js/controllers/portfolio.js"></script>
+  <script src="/js/controllers/calendar.js"></script>
+  <script src="/js/controllers/calculators.js"></script>
+  <script src="/js/controllers/sync.js"></script>
+  <script src="/js/controllers/application.js"></script>
+  <script src="/js/ui.js"></script>
   <script src="/js/app.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </body>

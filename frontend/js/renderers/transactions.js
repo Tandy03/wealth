@@ -1,5 +1,6 @@
 // renderers/transactions.js
-function renderTransactions() {
+function renderTransactions(state = stateStore.getState()) {
+  const { getMaturityCostBasis, getTransactionEffectiveDate } = createRenderServices(state);
   const tbody = document.querySelector("#transactions-table");
 
   if (!tbody) {
@@ -80,7 +81,7 @@ function renderTransactions() {
 
                         <td>
                             <strong>
-                                ${escapeHtml(tx.assetName || "-")}
+                                <span translate="no">${escapeHtml(tx.assetName || "-")}</span>
                             </strong>
                         </td>
 

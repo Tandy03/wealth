@@ -41,7 +41,11 @@ function walletMonth(key) {
 }
 
 function walletCategories(key) {
-  return [...new Set([...WALLET_CATEGORIES, ...walletMonth(key).customCategories])];
+  return [...new Set([...WALLET_CATEGORIES, ...walletMonthView(key).customCategories])];
+}
+function walletMonthView(key) {
+  const month = state.data.wallet.months?.[key] || {};
+  return { ...month, plans: month.plans || {}, customCategories: month.customCategories || [], notes: month.notes || [] };
 }
 
 function walletExpenses(key) {
@@ -97,7 +101,7 @@ function getLoanSchedule(loan) {
   }
   return result;
 }
-    return { walletMonthKey, normalizeWalletCategoryNames, walletMonth, walletCategories, walletExpenses, walletCategoryTotal, cleanupUnusedWalletCategories, walletExpenseDateBounds, shiftWalletDate, getLoanSchedule };
+    return { walletMonthKey, normalizeWalletCategoryNames, walletMonth, walletMonthView, walletCategories, walletExpenses, walletCategoryTotal, cleanupUnusedWalletCategories, walletExpenseDateBounds, shiftWalletDate, getLoanSchedule };
   }
   return { createService };
 });

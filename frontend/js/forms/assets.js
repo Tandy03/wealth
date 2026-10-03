@@ -1,10 +1,12 @@
+(function () {
+const state = stateStore.getState();
 // forms/assets.js
 function populateInstrumentSelect(selectedName = "") {
   const select = document.querySelector("#asset-instrument");
   if (!select) return;
   const instruments = [...DEFAULT_INSTRUMENTS, ...(state.data.instruments || [])]
     .filter((item, index, all) => all.findIndex((candidate) => candidate.name.toLowerCase() === item.name.toLowerCase()) === index);
-  select.innerHTML = instruments.map((item) => `<option value="${escapeHtml(item.name)}" data-instrument-type="${escapeHtml(item.type)}">${escapeHtml(item.name)} — ${escapeHtml(item.type)}</option>`).join("") + '<option value="__new__">New instrument...</option>';
+  select.innerHTML = instruments.map((item) => `<option translate="no" value="${escapeHtml(item.name)}" data-instrument-type="${escapeHtml(item.type)}">${escapeHtml(item.name)} — ${escapeHtml(window.FinoI18n.t(item.type))}</option>`).join("") + '<option value="__new__">New instrument...</option>';
   if (selectedName && instruments.some((item) => item.name === selectedName)) select.value = selectedName;
   updateNewInstrumentFields();
 }
@@ -21,6 +23,7 @@ function openAssetTransactions(assetIds) {
   state.assetDetailIds = assetIds;
   const assets = state.data.assets.filter((asset) => assetIds.includes(asset.id));
   document.querySelector("#asset-transactions-title").textContent = assets[0]?.name || "Transactions";
+  document.querySelector("#asset-transactions-title").setAttribute("translate", assets[0]?.name ? "no" : "yes");
   document.querySelector("#asset-hide-sales").checked = false;
   document.querySelector("#asset-only-current").checked = false;
   renderAssetTransactionsModal();
@@ -30,8 +33,8 @@ function openAssetTransactions(assetIds) {
 function setupAssetTransactionsModal() {
   const modal = document.querySelector("#asset-transactions-modal");
   document.querySelector("#close-asset-transactions")?.addEventListener("click", () => modal?.classList.remove("open"));
-  document.querySelector("#asset-hide-sales")?.addEventListener("change", renderAssetTransactionsModal);
-  document.querySelector("#asset-only-current")?.addEventListener("change", renderAssetTransactionsModal);
+  document.querySelector("#asset-hide-sales")?.addEventListener("change", () => renderAssetTransactionsModal());
+  document.querySelector("#asset-only-current")?.addEventListener("change", () => renderAssetTransactionsModal());
 }
 
 async function executeHoldingAction(assetIds, action) {
@@ -72,7 +75,7 @@ function openHoldingSelectionModal(assetIds, action) {
   const select = document.querySelector("#delete-holding-asset");
   if (!modal || !select) return;
   state.holdingSelectionAction = action;
-  select.innerHTML = instrumentGroups.map((group) => `<option value="${escapeHtml(group.assets.map((asset) => asset.id).join(","))}">${escapeHtml(holdingGroupLabel(group))}</option>`).join("");
+  select.innerHTML = instrumentGroups.map((group) => `<option translate="no" value="${escapeHtml(group.assets.map((asset) => asset.id).join(","))}">${escapeHtml(holdingGroupLabel(group))}</option>`).join("");
   document.querySelector("#holding-selection-title").textContent = action === "buy" ? "Buy holding" : action === "edit" ? "Edit holding" : "Delete holding";
   const submit = document.querySelector("#holding-selection-submit");
   submit.textContent = action === "buy" ? "Buy" : action === "edit" ? "Edit" : "Delete";
@@ -1181,232 +1184,5 @@ function setDefaultDates() {
     maturityDate.value = "";
   }
 }
-
-function openBuyMoreModal(assetId) {
-  const asset = state.data?.assets?.find((item) => item.id === assetId);
-
-  if (!asset) {
-    showNotice("Asset not found.");
-
-    return;
-  }
-
-  const modal = document.querySelector("#buy-more-modal");
-
-  const form = document.querySelector("#buy-more-form");
-
-  if (!modal || !form) {
-    console.warn("Buy more modal or form was not found.");
-
-    return;
-  }
-
-  state.buyingAssetId = assetId;
-  const buyQuantityInput = form.querySelector('[name="quantity"]');
-  if (buyQuantityInput) {
-    const supportsFractions = ["etf", "stock", "crypto_earn"].includes(asset.type);
-    buyQuantityInput.step = supportsFractions ? "any" : "1";
-    buyQuantityInput.min = supportsFractions ? "0.00000001" : "1";
-  }
-
-  const assetNameInput = document.querySelector("#buy-more-asset-name");
-
-  if (assetNameInput) {
-    assetNameInput.value = `${asset.name} (${asset.currency || "UAH"})`;
-  }
-  const currencyInput = document.querySelector("#buy-currency");
-  if (currencyInput) currencyInput.value = asset.currency || "UAH";
-
-  /*
-   * Clear previous values
-   */
-
-  form.reset();
-
-  /*
-   * Restore asset name after reset
-   */
-
-  if (assetNameInput) {
-    assetNameInput.value = `${asset.name} (${asset.currency || "UAH"})`;
-  }
-  if (currencyInput) currencyInput.value = asset.currency || "UAH";
-
-  /*
-   * Default date = today
-   */
-
-  const dateInput = document.querySelector("#buy-more-date");
-
-  if (dateInput) {
-    dateInput.value = new Date().toISOString().split("T")[0];
-  }
-
-  modal.classList.add("open");
-}
-
-function setupBuyMoreModal() {
-  const modal = document.querySelector("#buy-more-modal");
-
-  const form = document.querySelector("#buy-more-form");
-
-  if (!modal || !form) {
-    console.warn("Buy more modal or form was not found.");
-
-    return;
-  }
-
-  form.noValidate = true;
-
-  /*
-   * ==========================================================
-   * CLOSE MODAL
-   * ==========================================================
-   */
-
-  const close = () => {
-    modal.classList.remove("open");
-
-    state.buyingAssetId = null;
-
-    form.reset();
-  };
-
-  /*
-   * Close button
-   */
-
-  const closeButton = document.querySelector("#close-buy-more-modal");
-
-  if (closeButton) {
-    closeButton.addEventListener("click", close);
-  }
-
-  /*
-   * Cancel button
-   */
-
-  const cancelButton = document.querySelector("#cancel-buy-more");
-
-  if (cancelButton) {
-    cancelButton.addEventListener("click", close);
-  }
-
-  /*
-   * Click outside
-   */
-
-  modal.addEventListener("click", (event) => {
-    if (event.target === modal) {
-      close();
-    }
-  });
-
-  /*
-   * ==========================================================
-   * SUBMIT
-   * ==========================================================
-   */
-
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-
-    const assetId = state.buyingAssetId;
-
-    if (!assetId) {
-      showNotice("Asset was not selected.");
-
-      return;
-    }
-
-    const formData = new FormData(form);
-
-    const purchase = {
-      quantity: normalizeNumber(formData.get("quantity")),
-
-      purchasePrice: normalizeNumber(formData.get("purchasePrice")),
-
-      purchaseDate: formData.get("purchaseDate"),
-    };
-
-    /*
-     * ======================================================
-     * VALIDATION
-     * ======================================================
-     */
-
-    if (purchase.quantity <= 0) {
-      showNotice("Enter a valid quantity.");
-
-      return;
-    }
-
-    const purchasedAsset = state.data.assets.find((asset) => asset.id === assetId);
-    if (!["etf", "stock", "crypto_earn"].includes(purchasedAsset?.type) && !Number.isInteger(purchase.quantity)) {
-      showNotice("Quantity must be a whole number.");
-
-      return;
-    }
-
-    if (purchase.purchasePrice < 0) {
-      showNotice("Enter a valid purchase price.");
-
-      return;
-    }
-
-    if (!purchase.purchaseDate) {
-      showNotice("Enter a purchase date.");
-
-      return;
-    }
-
-    /*
-     * ======================================================
-     * SUBMIT BUTTON
-     * ======================================================
-     */
-
-    const submitButton = form.querySelector('button[type="submit"]');
-
-    if (submitButton) {
-      submitButton.disabled = true;
-
-      submitButton.dataset.originalText = submitButton.textContent;
-
-      submitButton.textContent = "Saving...";
-    }
-
-    try {
-      /*
-       * ==================================================
-       * BUY MORE ASSET
-       * ==================================================
-       */
-
-      await api.buyMoreAsset(assetId, purchase);
-
-      /*
-       * Close modal
-       */
-
-      close();
-
-      /*
-       * Reload application data
-       */
-
-      await loadData();
-    } catch (error) {
-      console.error("BUY MORE ASSET ERROR:", error);
-
-      showNotice(error.message || "Failed to buy more asset.");
-    } finally {
-      if (submitButton) {
-        submitButton.disabled = false;
-
-        submitButton.textContent =
-          submitButton.dataset.originalText || "Докупити";
-      }
-    }
-  });
-}
+Object.assign(window, { populateInstrumentSelect, updateNewInstrumentFields, openAssetTransactions, setupAssetTransactionsModal, executeHoldingAction, openHoldingSelectionModal, setupDeleteHoldingModal, openEditAssetModal, setupModal, updateAssetTypeFields, addCouponRow, collectCoupons, setDefaultDates });
+})();

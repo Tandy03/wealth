@@ -1,8 +1,9 @@
 // renderers/calculators.js
-function renderProfitCalculator() {
-  renderAssetAllocationChart();
-  renderPortfolioHistoryChart();
-  renderAssetPriceHistoryChart();
+function renderProfitCalculator(state = stateStore.getState()) {
+  const { summarizeProfit, calculateProfit } = createRenderServices(state);
+  renderAssetAllocationChart(state);
+  renderPortfolioHistoryChart(state);
+  renderAssetPriceHistoryChart(state);
 
   const from = document.querySelector("#profit-from")?.value || null;
 
@@ -134,7 +135,8 @@ function renderProfitCalculator() {
   renderProfitTable(document.querySelector("#profit-types-table"), typeRows);
 }
 
-function renderRebalanceCalculator() {
+function renderRebalanceCalculator(state = stateStore.getState()) {
+  const { getRebalanceGroups } = createRenderServices(state);
   const targets = document.querySelector("#rebalance-targets");
 
   if (!targets) {
@@ -175,21 +177,7 @@ function renderRebalanceCalculator() {
     results.innerHTML = "";
   }
 
-  targets.querySelectorAll("[data-rebalance-group]").forEach((input) => {
-    input.addEventListener("input", updateRebalanceTotal);
-  });
-
-  targets.querySelectorAll("[data-remove-rebalance]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const id = button.dataset.removeRebalance;
-      if (!id.startsWith("planned-") && !state.rebalanceExcluded.includes(id)) {
-        state.rebalanceExcluded.push(id);
-      }
-      state.rebalanceDrafts = state.rebalanceDrafts.filter((item) => item.id !== id);
-      button.closest(".rebalance-field")?.remove();
-      updateRebalanceTotal();
-    });
-  });
+  bindRebalanceActions(targets);
 
   updateRebalanceTotal();
 }

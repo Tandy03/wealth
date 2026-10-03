@@ -1,3 +1,5 @@
+(function () {
+const state = stateStore.getState();
 // forms/sales.js
 function populateSellAssetSelect() {
   const select = document.querySelector("#sell-asset");
@@ -28,7 +30,8 @@ function populateSellAssetSelect() {
     const instruments = [...new Set(assets.map((asset) => asset.instrumentName || "No instrument"))];
     const instrument = instruments.length === 1 ? instruments[0] : `${instruments.length} instruments`;
     option.value = assets.map((asset) => asset.id).join(",");
-    option.textContent = `${first.name} — ${instrument} — ${formatQuantity(available)} units`;
+    option.setAttribute("translate", "no");
+    option.textContent = `${first.name} — ${instrument} — ${window.FinoI18n.t(`${formatQuantity(available)} units`)}`;
     select.appendChild(option);
   });
 }
@@ -360,3 +363,5 @@ function setupSellModal() {
     }
   });
 }
+Object.assign(window, { populateSellAssetSelect, getSelectedSellAssets, updateSalePreview, setupSellModal });
+})();

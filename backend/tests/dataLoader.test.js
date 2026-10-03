@@ -11,7 +11,7 @@ test('local holdings become available even when optional market requests never r
     console,
     state: { data: null, purchaseExchangeRates: {} },
     api: { getData: async options => { readOptions = options; return data; }, getExchangeRates: () => new Promise(() => {}), getCurrencyHistory: () => new Promise(() => {}) },
-    stateStore: { replaceData: value => { context.state.data = value; } },
+    stateStore: { replaceData: value => { context.state.data = value; }, setUI: patch => Object.assign(context.state, patch) },
     normalizeWalletCategoryNames: () => { normalized = true; },
     localStorage: { getItem: () => '{"USD":[{"date":"2026-01-01","rate":40}]}' },
     normalizeNumber: Number,
