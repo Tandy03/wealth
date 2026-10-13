@@ -4,6 +4,7 @@ const state = stateStore.getState();
 let macroCharts = [];
 
 let macroLoaded = false;
+let macroRenderId = 0;
 
 function macroYearTick(value) {
   const label = this.getLabelForValue(value);
@@ -34,12 +35,14 @@ function macroMultiChart(canvasId, labels, datasets, rightAxis = false) {
 }
 
 async function renderMacroeconomics() {
+  const renderId = ++macroRenderId;
   const state = document.querySelector("#macro-state");
   const content = document.querySelector("#macro-content");
   if (!state || !content) return;
   state.hidden = false; state.textContent = "Loading official macroeconomic data…";
   try {
     const data = await api.getMacroeconomics();
+    if (renderId !== macroRenderId) return;
     macroCharts.forEach((chart) => chart.destroy()); macroCharts = [];
     const symbols = { USD: "$", EUR: "€", GBP: "£" };
     const currencyOrder = { USD: 0, EUR: 1, GBP: 2 };
@@ -57,17 +60,26 @@ async function renderMacroeconomics() {
     const errorNode = document.querySelector("#macro-errors");
     errorNode.hidden = !errors.length;
     errorNode.textContent = errors.length ? `Some sources are temporarily unavailable: ${errors.map(([name]) => name.toUpperCase()).join(", ")}.` : "";
-    content.hidden = false; state.hidden = true; macroLoaded = true; stateStore.setUI({ macroLoaded: true });
+    content.hidden = false; state.hidden = true;
+    const sourcesHealthy = !errors.length;
+    macroLoaded = false; stateStore.setUI({ macroLoaded: false });
     const policyState = document.querySelector("#macro-policy-rate-state");
+    if (policyState) policyState.textContent = 'Loading official NBU series…';
     api.getNbuPolicyRate().then((result) => {
+      if (renderId !== macroRenderId) return;
       const rawSeries = result?.policyRate || [];
       const series = rawSeries.filter((point, index) => index === 0 || index === rawSeries.length - 1 || point.value !== rawSeries[index - 1].value);
       macroLineChart("macro-policy-rate", series, "NBU key policy rate", "#e8a33a", "%", true);
       if (policyState) policyState.textContent = series.length ? `NBU · ${series.at(-1).date}` : "No policy-rate data returned";
+      macroLoaded = sourcesHealthy && series.length > 0; stateStore.setUI({ macroLoaded });
     }).catch((error) => {
+      if (renderId !== macroRenderId) return;
       if (policyState) policyState.textContent = error.message || "Policy-rate data is temporarily unavailable";
+      macroLoaded = false; stateStore.setUI({ macroLoaded: false });
     });
   } catch (error) {
+    if (renderId !== macroRenderId) return;
+    macroLoaded = false; stateStore.setUI({ macroLoaded: false });
     state.textContent = error.message || "Could not load macroeconomic data.";
   }
 }

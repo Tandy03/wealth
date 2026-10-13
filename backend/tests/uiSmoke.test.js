@@ -9,7 +9,7 @@ const frontend = path.join(__dirname, '../../frontend');
 const html = fs.readFileSync(path.join(frontend, 'index.html'), 'utf8');
 const fixture = () => ({ ...model.createEmptyState(), assets: [{ id: 'stock', name: 'Smoke Stock', type: 'stock', quantity: 2, purchasePrice: 100, currentPrice: 120, purchaseDate: '2026-01-01', currency: 'USD' }], transactions: [{ id: 'buy', assetId: 'stock', type: 'BUY', quantity: 2, amount: 200, date: '2026-01-01', currency: 'USD' }] });
 const flush = async () => { for (let i = 0; i < 8; i++) await new Promise(setImmediate); };
-async function harness(t, { initial = fixture(), blockMarkets = false, locale = 'en', charts = false, failWallet = false, native = false, nativeStorage: restoredStorage } = {}) {
+async function harness(t, { initial = fixture(), blockMarkets = false, locale = 'en', charts = false, failWallet = false, native = false, nativeStorage: restoredStorage, macroFailureOnce = false } = {}) {
   const errors = [];
   const console = new VirtualConsole();
   console.on('jsdomError', error => errors.push(error.message));
@@ -81,6 +81,8 @@ async function harness(t, { initial = fixture(), blockMarkets = false, locale = 
   const portfolio = require('../domain/portfolioService').createService(repository);
   const wallet = require('../domain/walletService').createService(repository);
   const requests = [];
+  let macroCalls = 0, policyCalls = 0;
+  let sessionValid = true;
   window.fetch = async (url, options = {}) => {
     const target = new URL(url, 'http://localhost/');
     const route = target.pathname;
@@ -88,6 +90,12 @@ async function harness(t, { initial = fixture(), blockMarkets = false, locale = 
     const body = options.body ? JSON.parse(options.body) : undefined;
     requests.push({ route, method, body });
     if (native) throw new Error('Mock phone is offline.');
+    if (route === '/api/session' && method === 'POST') {
+      assert.equal(options.headers['X-Fino-Session'], 'renew');
+      sessionValid = true;
+      return new Response(null, { status: 204 });
+    }
+    if (route.startsWith('/api/') && !sessionValid) return new Response(JSON.stringify({ error: 'Session expired.', code: 'BROWSER_SESSION_REQUIRED' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
     if (blockMarkets && /exchange-rates|currency-history|index-history/.test(route)) return new Promise(() => {});
     let data;
     if (route === '/api/data') data = stored;
@@ -95,6 +103,14 @@ async function harness(t, { initial = fixture(), blockMarkets = false, locale = 
     else if (route === '/api/exchange-rates') data = { rates: { USD: 40, EUR: 45 } };
     else if (route.endsWith('currency-history')) data = { values: [{ datetime: '2026-01-01', close: 40 }] };
     else if (route.endsWith('index-history')) data = { values: [] };
+    else if (route === '/api/macroeconomics') {
+      const failed = macroFailureOnce && ++macroCalls === 1;
+      data = { exchangeRates: [], inflation: { annual: [], monthly: [] }, gdp: failed ? { nominal: [], realIndex: [] } : { nominal: [{ date: '2024', value: 7658659 }], realIndex: [{ date: '2024', value: 103.2 }] }, errors: failed ? { gdp: 'Temporary upstream failure' } : {} };
+    }
+    else if (route === '/api/macroeconomics/policy-rate') {
+      if (macroFailureOnce && ++policyCalls === 1) return new Response(JSON.stringify({ error: 'Temporary policy failure' }), { status: 502, headers: { 'Content-Type': 'application/json' } });
+      data = { policyRate: [{ date: '2026-01-01', value: 15 }, { date: '2026-02-01', value: 15.5 }] };
+    }
     else if (route === '/api/assets' && method === 'POST') data = await portfolio.createAsset(body);
     else if (/\/api\/assets\/.+\/buy$/.test(route)) data = await portfolio.buyMoreAsset(route.split('/')[3], body);
     else if (route === '/api/wallet' && method === 'PUT') {
@@ -112,8 +128,40 @@ async function harness(t, { initial = fixture(), blockMarkets = false, locale = 
   await window.init();
   if (native) await window.mobileApi.waitForSync();
   await flush();
-  return { window, document: window.document, errors, requests, chartCalls, nativeStorage, stored: () => structuredClone(stored), eval: expression => vm.runInContext(expression, dom.getInternalVMContext()) };
+  return { window, document: window.document, errors, requests, chartCalls, nativeStorage, expireSession: () => { sessionValid = false; }, stored: () => structuredClone(stored), eval: expression => vm.runInContext(expression, dom.getInternalVMContext()) };
 }
+
+test('web wallet renews an expired browser session and saves the input without showing an error', async t => {
+  const h = await harness(t);
+  h.document.querySelector('#open-wallet').click();
+  h.expireSession();
+  const plan = h.document.querySelector('[data-wallet-plan="Health"]');
+  plan.value = '250'; plan.dispatchEvent(new h.window.Event('change', { bubbles: true }));
+  await flush();
+  assert.equal(h.stored().wallet.months['2026-10'].plans.Health, 250);
+  assert.equal(h.document.querySelector('[data-wallet-plan="Health"]').disabled, false);
+  assert.equal(h.document.querySelector('#notice-modal').classList.contains('open'), false);
+  assert.equal(h.requests.filter(request => request.route === '/api/session').length, 1);
+  assert.equal(h.requests.filter(request => request.route === '/api/wallet' && request.method === 'PUT').length, 2);
+  assert.deepEqual(h.errors, []);
+});
+
+test('macro charts recover GDP and policy-rate data on reopening after a temporary failure', async t => {
+  const h = await harness(t, { charts: true, macroFailureOnce: true });
+  h.document.querySelector('[data-section="macroeconomics"]').click(); await flush();
+  assert.equal(h.eval('stateStore.getState().macroLoaded'), false);
+  assert.equal(h.document.querySelector('#macro-errors').hidden, false);
+  h.document.querySelector('[data-section="dashboard"]').click();
+  h.document.querySelector('[data-section="macroeconomics"]').click(); await flush();
+  assert.equal(h.document.querySelector('#macro-errors').hidden, true);
+  assert.equal(h.eval('stateStore.getState().macroLoaded'), true);
+  const gdp = h.chartCalls.filter(call => call.canvas.id === 'macro-gdp-chart').at(-1).config;
+  assert.equal(gdp.data.datasets[0].data[0], 7658659);
+  assert.ok(Math.abs(gdp.data.datasets[1].data[0] - 3.2) < 1e-9);
+  const policy = h.chartCalls.filter(call => call.canvas.id === 'macro-policy-rate').at(-1).config;
+  assert.deepEqual(Array.from(policy.data.datasets[0].data), [15, 15.5]);
+  assert.deepEqual(h.errors, []);
+});
 
 test('native UI boots with cancelled authorization, renders analytics offline, saves and recovers its journal', async t => {
   const initial = fixture();

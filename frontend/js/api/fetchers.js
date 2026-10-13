@@ -22,12 +22,32 @@
       backupSaved: response.headers.get('x-backup-saved') === 'true' }, enumerable: false });
     return data;
   }
-  function createService({ fetch: fetchRequest }) {
+  function createService({ fetch: fetchRequest, recoverSession = false }) {
+    let sessionRenewal = null;
+    let sessionGeneration = 0;
+    async function renewSession() {
+      if (!sessionRenewal) sessionRenewal = (async () => {
+        const response = await fetchRequest('/api/session', {
+          method: 'POST', headers: { 'X-Fino-Session': 'renew' }, credentials: 'same-origin', cache: 'no-store',
+        });
+        if (!response.ok) await readJson(response, 'Could not renew the local browser session. Refresh the page and try again.');
+        sessionGeneration++;
+      })().finally(() => { sessionRenewal = null; });
+      return sessionRenewal;
+    }
     return {
       async request(url, { method = 'GET', body, message = 'Request failed.' } = {}) {
         const options = { method };
         if (body !== undefined) { options.headers = { 'Content-Type': 'application/json' }; options.body = JSON.stringify(body); }
-        return readJson(await fetchRequest(url, options), message);
+        const generation = sessionGeneration;
+        try { return await readJson(await fetchRequest(url, options), message); }
+        catch (error) {
+          const enabled = typeof recoverSession === 'function' ? recoverSession() : recoverSession;
+          if (!enabled || !/^\/api\//.test(url) || error.status !== 403 || error.code !== 'BROWSER_SESSION_REQUIRED') throw error;
+          if (generation === sessionGeneration) await renewSession();
+          // The session guard rejects before any financial handler. Retry that rejected request once only.
+          return readJson(await fetchRequest(url, options), message);
+        }
       },
     };
   }

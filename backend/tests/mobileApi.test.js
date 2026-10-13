@@ -8,6 +8,47 @@ const clone = (value) => JSON.parse(JSON.stringify(value));
 const signature = (value) => JSON.stringify((function canonical(item) { return Array.isArray(item) ? item.map(canonical) : item && typeof item === 'object' ? Object.fromEntries(Object.keys(item).sort().map(key => [key, canonical(item[key])])) : item; })(value));
 const fixture = () => ({ schemaVersion: 1, sync: { revision: 7, updatedAt: '2026-01-01T00:00:00Z', deviceId: 'desktop' }, assets: [{ id: 'bond', name: 'Bond', type: 'ovdp', quantity: 10, remainingQuantity: 10, remainingCostBasis: 10000, purchasePrice: 1000, currency: 'UAH' }], transactions: [{ id: 'buy', assetId: 'bond', type: 'BUY', quantity: 10, amount: 10000, date: '2026-01-01' }], sales: [], payments: [], calendarNotes: [], priceHistory: [], wallet: { expenses: [], months: {}, loans: [] }, instruments: [] });
 
+test('native macroeconomics selects the compact official GDP series and populates both chart datasets', async () => {
+  const h = harness();
+  h.hooks.externalFetch = async url => {
+    if (url.hostname === 'stat.gov.ua') {
+      assert.equal(url.searchParams.get('c[INDICATOR]'), 'GDP_CUR_PRC');
+      assert.equal(url.searchParams.get('c[PRICE_TYPE]'), 'CURR_PRICES,IDX_VOL_PY');
+      const csv = 'INDICATOR,PRICE_TYPE,REGION,BREAKDOWN_CATEGORY,BREAKDOWN,SECTOR_ECONOMY,FREQ,TIME_PERIOD,OBS_VALUE\nGDP_CUR_PRC,CURR_PRICES,UA00000000000000000,_T,_T,S_1,A,2024,7658659\nGDP_CUR_PRC,IDX_VOL_PY,UA00000000000000000,_T,_T,S_1,A,2024,103.2';
+      return new Response(csv);
+    }
+    const rows = url.pathname.endsWith('/exchange') ? [{ cc: 'USD', rate: 41, exchangedate: '13.10.2026', txt: 'US Dollar' }] : [];
+    return new Response(JSON.stringify(rows));
+  };
+  const data = await h.api.getMacroeconomics();
+  assert.equal(data.errors.gdp, undefined); assert.equal(data.gdp.nominal[0].value, 7658659); assert.equal(data.gdp.realIndex[0].value, 103.2);
+});
+
+test('native policy rates survive slow official responses and coalesce concurrent loads', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const h = harness(); let calls = 0;
+  h.hooks.externalFetch = async () => {
+    calls++; await new Promise(resolve => setTimeout(resolve, 15000));
+    return new Response(JSON.stringify([{ id_api: 'KEY_PolicyRate', dt: '20260101', value: 15 }]));
+  };
+  const first = h.api.getNbuPolicyRate(), second = h.api.getNbuPolicyRate();
+  t.mock.timers.tick(15000);
+  assert.equal((await first).policyRate[0].value, 15); await second; assert.equal(calls, 1);
+});
+
+test('an empty legacy proxy response and failed NBU fallback never poison the native policy cache', async () => {
+  const h = harness({ proxy: true }); let directCalls = 0, proxyCalls = 0;
+  h.hooks.externalFetch = async url => {
+    if (url.hostname === 'script.google.com') { proxyCalls++; return new Response(JSON.stringify({ ok: true, data: { policyRate: [] } })); }
+    directCalls++;
+    if (directCalls === 1) return new Response('{}', { status: 503 });
+    return new Response(JSON.stringify([{ id_api: 'KEY_PolicyRate', dt: '20260101', value: 15 }]));
+  };
+  await assert.rejects(h.api.getNbuPolicyRate(), /temporarily unavailable/);
+  assert.equal((await h.api.getNbuPolicyRate()).policyRate[0].value, 15);
+  assert.equal(directCalls, 2); assert.equal(proxyCalls, 2);
+});
+
 test('native pending purchases never rewrite completed financial history', async () => {
   const local = fixture();
   local.transactions.push({ id: 'pending', assetId: 'bond', type: 'BUY', status: 'pending', quantity: 5, amount: 10000, date: '2026-02-01' });
@@ -167,7 +208,7 @@ test('native market sync permits concurrent purchases and applies prices to the 
   assert.equal(saved.payments.find(p => p.type === 'MATURITY').amount, 11000);
   await h.drain();
 });
-function harness({ local = fixture(), remote = clone(local), metadata = true, confirmedStorage = false } = {}) {
+function harness({ local = fixture(), remote = clone(local), metadata = true, confirmedStorage = false, proxy = false } = {}) {
   const storage = new Map([['fino-data-v1:test%40example.com', JSON.stringify(local)], ['fino-active-account', 'test@example.com']]);
   if (metadata) storage.set('fino-sync-v2:test%40example.com', JSON.stringify({ baseline: signature(local), pendingUpload: false, conflict: false, error: null }));
   let remoteData = remote, version = 1, offline = false, authOffline = false;
@@ -175,13 +216,14 @@ function harness({ local = fixture(), remote = clone(local), metadata = true, co
   const uploads = [], backups = [];
   let counter = 0;
   const headers = () => ({ get: (name) => name === 'etag' ? 'version-' + version : null });
-  const response = (data, status = 200) => { const capturedVersion = version; return { ok: status >= 200 && status < 300, status, headers: { get: name => name === "etag" ? "version-" + capturedVersion : null }, json: async () => { if (data === "") throw new SyntaxError("Empty JSON"); return clone(data); } }; };
+  const response = (data, status = 200) => { const capturedVersion = version; return { ok: status >= 200 && status < 300, status, headers: { get: name => name === "etag" ? "version-" + capturedVersion : null }, text: async () => typeof data === 'string' ? data : JSON.stringify(data), json: async () => { if (data === "") throw new SyntaxError("Empty JSON"); return clone(data); } }; };
   const hooks = {};
   const fetch = async (url, options = {}) => {
     hooks.driveCalls = (hooks.driveCalls || 0) + 1;
     if (hooks.hangDrive) return new Promise(() => {});
     if (offline) throw new Error('mock offline');
     const parsed = new URL(url);
+    if (hooks.externalFetch && ['bank.gov.ua', 'stat.gov.ua', 'script.google.com'].includes(parsed.hostname)) return hooks.externalFetch(parsed, options);
     if (parsed.hostname === 'www.inzhur.reit') return response(hooks.inzhurCatalog ? await hooks.inzhurCatalog() : []);
     const method = options.method || 'GET';
     let body;
@@ -223,6 +265,7 @@ function harness({ local = fixture(), remote = clone(local), metadata = true, co
   const preferences = { get: async ({ key }) => { const value = storage.get(key) || null; await hooks.beforePreferenceGet?.(key); return { value }; }, set: async ({ key, value }) => { if (hooks.failPreference?.(key)) throw new Error('mock storage failure'); storage.set(key, value); }, remove: async ({ key }) => storage.delete(key) };
   const auth = { getAccessToken: async () => { if (authOffline || hooks.authFailure?.()) throw new Error('mock authorization offline'); return { email: hooks.authEmail ? hooks.authEmail() : 'test@example.com', accessToken: 'mock' }; }, signOut: async () => {} };
   const context = { window: { Capacitor: { isNativePlatform: () => true, Plugins: { Preferences: preferences, GoogleDriveAuth: auth } } }, fetch, URLSearchParams, console };
+  if (proxy) context.window.FINO_MOBILE_CONFIG = { proxyUrl: 'https://script.google.com/macros/s/mock/exec', proxyToken: 'mock-token' };
   if (confirmedStorage) {
     context.window.Capacitor.Plugins.FinoStorage = preferences;
     context.window.Capacitor.Plugins.Preferences = new Proxy({}, { get() { throw new Error('Async Preferences must not handle confirmed writes.'); } });

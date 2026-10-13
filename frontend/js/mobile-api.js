@@ -501,7 +501,7 @@
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token: proxyConfig.proxyToken, action, ...parameters }),
-    });
+    }, { timeoutMs: action === 'policyRate' ? window.FinoMarketModel.policyTimeoutMs : 10000 });
     const payload = await response.json();
     if (!payload?.ok) throw new errors.RemoteUnavailableError({ message: 'Market-data proxy request failed.' });
     window.FinoStateModel.validateJson(payload.data);
@@ -548,8 +548,8 @@
 
     try {
       const [ratesResponse, inflationResponse] = await Promise.all([
-        fetch(`${nbuBase}/exchange?json`),
-        fetch(`${nbuBase}/inflation?period=m&start=${dateToken(start)}&end=${dateToken(now)}&json`),
+        fetch(`${nbuBase}/exchange?json`, {}, { timeoutMs: window.FinoMarketModel.macroTimeoutMs }),
+        fetch(`${nbuBase}/inflation?period=m&start=${dateToken(start)}&end=${dateToken(now)}&json`, {}, { timeoutMs: window.FinoMarketModel.macroTimeoutMs }),
       ]);
       if (!ratesResponse.ok || !inflationResponse.ok) throw new Error("NBU data is temporarily unavailable.");
       const [rates, inflation] = await Promise.all([ratesResponse.json(), inflationResponse.json()]);
@@ -570,15 +570,9 @@
     } catch (error) { result.errors.nbu = error.message || "Could not load NBU data."; }
 
     try {
-      const gdpUrl = "https://stat.gov.ua/sdmx/workspaces/default:integration/registry/sdmx/3.0/data/dataflow/SSSU/DF_ANNUAL_NATIONAL_ACCOUNTS/latest/*?startPeriod=2010";
-      const response = await fetch(gdpUrl, { headers: { Accept: "text/csv" } });
+      const response = await fetch(window.FinoMarketModel.gdpUrl, { headers: { Accept: "text/csv" } }, { timeoutMs: window.FinoMarketModel.macroTimeoutMs });
       if (!response.ok) throw new Error(`State Statistics Service returned ${response.status}.`);
-      const rows = parseOfficialCsv((await response.text()).replace(/^\uFEFF/, ""));
-      const headers = rows.shift() || [];
-      const objects = rows.map((values) => Object.fromEntries(headers.map((key, index) => [key, values[index]])));
-      const select = (priceType) => objects.filter((row) => row.INDICATOR === "GDP_CUR_PRC" && row.PRICE_TYPE === priceType && row.REGION === "UA00000000000000000" && row.BREAKDOWN_CATEGORY === "_T" && row.BREAKDOWN === "_T" && row.SECTOR_ECONOMY === "S_1" && row.FREQ === "A").map((row) => ({ date: row.TIME_PERIOD, value: Number(row.OBS_VALUE) })).filter((item) => item.date && Number.isFinite(item.value));
-      result.gdp.nominal = select("CURR_PRICES");
-      result.gdp.realIndex = select("IDX_VOL_PY");
+      result.gdp = window.FinoMarketModel.gdp(await response.text());
     } catch (error) { result.errors.gdp = error.message || "Could not load GDP data."; }
 
     if (!result.exchangeRates.length && !Object.values(result.inflation).some((series) => series.length) && !result.gdp.nominal.length) {
@@ -588,22 +582,29 @@
   }
 
   let policyRateCache = null;
+  let policyRatePending = null;
   async function mobileNbuPolicyRate() {
-    if (policyRateCache) return { policyRate: clone(policyRateCache) };
+    if (policyRateCache && Date.now() - policyRateCache.updatedAt < 6 * 60 * 60 * 1000) return { policyRate: clone(policyRateCache.data) };
+    if (!policyRatePending) policyRatePending = loadMobilePolicyRate().finally(() => { policyRatePending = null; });
+    return policyRatePending;
+  }
+  async function loadMobilePolicyRate() {
     if (proxyConfig.proxyUrl && proxyConfig.proxyToken) {
       try {
         const result = await proxy("policyRate");
-        policyRateCache = result?.policyRate || [];
-        if (policyRateCache.length) return { policyRate: clone(policyRateCache) };
+        const data = window.FinoMarketModel.policyRate(result?.policyRate, { normalized: true });
+        policyRateCache = { data, updatedAt: Date.now() };
+        return { policyRate: clone(data) };
       } catch (_) { /* Older proxy deployments fall back to the official NBU API. */ }
     }
     const now = new Date();
-    const start = new Date(now.getFullYear() - 8, 0, 1);
+    const start = new Date(now.getFullYear() - 3, 0, 1);
     const dateToken = (date) => `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
-    const response = await fetch(`https://bank.gov.ua/NBUStatService/v1/statdirectory/key?period=d&start=${dateToken(start)}&end=${dateToken(now)}&json`);
+    const response = await fetch(`https://bank.gov.ua/NBUStatService/v1/statdirectory/key?period=d&start=${dateToken(start)}&end=${dateToken(now)}&json`, {}, { timeoutMs: window.FinoMarketModel.policyTimeoutMs });
     if (!response.ok) throw new Error("NBU policy-rate data is temporarily unavailable.");
-    policyRateCache = (await response.json()).filter((row) => row.id_api === "KEY_PolicyRate").map((row) => ({ date: normalizeOfficialDate(row.dt), value: Number(row.value) })).filter((item) => item.date && Number.isFinite(item.value)).sort((a, b) => a.date.localeCompare(b.date));
-    return { policyRate: clone(policyRateCache) };
+    const data = window.FinoMarketModel.policyRate(await response.json());
+    policyRateCache = { data, updatedAt: Date.now() };
+    return { policyRate: clone(data) };
   }
 
   async function mobileMarketCurrencies() {

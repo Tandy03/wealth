@@ -1,12 +1,12 @@
 const { fetchWithTimeout } = require('../../../frontend/js/request');
 const { requestPolicy } = require('./policy');
-async function providerFetch(url, options = {}) {
-  const release = requestPolicy.enter(url);
+async function providerFetch(url, options = {}, { timeoutMs = 10000, fetchImpl, policy = requestPolicy } = {}) {
+  const release = policy.enter(url);
   try {
-    const response = await fetchWithTimeout(url, options, { timeoutMs: 10000 });
+    const response = await fetchWithTimeout(url, options, { timeoutMs, ...(fetchImpl ? { fetchImpl } : {}) });
     // Include body reading in the request slot; the deadline wrapper bounds all body methods.
     const reads = ['json', 'text', 'arrayBuffer', 'blob'];
-    let timer = setTimeout(release, 11000); timer.unref?.();
+    let timer = setTimeout(release, timeoutMs + 1000); timer.unref?.();
     return new Proxy(response, { get(target, key) {
       if (reads.includes(key) && typeof target[key] === 'function') return async () => {
         try {

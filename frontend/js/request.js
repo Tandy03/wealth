@@ -9,7 +9,8 @@
     if (typeof module === 'object' && module.exports) return () => {};
     const origin = new URL(url, root.location?.href || 'https://localhost').origin;
     let bucket = buckets.get(origin);
-    if (!bucket || Date.now() - bucket.start > 60000) { bucket = { start: Date.now(), count: 0, active: bucket?.active || 0 }; buckets.set(origin, bucket); }
+    if (!bucket) { bucket = { start: Date.now(), count: 0, active: 0 }; buckets.set(origin, bucket); }
+    else if (Date.now() - bucket.start >= 60000) { bucket.start = Date.now(); bucket.count = 0; }
     if (bucket.count >= 120 || bucket.active >= 6) {
       const error = new Error('External request limit reached. Retry later.'); error.code = 'PROVIDER_RATE_LIMITED'; error.status = 429; throw error;
     }

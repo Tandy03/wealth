@@ -2,16 +2,32 @@ const { DomainError } = require('./domainError');
 const { randomBytes, timingSafeEqual } = require('node:crypto');
 function createBrowserSession() {
   const session = randomBytes(32).toString('hex');
-  const sameSession = value => typeof value === 'string' && value.length === session.length && timingSafeEqual(Buffer.from(value), Buffer.from(session));
+  const sameSession = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) && timingSafeEqual(Buffer.from(value), Buffer.from(session));
+  // Cookies are scoped by host, not port. Separate local server instances must not replace each other's session.
+  const cookieName = req => 'fino_session_' + req.socket.localPort;
+  function issueDocument(req, res) {
+    res.cookie(cookieName(req), session, { httpOnly: true, sameSite: 'strict', path: '/' });
+    res.set('Cache-Control', 'no-store');
+  }
   return {
+    issueDocument,
     issue(req, res, next) {
-      if (req.method === 'GET' && ['/', '/index.html'].includes(req.path)) res.cookie('fino_session', session, { httpOnly: true, sameSite: 'strict', path: '/' });
+      if (req.method === 'GET' && ['/', '/index.html'].includes(req.path)) issueDocument(req, res);
       next();
+    },
+    renew(req, res, next) {
+      // protectApi runs first. The custom header prevents HTML forms/navigations from minting sessions.
+      if (req.get('X-Fino-Session') !== 'renew' || !(req.get('Origin') || req.get('Sec-Fetch-Site') === 'same-origin')) {
+        return next(new DomainError({ error: 'Browser session renewal requires an application request.' }, 403));
+      }
+      issueDocument(req, res);
+      res.status(204).end();
     },
     protect(req, res, next) {
       if (req.get('Origin') || req.get('Sec-Fetch-Site')) {
-        const cookie = String(req.get('Cookie') || '').split(';').map(part => part.trim()).find(part => part.startsWith('fino_session='))?.slice('fino_session='.length);
-        if (!sameSession(cookie)) return next(new DomainError({ error: 'Open the application to establish a local browser session.' }, 403));
+        const prefix = cookieName(req) + '=';
+        const cookie = String(req.get('Cookie') || '').split(';').map(part => part.trim()).find(part => part.startsWith(prefix))?.slice(prefix.length);
+        if (!sameSession(cookie)) return next(new DomainError({ error: 'The local browser session expired. Refresh the page and try again.', code: 'BROWSER_SESSION_REQUIRED' }, 403));
       }
       next();
     },

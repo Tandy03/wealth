@@ -85,7 +85,7 @@ function getInzhurCatalog() {
 }
 
 function getMacroeconomics() {
-  const cacheKey = "macroeconomics-v4";
+  const cacheKey = "macroeconomics-v5";
   const cached = readCache(cacheKey);
   if (cached) return withCached(cached);
 
@@ -125,7 +125,7 @@ function getMacroeconomics() {
   }
 
   try {
-    const gdpUrl = "https://stat.gov.ua/sdmx/workspaces/default:integration/registry/sdmx/3.0/data/dataflow/SSSU/DF_ANNUAL_NATIONAL_ACCOUNTS/latest/*?startPeriod=2010";
+    const gdpUrl = "https://stat.gov.ua/sdmx/workspaces/default:integration/registry/sdmx/3.0/data/dataflow/SSSU/DF_ANNUAL_NATIONAL_ACCOUNTS/latest/*?startPeriod=2010&c%5BINDICATOR%5D=GDP_CUR_PRC&c%5BPRICE_TYPE%5D=CURR_PRICES%2CIDX_VOL_PY&c%5BREGION%5D=UA00000000000000000&c%5BBREAKDOWN_CATEGORY%5D=_T&c%5BBREAKDOWN%5D=_T&c%5BSECTOR_ECONOMY%5D=S_1&c%5BFREQ%5D=A";
     consumeBudget('upstream', 120);
     const response = UrlFetchApp.fetch(gdpUrl, { muteHttpExceptions: true, followRedirects: true, headers: { Accept: "text/csv" } });
     if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) throw apiError("State Statistics Service returned " + response.getResponseCode() + ".", "SSSU_ERROR", response.getResponseCode());
@@ -139,11 +139,12 @@ function getMacroeconomics() {
     };
     result.gdp.nominal = select("CURR_PRICES");
     result.gdp.realIndex = select("IDX_VOL_PY");
+    if (!result.gdp.nominal.length || !result.gdp.realIndex.length) throw apiError('No GDP series returned.', 'SSSU_ERROR', 502);
   } catch (error) {
     result.errors.gdp = "Could not load GDP data.";
   }
 
-  writeCache(cacheKey, result, 21600);
+  if (!Object.keys(result.errors).length) writeCache(cacheKey, result, 21600);
   return result;
 }
 
@@ -159,6 +160,7 @@ function getNbuPolicyRate() {
   const result = { policyRate: response.data.filter(function (row) { return row.id_api === "KEY_PolicyRate"; }).map(function (row) {
     return { date: normalizeMacroDate(row.dt), value: Number(row.value) };
   }).filter(validMacroPoint).sort(function (a, b) { return a.date.localeCompare(b.date); }) };
+  if (!result.policyRate.length) throw apiError('No NBU policy-rate series returned.', 'NBU_ERROR', 502);
   writeCache(cacheKey, result, 21600);
   return result;
 }

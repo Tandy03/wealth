@@ -38,3 +38,40 @@ test('native exchange-rate facade rejects invalid provider numbers, codes and ca
     await assert.rejects(service.getExchangeRates());
   }
 });
+
+const sessionDenied = () => new Response(JSON.stringify({ error: 'Expired browser session.', code: 'BROWSER_SESSION_REQUIRED' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+const jsonResponse = data => new Response(JSON.stringify(data), { headers: { 'Content-Type': 'application/json' } });
+
+test('concurrent stale browser requests share renewal and retry their original payload once', async () => {
+  let renewed = false, renewals = 0, writes = 0;
+  const payloads = [];
+  const service = fetchers.createService({ recoverSession: true, fetch: async (url, options) => {
+    if (url === '/api/session') {
+      renewals++; assert.equal(options.headers['X-Fino-Session'], 'renew'); assert.equal(options.credentials, 'same-origin');
+      await new Promise(setImmediate); renewed = true; return new Response(null, { status: 204 });
+    }
+    payloads.push(options.body);
+    if (!renewed) return sessionDenied();
+    writes++; return jsonResponse({ saved: true });
+  } });
+  const body = { amount: 250 };
+  await Promise.all([1, 2, 3].map(() => service.request('/api/wallet', { method: 'PUT', body })));
+  assert.equal(renewals, 1); assert.equal(writes, 3); assert.equal(payloads.length, 6);
+  assert.ok(payloads.every(payload => payload === JSON.stringify(body)));
+});
+
+test('session recovery is bounded and never retries other access/storage/provider failures', async () => {
+  let calls = 0;
+  const blocked = fetchers.createService({ recoverSession: true, fetch: async url => {
+    calls++; return url === '/api/session' ? new Response(null, { status: 204 }) : sessionDenied();
+  } });
+  await assert.rejects(blocked.request('/api/data'), { code: 'BROWSER_SESSION_REQUIRED' }); assert.equal(calls, 3);
+  for (const [url, recoverSession, status, code] of [
+    ['/api/wallet', true, 403, 'DOMAIN_FAILURE'], ['/api/wallet', true, 503, 'STORAGE_FAILURE'],
+    ['https://provider.test/data', true, 403, 'BROWSER_SESSION_REQUIRED'], ['/api/data', false, 403, 'BROWSER_SESSION_REQUIRED'],
+  ]) {
+    let attempts = 0;
+    const service = fetchers.createService({ recoverSession, fetch: async () => { attempts++; return new Response(JSON.stringify({ error: 'Rejected', code }), { status, headers: { 'Content-Type': 'application/json' } }); } });
+    await assert.rejects(service.request(url), { code }); assert.equal(attempts, 1);
+  }
+});

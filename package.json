@@ -10,7 +10,7 @@
     "start": "node backend/server.js",
     "dev": "node --watch backend/server.js",
     "google-auth": "node backend/scripts/googleAuth.js",
-    "test": "node --test backend/tests/*.test.js",
+    "test": "node --test --test-concurrency=4 backend/tests/*.test.js",
     "test:ui": "node --test backend/tests/uiSmoke.test.js",
     "smoke:serve": "node backend/scripts/uiSmokeServer.js",
     "mobile:config": "node backend/scripts/generateMobileConfig.js",
