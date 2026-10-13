@@ -60,19 +60,31 @@
       if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error('Invalid Inzhur asset.');
       for (const key of ['title', 'slug', 'type', 'status']) if (item[key] != null && (typeof item[key] !== 'string' || item[key].length > 500)) throw new Error('Invalid Inzhur asset metadata.');
       const details = item.assetDetails || {};
-      if (details.maturityDate != null) state.validateEntity('Asset', { maturityDate: details.maturityDate });
+      const maturityDate = details.maturityDate == null ? null : inzhurDate(details.maturityDate);
       if (details.isin != null && typeof details.isin !== 'string') throw new Error('Invalid instrument identity.');
       for (const price of Object.values(details.prices || {})) if (!finite(price)) throw new Error('Invalid Inzhur price.');
       const schedule = details.paymentSchedule || [];
       if (!Array.isArray(schedule)) throw new Error('Invalid Inzhur schedule.');
-      for (const payment of schedule) {
+      const payments = schedule.map(payment => {
         if (!payment || !finite(payment.amount ?? payment.amountPerUnit)) throw new Error('Invalid Inzhur payment amount.');
-        state.validateEntity('CalendarNote', { date: payment.date });
-      }
+        return { date: inzhurDate(payment.date), amount: payment.amount, amountPerUnit: payment.amountPerUnit };
+      });
       return { id: item.id, slug: item.slug, type: item.type, status: item.status, title: item.title, isin: details.isin || null,
-        maturityDate: details.maturityDate || null, prices: details.prices || null, returnRates: details.returnRates || null,
-        paymentSchedule: schedule.map(payment => ({ date: payment.date, amount: payment.amount, amountPerUnit: payment.amountPerUnit })) };
+        maturityDate, prices: details.prices || null, returnRates: details.returnRates || null,
+        paymentSchedule: payments };
     });
+  }
+  function inzhurDate(value) {
+    if (typeof value !== 'string' || !state.isDate(value.slice(0, 10))) throw new Error('Invalid Inzhur calendar date.');
+    if (state.isDate(value)) return value;
+    // The provider represents Ukrainian payment days as UTC timestamps,
+    // including 21:00/22:00 on the preceding UTC day. Preserve the Kyiv day.
+    if (!/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.test(value) || !Number.isFinite(Date.parse(value))) throw new Error('Invalid Inzhur timestamp.');
+    const parts = new Intl.DateTimeFormat('en', { timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(value));
+    const fields = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    const date = fields.year + '-' + fields.month + '-' + fields.day;
+    if (!state.isDate(date)) throw new Error('Invalid Inzhur calendar date.');
+    return date;
   }
   function history(payload) {
     state.validateJson(payload);

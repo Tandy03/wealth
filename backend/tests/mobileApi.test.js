@@ -198,14 +198,16 @@ test('native market sync permits concurrent purchases and applies prices to the 
   const sync = h.api.syncApiAssets();
   await started;
   await h.api.buyMoreAsset('bond', { quantity: 1, purchasePrice: 1200, purchaseDate: '2026-03-01' });
-  release([{ type: 'bond', assetDetails: { isin: 'TEST', maturityDate: '2027-12-01', prices: { sellUAH: 1100 }, paymentSchedule: [{ date: '2027-06-01', amount: 5000 }, { date: '2027-12-01', amount: 100000 }] } }]);
+  release([{ type: 'bond', assetDetails: { isin: 'TEST', maturityDate: '2027-12-01', prices: { sellUAH: 1100 }, paymentSchedule: [{ date: '2027-05-31T21:00:00.000Z', amount: 5000 }, { date: '2027-11-30T22:00:00.000Z', amount: 100000 }] } }]);
   await sync;
   const saved = h.local();
   assert.equal(saved.assets[0].quantity, 11);
   assert.equal(saved.assets[0].currentPrice, 1100);
   assert.equal(saved.transactions.filter(tx => tx.type === 'BUY').length, 2);
   assert.equal(saved.payments.find(p => p.type === 'COUPON').amount, 550);
+  assert.equal(saved.payments.find(p => p.type === 'COUPON').date, '2027-06-01');
   assert.equal(saved.payments.find(p => p.type === 'MATURITY').amount, 11000);
+  assert.equal(saved.payments.find(p => p.type === 'MATURITY').date, '2027-12-01');
   await h.drain();
 });
 function harness({ local = fixture(), remote = clone(local), metadata = true, confirmedStorage = false, proxy = false } = {}) {
