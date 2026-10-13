@@ -8,9 +8,9 @@ function createRouter(service, repository) {
             res.status(200).json(result);
         }
         catch (error) {
-            if (error instanceof DomainError)
+            if (error instanceof DomainError || (error.status && error.payload))
                 return res.status(error.status).json(error.payload);
-            console.error("PUT /api/wallet:", error);
+            require('../utils/observability').logEvent('request.failed', { code: error.code || 'INTERNAL_ERROR' });
             res.status(500).json({ error: "Failed to save wallet." });
         }
     });

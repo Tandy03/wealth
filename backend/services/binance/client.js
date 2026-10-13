@@ -1,3 +1,4 @@
+const { providerFetch } = require('../market/fetch');
 const BINANCE_BASE_URL = process.env.BINANCE_BASE_URL || "https://api.binance.com";
 
 class BinanceApiError extends Error {
@@ -16,7 +17,7 @@ async function binanceRequest(path, query = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 9000);
   try {
-    const response = await fetch(url, { headers: { Accept: "application/json", "X-MBX-APIKEY": apiKey }, signal: controller.signal });
+    const response = await providerFetch(url, { headers: { Accept: "application/json", "X-MBX-APIKEY": apiKey }, signal: controller.signal });
     if (!response.ok) {
       const limited = response.status === 418 || response.status === 429;
       throw new BinanceApiError(limited ? "Binance rate limit reached." : "Unable to retrieve Binance market data.", limited ? "BINANCE_RATE_LIMITED" : "BINANCE_API_ERROR", limited ? 429 : 502);

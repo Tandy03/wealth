@@ -66,7 +66,7 @@ test('rename failure preserves disk snapshot, caller revision and cleans tempora
   await assert.rejects(repository.saveData(state), error => error.status === 503 && error.category === 'storage_failure' && error.cause.code === 'EIO');
   assert.deepEqual(state.sync, sync);
   assert.equal(await fs.readFile(dataFile, 'utf8'), before);
-  assert.deepEqual(await fs.readdir(dir), ['data.json']);
+  assert.deepEqual(await fs.readdir(dir), ['data.json', 'data.json.journal.ndjson']);
   mocked.mock.restore();
   await repository.saveData(state);
   assert.equal(state.sync.revision, sync.revision + 1);

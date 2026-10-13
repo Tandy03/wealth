@@ -4,6 +4,14 @@
 
   const proxyConfig = window.FINO_MOBILE_CONFIG || {};
   const validation = window.FinoValidation;
+  const rules = window.FinoPortfolioRules;
+  const errors = window.FinoErrors;
+  const syncModel = window.FinoSyncModel;
+  const fetch = async (...args) => {
+    const response = await window.FinoRequest.fetchWithTimeout(...args);
+    if (response.status === 401) { try { await response.json(); } catch {} throw new errors.AuthRequiredError(); }
+    return response;
+  };
   const { DAYS_PER_YEAR, MILLISECONDS_PER_DAY, QUANTITY_EPSILON, DEFAULT_BOND_REDEMPTION } = window.FinoConstants;
   const LEGACY_STORAGE_KEY = "fino-data-v1";
   const MIGRATION_OWNER_KEY = "fino-account-migration-owner";
@@ -15,25 +23,7 @@
   const id = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const number = (value) => { const result = Number(value || 0); return Number.isFinite(result) ? result : 0; };
   const soldQuantity = (state, assetId) => (state.sales || []).filter((sale) => sale.assetId === assetId).reduce((sum, sale) => sum + number(sale.quantity), 0);
-  const availableQuantity = (state, asset) => {
-    if (asset.closedAt || (asset.type === "ovdp" && (state.payments || []).some((payment) => payment.assetId === asset.id && payment.type === "MATURITY" && isReceived(payment)))) return 0;
-    if (asset.type !== "crypto_earn") return Math.max(0, number(asset.quantity) - soldQuantity(state, asset.id));
-    const rate = Math.max(0, number(asset.annualRate)) / 100;
-    const today = new Date(`${dateString(new Date())}T00:00:00Z`).getTime();
-    const purchases = (state.transactions || []).filter((tx) => tx.assetId === asset.id && tx.type === "BUY" && tx.date);
-    const sources = purchases.length ? purchases : [{ date: asset.purchaseDate, quantity: asset.quantity }];
-    const accrued = sources.reduce((sum, source) => {
-      const started = new Date(`${source.date}T00:00:00Z`).getTime();
-      const days = Number.isFinite(started) ? Math.max(0, Math.floor((today - started) / MILLISECONDS_PER_DAY)) : 0;
-      return sum + number(source.quantity) * ((1 + rate / DAYS_PER_YEAR) ** days);
-    }, 0);
-    const removed = (state.sales || []).filter((sale) => sale.assetId === asset.id && sale.sellDate).reduce((sum, sale) => {
-      const soldAt = new Date(`${sale.sellDate}T00:00:00Z`).getTime();
-      const days = Number.isFinite(soldAt) ? Math.max(0, Math.floor((today - soldAt) / MILLISECONDS_PER_DAY)) : 0;
-      return sum + number(sale.quantity) * ((1 + rate / DAYS_PER_YEAR) ** days);
-    }, 0);
-    return Math.max(0, accrued - removed);
-  };
+  const availableQuantity = (state, asset, targetDate) => targetDate ? rules.quantityForSale(state, asset, targetDate) : rules.quantityOnDate(state, asset);
   const isReceived = (payment) => payment.status === "received" || payment.status === "paid" || payment.received;
   const dateString = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 
@@ -43,39 +33,12 @@
       .reduce((sum, tx) => sum + number(tx.quantity), 0);
   }
 
-  function eligibleDividendQuantity(state, asset, paymentDate) {
-    const payment = new Date(`${paymentDate}T00:00:00`);
-    const cutoff = new Date(payment.getFullYear(), payment.getMonth(), 0);
-    return Math.min(number(asset.quantity), purchasedQuantityOnDate(state, asset.id, dateString(cutoff)));
-  }
-
+  function eligibleDividendQuantity(state, asset, paymentDate) { return rules.quantityOnDate(state, asset, rules.dividendRecordDate(asset, { date: paymentDate })); }
   function repairLegacyPurchaseHistory(state) {
-    (state.assets || []).forEach((asset) => {
-      const buys = (state.transactions || []).filter((tx) => tx.assetId === asset.id && tx.type === "BUY");
-      const excess = buys.reduce((sum, tx) => sum + number(tx.quantity), 0) - number(asset.quantity);
-      if (excess <= 1e-8 || !buys.length) return;
-      const earliest = [...buys].sort((a, b) => String(a.date || a.createdAt).localeCompare(String(b.date || b.createdAt)))[0];
-      const correctedQuantity = number(earliest.quantity) - excess;
-      if (correctedQuantity <= 0) return;
-      const otherCost = buys.filter((tx) => tx !== earliest).reduce((sum, tx) => sum + number(tx.amount), 0);
-      const correctedCost = Math.max(0, number(asset.quantity) * number(asset.purchasePrice) - otherCost);
-      earliest.quantity = correctedQuantity;
-      earliest.amount = correctedCost;
-      earliest.purchasePrice = correctedCost / correctedQuantity;
-      delete earliest.price;
-    });
+    return rules.repairLegacyPurchaseHistory(state);
   }
 
-  function refreshPlannedPaymentAmounts(state) {
-    (state.payments || []).forEach((payment) => {
-      if (isReceived(payment)) return;
-      const asset = (state.assets || []).find((item) => item.id === payment.assetId);
-      if (!asset) return;
-      if (payment.type === "DIVIDEND") payment.amount = number(payment.amountPerUnit) * eligibleDividendQuantity(state, asset, payment.date);
-      if (payment.type === "COUPON") payment.amount = number(payment.amountPerUnit) * purchasedQuantityOnDate(state, asset.id, payment.date);
-    });
-  }
-
+  function refreshPlannedPaymentAmounts(state) { rules.refreshPayments(state); }
   function validateSnapshot(state) { return window.FinoStateModel.validateState(state); }
   function normalizeData(state) {
     Object.assign(state, window.FinoStateModel.normalizeState(state));
@@ -94,6 +57,7 @@
       recordAssetPrice(state, asset, "initial", asset.lastSyncedAt || asset.updatedAt || asset.createdAt || new Date().toISOString());
     });
     repairLegacyPurchaseHistory(state);
+    state.assets.forEach(asset => rules.updateHolding(state, asset));
     const assetIds = new Set((state.assets || []).map((asset) => asset.id));
     state.payments = (state.payments || []).filter((payment) => assetIds.has(payment.assetId) || isReceived(payment));
     refreshPlannedPaymentAmounts(state);
@@ -111,39 +75,9 @@
     });
   }
 
-  function rebuildPlannedPayments(state, asset) {
-    state.payments = (state.payments || []).filter((payment) => payment.assetId !== asset.id || isReceived(payment));
-    const add = (payment) => {
-      const alreadyReceived = state.payments.some((existing) =>
-        existing.assetId === asset.id && existing.type === payment.type &&
-        existing.date === payment.date && isReceived(existing));
-      if (!alreadyReceived) state.payments.push({
-        id: id("payment"), createdAt: new Date().toISOString(), assetId: asset.id,
-        assetName: asset.name, currency: asset.currency || "UAH", status: "planned", ...payment,
-      });
-    };
-
-    if (["inzhur_reit", "s1_reit"].includes(asset.type) && asset.firstDividendDate) {
-      const start = new Date(`${asset.firstDividendDate}T00:00:00`);
-      for (let index = 0; index < 24; index += 1) {
-        const paymentDate = new Date(start.getFullYear(), start.getMonth() + index, 10);
-        if (paymentDate < start) continue;
-        const date = dateString(paymentDate);
-        const amountPerUnit = number(asset.dividendPerUnit);
-        add({ date, type: "DIVIDEND", amountPerUnit, amount: amountPerUnit * eligibleDividendQuantity(state, asset, date) });
-      }
-    } else if (asset.type === "ovdp") {
-      (asset.coupons || []).forEach((coupon) => add({
-        date: coupon.date, type: "COUPON", amountPerUnit: number(coupon.amountPerUnit),
-        amount: number(coupon.amountPerUnit) * purchasedQuantityOnDate(state, asset.id, coupon.date),
-      }));
-      if (asset.maturityDate) add({
-        date: asset.maturityDate, type: "MATURITY", amountPerUnit: number(asset.redemptionValue) || DEFAULT_BOND_REDEMPTION,
-        amount: (number(asset.redemptionValue) || DEFAULT_BOND_REDEMPTION) * number(asset.quantity),
-      });
-    }
-  }
-  const Preferences = window.Capacitor.Plugins.Preferences;
+  function rebuildPlannedPayments(state, asset) { return rules.rebuildPayments(state, asset, id); }
+  const Preferences = window.Capacitor.Plugins.FinoStorage || window.Capacitor.Plugins.Preferences;
+  let localHistory = [];
   const DriveAuth = window.Capacitor.Plugins.GoogleDriveAuth;
   let data;
   let syncing = false;
@@ -158,7 +92,8 @@
     let result;
     try { result = await DriveAuth.getAccessToken(); }
     catch (error) {
-      if (!allowOffline) throw error;
+      authorizationRequired = true;
+      if (!allowOffline) throw new errors.AuthRequiredError({ cause: error });
       const saved = await Preferences.get({ key: 'fino-active-account' });
       const email = activeEmail || saved.value;
       if (!email) throw error;
@@ -207,6 +142,7 @@
       }
     }
     await Preferences.set({ key: "fino-active-account", value: email });
+    authorizationRequired = false;
     authSession = { accessToken: result.accessToken, email };
     return authSession;
   }
@@ -214,17 +150,38 @@
   async function loadLocal() {
     await ensureAccount(true);
     if (data) return data;
+    localHistory = [];
     const stored = await Preferences.get({ key: storageKey });
+    const journal = await Preferences.get({ key: journalKey() });
+    let committed = null;
+    if (journal.value) {
+      try {
+        const entries = JSON.parse(journal.value).entries;
+        if (!Array.isArray(entries)) throw new Error('Invalid journal');
+        for (const entry of entries) {
+          validateSnapshot(entry.snapshot);
+          if (!entry.metadata || typeof entry.metadata.pendingUpload !== 'boolean' || entry.checksum !== await syncModel.checksum({ snapshot: entry.snapshot, metadata: entry.metadata })) throw new Error('Invalid journal checksum');
+        }
+        localHistory = entries; committed = entries.at(-1);
+      } catch (cause) { throw new errors.StorageError({ message: 'Local recovery journal is corrupted. Preserve device data before restoring a backup.', cause }); }
+    }
     let loaded;
-    try { loaded = validateSnapshot(stored.value ? JSON.parse(stored.value) : emptyData()); }
-    catch { throw new Error('Local portfolio data is corrupted. Restore a backup before making changes.'); }
-    const baseline = stored.value ? signature(loaded) : null;
+    try { loaded = validateSnapshot(committed ? clone(committed.snapshot) : stored.value ? JSON.parse(stored.value) : emptyData()); }
+    catch (cause) { throw new errors.StorageError({ message: 'Local portfolio data is corrupted. Restore a backup before making changes.', cause }); }
+    const originalSignature = signature(loaded);
+    const baseline = stored.value ? originalSignature : null;
     normalizeData(loaded);
     const savedMeta = await Preferences.get({ key: metadataKey() });
     let metadata;
     try { metadata = savedMeta.value ? JSON.parse(savedMeta.value) : null; } catch { metadata = null; }
     if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata) || typeof metadata.pendingUpload !== 'boolean' || !(metadata.baseline === null || typeof metadata.baseline === 'string')) metadata = null;
-    syncMeta = metadata || { baseline, pendingUpload: Boolean(stored.value), conflict: false, error: null, lastSyncAt: null };
+    const nextMeta = clone(committed?.metadata || metadata || { baseline, pendingUpload: Boolean(stored.value), conflict: false, error: null, lastSyncAt: null });
+    if (signature(loaded) !== originalSignature) {
+      loaded.sync = { ...loaded.sync, revision: Number(loaded.sync?.revision || 0) + 1, updatedAt: new Date().toISOString(), deviceId: 'android-phone' };
+      Object.assign(nextMeta, { pendingUpload: true, remoteConfirmed: false, backupSaved: false });
+      await persistJournal(loaded, nextMeta);
+    }
+    syncMeta = nextMeta;
     data = loaded;
     return data;
   }
@@ -235,9 +192,8 @@
       revision: Number(data.sync?.revision || 0) + 1,
       updatedAt: new Date().toISOString(), deviceId: "android-phone",
     };
-    syncMeta.pendingUpload = true;
-    await persistSyncMeta();
-    await Preferences.set({ key: storageKey, value: JSON.stringify(data) });
+    syncMeta = { ...syncMeta, pendingUpload: true, remoteConfirmed: false, savedLocally: true, backupSaved: false };
+    await persistJournal(data, syncMeta);
   }
 
   async function token() {
@@ -249,19 +205,29 @@
     await Preferences.set({ key: `fino-drive-file:${accountSuffix(activeEmail)}`, value: idValue });
   }
 
-  async function locateDriveFile(accessToken) {
+  async function locateDriveFile(accessToken, allowDeleted = false) {
     if (fileId) {
-      const check = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,trashed`, { headers: { Authorization: `Bearer ${accessToken}` } });
-      if (check.ok && !(await check.json()).trashed) return fileId;
-      fileId = null;
+      const check = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,trashed,ownedByMe`, { headers: { Authorization: `Bearer ${accessToken}` } });
+      if (!check.ok && check.status !== 404) throw new errors.RemoteUnavailableError();
+      const details = check.ok ? await check.json() : { trashed: true };
+      if (details.trashed) {
+        if (!allowDeleted) throw conflictError();
+        await Preferences.remove({ key: `fino-drive-file:${accountSuffix(activeEmail)}` });
+        fileId = null;
+      } else {
+        if (details.ownedByMe !== true) throw new errors.AuthRequiredError({ message: 'Portfolio file must belong to the signed-in account.' });
+        return fileId;
+      }
     }
     const query = new URLSearchParams({
-      q: "name = 'fino-data.json' and trashed = false",
-      spaces: "drive", orderBy: "modifiedTime desc", pageSize: "10", fields: "files(id,name,modifiedTime,appProperties)",
+      q: "name = 'fino-data.json' and trashed = false and 'me' in owners",
+      spaces: "drive", orderBy: "modifiedTime desc", pageSize: "10", fields: "files(id,name,modifiedTime,appProperties,ownedByMe),nextPageToken",
     });
     const response = await fetch(`https://www.googleapis.com/drive/v3/files?${query}`, { headers: { Authorization: `Bearer ${accessToken}` } });
     if (!response.ok) throw new Error(`Drive file lookup failed (${response.status}).`);
-    const found = (await response.json()).files?.[0]?.id;
+    const listing = await response.json();
+    if ((listing.files?.length || 0) > 1 || listing.nextPageToken) throw new errors.ConflictError({ message: 'Multiple portfolio files found. Select one before synchronizing.' });
+    const found = listing.files?.[0]?.id;
     if (found) await rememberFileId(found);
     return found || null;
   }
@@ -302,94 +268,149 @@
     return result;
   };
   const metadataKey = () => 'fino-sync-v2:' + accountSuffix(activeEmail);
+  const journalKey = () => 'fino-journal-v1:' + accountSuffix(activeEmail);
+  async function persistJournal(snapshot, metadata) {
+    const entry = { snapshot: clone(snapshot), metadata: clone(metadata), checksum: await syncModel.checksum({ snapshot, metadata }), at: new Date().toISOString() };
+    const history = localHistory.at(-1) && signature(localHistory.at(-1).snapshot) === signature(snapshot) ? localHistory.slice(0, -1) : localHistory;
+    const next = [...history, entry].slice(-50);
+    try { await Preferences.set({ key: journalKey(), value: JSON.stringify({ version: 1, entries: next }) }); }
+    catch (cause) { throw new errors.StorageError({ cause }); }
+    localHistory = next;
+    // Journal commit is authoritative. Mirrors can be repaired from it after restart.
+    try {
+      await Preferences.set({ key: storageKey, value: JSON.stringify(snapshot) });
+      await Preferences.set({ key: metadataKey(), value: JSON.stringify(metadata) });
+    } catch { console.info('Local journal saved; compatibility cache will be repaired on reload.'); }
+  }
   function signature(value) {
     const canonical = (item) => Array.isArray(item) ? item.map(canonical)
       : item && typeof item === 'object' ? Object.fromEntries(Object.keys(item).sort().map((key) => [key, canonical(item[key])])) : item;
     return JSON.stringify(canonical(value));
   }
   async function persistSyncMeta() {
-    await Preferences.set({ key: metadataKey(), value: JSON.stringify(syncMeta) });
+    if (data) await persistJournal(data, syncMeta);
+    else await Preferences.set({ key: metadataKey(), value: JSON.stringify(syncMeta) });
   }
   async function recordSyncError(error) {
-    connected = error.code === 'SYNC_CONFLICT';
-    authorizationRequired = error.code === 'AUTHORIZATION_REQUIRED';
+    const failure = errors.syncError(error);
+    connected = failure.category === 'conflict';
+    authorizationRequired = failure.category === 'auth_required';
     if (syncMeta) {
-      syncMeta.error = error.message || 'Google Drive synchronization failed.';
-      syncMeta.conflict = error.code === 'SYNC_CONFLICT';
-      await persistSyncMeta();
+      syncMeta.error = failure.message; syncMeta.errorCode = failure.code;
+      syncMeta.conflict = failure.category === 'conflict';
+      try { await persistSyncMeta(); } catch { console.info('Sync status persistence pending; local journal remains available.'); }
     }
   }
   function conflictError() {
-    const error = new Error('Conflict detected: both the local portfolio and Google Drive have changes. Choose Download or Upload to resolve it; a backup will be saved first.');
-    error.code = 'SYNC_CONFLICT';
-    return error;
+    return new errors.ConflictError();
   }
   function statusSnapshot() {
-    return { enabled: true, connected, authorizationRequired, syncing, pendingUpload: Boolean(syncMeta?.pendingUpload), conflict: Boolean(syncMeta?.conflict), error: syncMeta?.error || null,
+    const status = syncModel.describe({ enabled: true, connected, authorizationRequired, syncing, savedLocally: Boolean(data), remoteConfirmed: Boolean(syncMeta?.remoteConfirmed), backupSaved: Boolean(syncMeta?.backupSaved), pendingUpload: Boolean(syncMeta?.pendingUpload), conflict: Boolean(syncMeta?.conflict), error: syncMeta?.error || null, errorCode: syncMeta?.errorCode || null,
       lastSyncAt: syncMeta?.lastSyncAt || null, fileId, email: activeEmail,
-      status: syncing ? 'Syncing' : syncMeta?.conflict ? 'Conflict detected' : syncMeta?.error ? 'Offline — changes saved locally' : syncMeta?.pendingUpload ? 'Pending upload' : connected ? 'Synced' : 'Offline — changes saved locally' };
+    });
+    status.status = syncing ? 'Syncing' : ({ 'local-saved': 'Saved locally', 'sync-pending': 'Pending upload', 'sync-confirmed': 'Synced', conflict: 'Conflict detected', 'auth-required': 'Authorization required' })[status.state];
+    return status;
   }
   async function finishSync(snapshot) {
-    syncMeta = { baseline: signature(snapshot), pendingUpload: false, conflict: false, error: null, lastSyncAt: new Date().toISOString() };
+    const previous = syncMeta;
+    const confirmed = signature(data) === signature(snapshot);
+    syncMeta = { ...syncMeta, baseline: signature(snapshot), pendingUpload: !confirmed, remoteConfirmed: confirmed, conflict: false, error: null, errorCode: null, confirmedRevision: snapshot.sync?.revision || 0, lastSyncAt: new Date().toISOString() };
+    try { await persistSyncMeta(); } catch (error) { syncMeta = previous; throw error; }
     connected = true;
     authorizationRequired = false;
-    await persistSyncMeta();
   }
   async function readRemote(allowInvalid = false) {
     const accessToken = await token();
-    const currentFileId = await locateDriveFile(accessToken);
+    const currentFileId = await locateDriveFile(accessToken, allowInvalid);
     if (!currentFileId) return null;
-    const metadata = await fetch('https://www.googleapis.com/drive/v3/files/' + currentFileId + '?fields=id,version,md5Checksum', { headers: { Authorization: 'Bearer ' + accessToken } });
+    const metadataUrl = 'https://www.googleapis.com/drive/v3/files/' + currentFileId + '?fields=id,version,md5Checksum,ownedByMe,trashed';
+    const metadata = await fetch(metadataUrl, { headers: { Authorization: 'Bearer ' + accessToken } });
     if (!metadata.ok) throw new Error('Drive metadata lookup failed (' + metadata.status + ').');
+    const before = await metadata.json();
+    if (before.version == null || typeof before.md5Checksum !== 'string') throw new errors.RemoteUnavailableError();
+    if (before.trashed) throw conflictError();
+    if (before.ownedByMe !== true) throw new errors.AuthRequiredError({ message: 'Portfolio file must belong to the signed-in account.' });
     const response = await fetch('https://www.googleapis.com/drive/v3/files/' + currentFileId + '?alt=media', { headers: { Authorization: 'Bearer ' + accessToken } });
     if (!response.ok) throw new Error('Drive download failed (' + response.status + ').');
     let raw;
     let remote;
+    raw = typeof response.text === 'function' ? await response.text() : JSON.stringify(await response.json());
+    const checked = await fetch(metadataUrl, { headers: { Authorization: 'Bearer ' + accessToken } });
+    if (!checked.ok) throw conflictError();
+    const after = await checked.json();
+    if (after.trashed || after.ownedByMe !== true || String(before.version) !== String(after.version) || before.md5Checksum !== after.md5Checksum) throw conflictError();
     try {
-      raw = typeof response.text === 'function' ? await response.text() : JSON.stringify(await response.json());
       remote = validateSnapshot(JSON.parse(raw));
     } catch (error) {
-      if (!allowInvalid) throw new Error('Drive file contains invalid data. Local data was preserved; use Upload to replace it after a backup.');
+      if (!allowInvalid) throw new errors.ValidationError({ message: 'Drive file contains invalid data. Local data was preserved; use Upload to replace it after a backup.' });
       return { data: null, contentSignature: raw || '', etag: metadata.headers?.get?.('etag') || null, valid: false };
     }
     return { data: remote, contentSignature: signature(remote), etag: metadata.headers?.get?.('etag') || null, valid: true };
   }
 
   async function backupFolder(accessToken) {
-    const query = new URLSearchParams({ q: "name = 'fino-backups' and mimeType = 'application/vnd.google-apps.folder' and trashed = false", fields: 'files(id)', pageSize: '1' });
+    const query = new URLSearchParams({ q: "name = 'fino-backups' and mimeType = 'application/vnd.google-apps.folder' and trashed = false and 'me' in owners", fields: 'files(id)', pageSize: '1' });
     const found = await fetch('https://www.googleapis.com/drive/v3/files?' + query, { headers: { Authorization: 'Bearer ' + accessToken } });
     if (!found.ok) throw new Error('Drive backup folder lookup failed (' + found.status + ').');
     const folderId = (await found.json()).files?.[0]?.id;
-    if (folderId) return folderId;
+    if (folderId) {
+      const metadata = await fetch('https://www.googleapis.com/drive/v3/files/' + folderId + '?fields=id,ownedByMe,permissions(type,role)', { headers: { Authorization: 'Bearer ' + accessToken } });
+      if (!metadata.ok) throw new errors.AuthRequiredError();
+      const details = await metadata.json();
+      if (details.ownedByMe !== true || !Array.isArray(details.permissions) || details.permissions.some(permission => permission.type !== 'user' || permission.role !== 'owner')) throw new errors.AuthRequiredError({ message: 'Backup folder must be private to its owner.' });
+      return folderId;
+    }
     const created = await fetch('https://www.googleapis.com/drive/v3/files?fields=id', { method: 'POST', headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'fino-backups', mimeType: 'application/vnd.google-apps.folder' }) });
     if (!created.ok) throw new Error('Drive backup folder creation failed (' + created.status + ').');
     return (await created.json()).id;
   }
   async function backupLocal(snapshot, reason) {
     // Keep a recovery copy on the device even if the cloud backup fails.
-    await Preferences.set({ key: 'fino-recovery:' + accountSuffix(activeEmail) + ':' + Date.now(), value: JSON.stringify(snapshot) });
+    await Preferences.set({ key: 'fino-recovery:' + accountSuffix(activeEmail), value: JSON.stringify(snapshot) });
     const accessToken = await token();
     const folderId = await backupFolder(accessToken);
-    return createJsonFile(accessToken, { name: 'fino-data-' + Date.now() + '-' + id('backup') + '.json', mimeType: 'application/json', parents: [folderId], description: 'fino ' + reason + ' backup' }, snapshot);
+    const kind = reason === 'manual' ? 'manual' : 'automatic';
+    const result = await createJsonFile(accessToken, { name: 'fino-data-' + Date.now() + '-' + id('backup') + '.json', mimeType: 'application/json', parents: [folderId], description: 'fino ' + reason + ' backup', appProperties: { finoBackup: 'true', kind } }, snapshot);
+    syncMeta.backupSaved = true; syncMeta.lastBackupKind = kind; syncMeta.lastBackupId = result;
+    await trimBackups(accessToken, folderId, kind);
+    return result;
+  }
+
+  async function trimBackups(accessToken, folderId, kind) {
+    try {
+      const query = new URLSearchParams({ q: "'" + folderId + "' in parents and trashed = false and 'me' in owners and appProperties has { key='finoBackup' and value='true' } and appProperties has { key='kind' and value='" + kind + "' }", fields: 'files(id,ownedByMe,createdTime,appProperties)', orderBy: 'createdTime desc', pageSize: '100' });
+      const response = await fetch('https://www.googleapis.com/drive/v3/files?' + query, { headers: { Authorization: 'Bearer ' + accessToken } });
+      if (!response.ok) return;
+      const files = (await response.json()).files || [];
+      for (const [index, file] of files.entries()) {
+        if (file.ownedByMe !== true || file.appProperties?.finoBackup !== 'true' || file.appProperties?.kind !== kind) continue;
+        if (index >= (kind === 'manual' ? 30 : 10) || Date.now() - Date.parse(file.createdTime) > (kind === 'manual' ? 90 : 30) * 86400000) await fetch('https://www.googleapis.com/drive/v3/files/' + file.id, { method: 'DELETE', headers: { Authorization: 'Bearer ' + accessToken } });
+      }
+    } catch { console.info('Drive backup retention pending.'); }
   }
 
   async function backupRemote(accessToken, remoteId) {
     const folderId = await backupFolder(accessToken);
-    const response = await fetch('https://www.googleapis.com/drive/v3/files/' + remoteId + '/copy?fields=id', { method: 'POST', headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'fino-data-' + Date.now() + '-' + id('backup') + '.json', parents: [folderId], description: 'fino backup before replacement' }) });
+    const response = await fetch('https://www.googleapis.com/drive/v3/files/' + remoteId + '/copy?fields=id', { method: 'POST', headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'fino-data-' + Date.now() + '-' + id('backup') + '.json', parents: [folderId], description: 'fino backup before replacement', appProperties: { finoBackup: 'true', kind: 'automatic' } }) });
     if (!response.ok) throw new Error('Drive remote backup failed (' + response.status + ').');
+    const created = await response.json();
+    if (!created.id) throw new errors.RemoteUnavailableError();
+    syncMeta.backupSaved = true; syncMeta.lastBackupKind = 'automatic'; syncMeta.lastBackupId = created.id;
+    await trimBackups(accessToken, folderId, 'automatic');
   }
   async function adoptRemote(remote) {
     const next = normalizeData(clone(remote));
-    await Preferences.set({ key: storageKey, value: JSON.stringify(next) });
+    if (signature(next) !== signature(remote)) next.sync = { ...next.sync, revision: Number(next.sync?.revision || 0) + 1, updatedAt: new Date().toISOString(), deviceId: 'android-phone' };
+    const previous = data, previousMeta = clone(syncMeta);
     data = next;
-    await finishSync(remote);
+    try { await finishSync(remote); } catch (error) { data = previous; syncMeta = previousMeta; throw error; }
   }
   async function uploadDrive(force = false) {
     await loadLocal();
     const snapshot = clone(data);
     const remote = await readRemote(force);
     if (!force && remote && signature(remote.data) !== syncMeta.baseline && signature(remote.data) !== signature(snapshot)) throw conflictError();
-    if (!force && !remote && syncMeta.baseline && syncMeta.pendingUpload) throw conflictError();
+    if (!force && !remote && syncMeta.baseline) throw conflictError();
     if (remote && signature(remote.data) === signature(snapshot)) { await finishSync(snapshot); return; }
     const accessToken = await token();
     if (remote) {
@@ -398,12 +419,20 @@
       if (!checked || checked.contentSignature !== remote.contentSignature) throw conflictError();
       remote.etag = checked.etag;
     }
-    if (!fileId) { await createDriveFile(accessToken, snapshot); await finishSync(snapshot); return; }
+    if (!fileId) {
+      await createDriveFile(accessToken, snapshot);
+      const verified = await readRemote();
+      if (!verified || signature(verified.data) !== signature(snapshot)) throw conflictError();
+      await finishSync(snapshot); return;
+    }
     const headers = { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' };
     if (remote?.etag) headers['If-Match'] = remote.etag;
     const response = await fetch('https://www.googleapis.com/upload/drive/v3/files/' + fileId + '?uploadType=media', { method: 'PATCH', headers, body: JSON.stringify(snapshot) });
     if (response.status === 412) throw conflictError();
     if (!response.ok) throw new Error('Drive upload failed (' + response.status + ').');
+    await response.json();
+    const verified = await readRemote();
+    if (!verified || signature(verified.data) !== signature(snapshot)) throw conflictError();
     await finishSync(snapshot);
   }
   function scheduleUpload() {
@@ -411,14 +440,17 @@
       syncing = true;
       try { await uploadDrive(); } catch (error) { await recordSyncError(error); }
       finally { syncing = false; }
-    }).catch((error) => console.error('Could not persist Drive sync status:', error.message));
+    }).catch(() => console.info('Drive sync remains pending.'));
   }
   async function synchronize(action = 'sync') {
+    validation.validateSyncAction(action);
     syncing = true;
+    let previousBackupId;
     try {
       await loadLocal();
+      previousBackupId = syncMeta?.lastBackupId;
       if (action === 'reconnect') {
-        await DriveAuth.signOut(); await Preferences.remove({ key: 'fino-active-account' }); authSession = null; activeEmail = ''; fileId = null; data = undefined; syncMeta = null; connected = false; authorizationRequired = true;
+        await DriveAuth.signOut(); await Preferences.remove({ key: 'fino-active-account' }); authSession = null; activeEmail = ''; fileId = null; data = undefined; localHistory = []; syncMeta = null; connected = false; authorizationRequired = true;
       } else if (action === 'backup') {
         await backupLocal(clone(data), 'manual');
         connected = true;
@@ -438,22 +470,32 @@
       }
     } catch (error) { await recordSyncError(error); throw error; }
     finally { syncing = false; }
-    return { success: true, action, status: statusSnapshot() };
+    const status = statusSnapshot();
+    return { success: true, action, savedLocally: status.savedLocally, savedRemotely: status.savedRemotely, backupSaved: Boolean(syncMeta?.lastBackupId && syncMeta.lastBackupId !== previousBackupId), status };
   }
   async function mutate(operation) {
     return queued(async () => {
       await loadLocal();
       const draft = clone(data);
-      const result = operation(draft);
+      let result;
+      try { result = operation(draft); } catch (cause) { throw cause.code ? cause : new errors.ValidationError({ message: cause.message, cause }); }
       const previous = data;
+      const previousMeta = clone(syncMeta);
       data = draft;
-      try { await saveLocal(); } catch (error) { data = previous; throw error; }
+      try { await saveLocal(); } catch (error) { data = previous; syncMeta = previousMeta; throw error; }
       scheduleUpload();
-      return clone(result);
+      const response = clone(result);
+      if (response && typeof response === 'object') Object.defineProperty(response, 'persistence', { value: statusSnapshot(), enumerable: false });
+      return response;
     });
   }
 
   async function proxy(action, parameters = {}) {
+    window.FinoStateModel.validateJson(parameters);
+    for (const key of Object.keys(parameters)) if (!['symbol', 'interval', 'outputsize', 'startDate', 'endDate'].includes(key)) throw new errors.ValidationError({ message: 'Unsupported market parameter.' });
+    for (const key of ['startDate', 'endDate']) if (parameters[key] && !window.FinoStateModel.isDate(parameters[key])) throw new errors.ValidationError({ message: 'A valid calendar date is required.' });
+    if (parameters.startDate && parameters.endDate && parameters.startDate > parameters.endDate) throw new errors.ValidationError({ message: 'The date range is reversed.' });
+    if (parameters.outputsize != null && (!Number.isInteger(Number(parameters.outputsize)) || Number(parameters.outputsize) < 1 || Number(parameters.outputsize) > 5000)) throw new errors.ValidationError({ message: 'Invalid output size.' });
     if (!proxyConfig.proxyUrl || !proxyConfig.proxyToken) throw new Error("The market-data proxy is not configured in this APK.");
     const response = await fetch(proxyConfig.proxyUrl, {
       method: "POST",
@@ -461,7 +503,9 @@
       body: JSON.stringify({ token: proxyConfig.proxyToken, action, ...parameters }),
     });
     const payload = await response.json();
-    if (!payload?.ok) throw new Error(payload?.error?.message || "Market-data proxy request failed.");
+    if (!payload?.ok) throw new errors.RemoteUnavailableError({ message: 'Market-data proxy request failed.' });
+    window.FinoStateModel.validateJson(payload.data);
+    if (['twelve', 'fred'].includes(action)) return window.FinoMarketModel.history(payload.data);
     return payload.data;
   }
 
@@ -565,7 +609,7 @@
   async function mobileMarketCurrencies() {
     const response = await fetch("https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?json");
     if (!response.ok) throw new Error(`NBU API returned ${response.status}.`);
-    const payload = await response.json();
+    const payload = window.FinoMarketModel.nbuRates(await response.json());
     const excluded = new Set(["UAH", "XAU", "XAG", "XPT", "XPD"]);
     const currencies = (Array.isArray(payload) ? payload : []).filter((item) => {
       const code = String(item.cc || "").toUpperCase();
@@ -575,6 +619,7 @@
   }
 
   async function mobileCurrencyHistory(parameters = {}) {
+    validation.validateQuery(Object.fromEntries(Object.entries(parameters).map(([key, value]) => [key, String(value)])));
     const code = String(parameters.code || "").trim().toUpperCase();
     const startDate = String(parameters.startDate || "").slice(0, 10);
     const endDate = String(parameters.endDate || "").slice(0, 10);
@@ -594,6 +639,7 @@
   }
 
   async function mobileFrankfurterHistory(parameters = {}) {
+    validation.validateQuery(Object.fromEntries(Object.entries(parameters).map(([key, value]) => [key, String(value)])));
     const ticker = String(parameters.ticker || "USEU").trim().toUpperCase();
     const pairs = { USEU: { base: "USD", quote: "EUR" }, EUUS: { base: "EUR", quote: "USD" } };
     const pair = pairs[ticker];
@@ -601,7 +647,7 @@
     const query = new URLSearchParams({ base: pair.base, quotes: pair.quote, from: parameters.startDate, to: parameters.endDate });
     const response = await fetch(`https://api.frankfurter.dev/v2/rates?${query}`, { headers: { Accept: "application/json" } });
     const payload = await response.json().catch(() => null);
-    if (!response.ok) throw new Error(payload?.message || `Frankfurter API returned ${response.status}.`);
+    if (!response.ok) throw new errors.RemoteUnavailableError({ message: 'Frankfurter is temporarily unavailable.' });
     const values = (Array.isArray(payload) ? payload : []).filter((item) => item.base === pair.base && item.quote === pair.quote && Number.isFinite(Number(item.rate))).map((item) => ({ datetime: item.date, open: Number(item.rate), high: Number(item.rate), low: Number(item.rate), close: Number(item.rate), volume: null })).sort((a, b) => a.datetime.localeCompare(b.datetime));
     if (!values.length) throw new Error(`No ${pair.base}/${pair.quote} rates were found for this period.`);
     return { provider: "Frankfurter", meta: { symbol: `${pair.base}/${pair.quote}`, currency: pair.quote, interval: "1day", type: "Exchange rate", exchange: "Frankfurter", marketTicker: ticker }, values, cached: false, fetchedAt: new Date().toISOString() };
@@ -609,6 +655,11 @@
 
   window.mobileApi = {
     isNative: true,
+    async waitForSync() {
+      let pending;
+      do { pending = operationQueue; await pending; } while (pending !== operationQueue);
+      return statusSnapshot();
+    },
     async getData({ sync = true } = {}) {
       return queued(async () => {
         await loadLocal();
@@ -633,8 +684,8 @@
     async getNbuPolicyRate() { return mobileNbuPolicyRate(); },
     async getBinanceEquityPrice(symbol) { return proxy("binance", { symbol }); },
     async syncApiAssets() {
-      return queued(async () => {
-      await loadLocal();
+      const snapshot = await queued(async () => { await loadLocal(); return { data: clone(data), email: activeEmail }; });
+      const stagedData = clone(snapshot.data);
       const synced = [];
       const skipped = [];
       const binanceSynced = [];
@@ -646,15 +697,9 @@
         if (!catalogResponse.ok) throw new Error(`Inzhur API returned ${catalogResponse.status}.`);
         const catalogPayload = await catalogResponse.json();
         if (!Array.isArray(catalogPayload)) throw new Error("Inzhur API returned an invalid response.");
-        const catalog = catalogPayload.map((item) => ({
-          id: item.id, slug: item.slug, type: item.type, status: item.status, title: item.title,
-          isin: item.assetDetails?.isin || null,
-          maturityDate: item.assetDetails?.maturityDate || null,
-          prices: item.assetDetails?.prices || null,
-          paymentSchedule: item.assetDetails?.paymentSchedule || [],
-        }));
+        const catalog = window.FinoMarketModel.inzhurCatalog(catalogPayload);
         const today = new Date().toISOString().slice(0, 10);
-        for (const asset of data.assets.filter((item) => ["ovdp", "inzhur_reit", "inzhur_miltech"].includes(item.type))) {
+        for (const asset of stagedData.assets.filter((item) => ["ovdp", "inzhur_reit", "inzhur_miltech"].includes(item.type))) {
           let remoteAsset;
           if (asset.type === "ovdp") {
             const isin = String(asset.isin || "").trim().toUpperCase();
@@ -669,7 +714,7 @@
           if (currentPrice > 0) asset.currentPrice = currentPrice;
           asset.inzhurSlug = remoteAsset.slug;
           asset.lastSyncedAt = new Date().toISOString();
-          if (currentPrice > 0) recordAssetPrice(data, asset, "sync", asset.lastSyncedAt);
+          if (currentPrice > 0) recordAssetPrice(stagedData, asset, "sync", asset.lastSyncedAt);
 
           if (asset.type === "ovdp") {
             asset.maturityDate = remoteAsset.maturityDate || asset.maturityDate;
@@ -682,8 +727,8 @@
             asset.coupons = schedule.filter((payment) => payment.type === "COUPON").map(({ date, amountPerUnit }) => ({ date, amountPerUnit }));
             const maturity = schedule.find((payment) => payment.type === "MATURITY");
             if (maturity) asset.redemptionValue = maturity.amountPerUnit;
-            data.payments = (data.payments || []).filter((payment) => payment.assetId !== asset.id || ["received", "paid"].includes(payment.status) || !["COUPON", "MATURITY"].includes(payment.type));
-            schedule.forEach((payment) => data.payments.push({
+            stagedData.payments = (stagedData.payments || []).filter((payment) => payment.assetId !== asset.id || ["received", "paid"].includes(payment.status) || !["COUPON", "MATURITY"].includes(payment.type));
+            schedule.forEach((payment) => stagedData.payments.push({
               id: id("payment"), createdAt: new Date().toISOString(), assetId: asset.id, assetName: asset.name,
               date: payment.date, type: payment.type, amountPerUnit: payment.amountPerUnit,
               amount: payment.amountPerUnit * Number(asset.quantity || 0), currency: "UAH", status: "planned",
@@ -692,13 +737,13 @@
           synced.push({ id: asset.id, name: asset.name, price: asset.currentPrice || null, paymentScheduleUpdated: asset.type === "ovdp" });
         }
       } catch (error) {
-        data.assets.filter((item) => ["ovdp", "inzhur_reit", "inzhur_miltech"].includes(item.type)).forEach((asset) => {
+        stagedData.assets.filter((item) => ["ovdp", "inzhur_reit", "inzhur_miltech"].includes(item.type)).forEach((asset) => {
           skipped.push({ id: asset.id, name: asset.name, error: "INZHUR_API_ERROR", message: error.message });
         });
       }
 
       const symbolMap = { SPYB: "SPY", SMHB: "SMH", AAPLB: "AAPL" };
-      const holdings = data.assets.filter((asset) => {
+      const holdings = stagedData.assets.filter((asset) => {
         if (asset.type === "crypto_earn") return false;
         const code = String(asset.ticker || asset.symbol || asset.name || "").trim().toUpperCase();
         return String(asset.instrumentName || "").trim().toLowerCase() === "binance" || /^[A-Z0-9.-]+B$/.test(code);
@@ -714,22 +759,78 @@
           asset.currency = "USD";
           asset.provider = "twelve-data";
           asset.lastPriceUpdate = series.fetchedAt || new Date().toISOString();
-          recordAssetPrice(data, asset, "sync", asset.lastPriceUpdate);
+          recordAssetPrice(stagedData, asset, "sync", asset.lastPriceUpdate);
           binanceSynced.push({ id: asset.id, name: asset.name, symbol: assetCode, underlyingSymbol, price: asset.currentPrice, currency: "USD" });
         } catch (error) {
           binanceSkipped.push({ id: asset.id, name: asset.name, symbol: assetCode, error: "TWELVE_DATA_ERROR", message: error.message });
         }
       }
-      if (synced.length || binanceSynced.length) {
-        await saveLocal();
-        scheduleUpload();
-      }
-      return { synced, skipped, binanceSynced, binanceSkipped };
+      if (!synced.length && !binanceSynced.length) return { synced, skipped, binanceSynced, binanceSkipped };
+      return mutate(state => {
+        if (snapshot.email !== activeEmail) throw new Error('Google account changed during synchronization. Retry for the current account.');
+        const accepted = new Set();
+        for (const result of [...synced, ...binanceSynced]) {
+          const original = snapshot.data.assets.find(asset => asset.id === result.id);
+          const current = state.assets.find(asset => asset.id === result.id);
+          const staged = stagedData.assets.find(asset => asset.id === result.id);
+          if (!current || rules.identity(current) !== rules.identity(original)) {
+            skipped.push({ id: result.id, name: result.name, error: 'ASSET_CHANGED' });
+            continue;
+          }
+          for (const field of ['currentPrice', 'inzhurSlug', 'lastSyncedAt', 'maturityDate', 'coupons', 'redemptionValue', 'currency', 'provider', 'lastPriceUpdate']) {
+            if (staged[field] !== undefined) current[field] = clone(staged[field]);
+          }
+          recordAssetPrice(state, current, 'sync', staged.lastSyncedAt || staged.lastPriceUpdate);
+          rebuildPlannedPayments(state, current);
+          accepted.add(result.id);
+        }
+        return { synced: synced.filter(item => accepted.has(item.id)), skipped, binanceSynced: binanceSynced.filter(item => accepted.has(item.id)), binanceSkipped };
       });
     },
-    async createAsset(asset) { return mutate((state) => { const created = { ...asset, id: id("asset") }; state.assets.push(created); state.transactions.push({ id: id("tx"), assetId: created.id, assetName: created.name, type: "BUY", quantity: number(created.quantity), purchasePrice: number(created.purchasePrice), amount: number(created.quantity) * number(created.purchasePrice), currency: created.currency || "UAH", date: created.purchaseDate }); rebuildPlannedPayments(state, created); return created; }); },
-    async updateAsset(assetId, patch) { return mutate((state) => { const asset = state.assets.find((item) => item.id === assetId); if (!asset) throw new Error("Asset not found."); validation.validateAssetInput({ ...asset, ...patch }, { partial: true }); Object.assign(asset, patch, { id: assetId, updatedAt: new Date().toISOString() }); (state.transactions || []).forEach((tx) => { if (tx.assetId === assetId) { tx.assetName = asset.name; tx.currency = asset.currency || tx.currency; } }); if (patch.currentPrice !== undefined && number(asset.currentPrice) > 0) recordAssetPrice(state, asset, "edit", asset.updatedAt); rebuildPlannedPayments(state, asset); return asset; }); },
-    async mergeAssets(assetIds) { return mutate((state) => { const ids = [...new Set(assetIds)]; const items = state.assets.filter((item) => ids.includes(item.id)); if (items.length < 2) throw new Error("At least two holdings are required to merge."); if (items.length !== ids.length) throw new Error('Asset not found.'); const primary = items[0]; if (!items.every(item => item.type === primary.type && String(item.name).trim().toLowerCase() === String(primary.name).trim().toLowerCase() && (item.currency || 'UAH') === (primary.currency || 'UAH'))) throw new Error('Only matching holdings can be merged.'); const removedIds = new Set(items.slice(1).map((item) => item.id)); const totalQuantity = items.reduce((sum, item) => sum + number(item.quantity), 0); const totalCost = items.reduce((sum, item) => sum + number(item.quantity) * number(item.purchasePrice), 0); primary.quantity = totalQuantity; primary.purchasePrice = totalQuantity ? totalCost / totalQuantity : 0; primary.purchaseDate = items.map((item) => item.purchaseDate).filter(Boolean).sort()[0] || primary.purchaseDate; primary.firstDividendDate = items.map((item) => item.firstDividendDate).filter(Boolean).sort()[0] || primary.firstDividendDate; const reassign = (values = []) => values.map((item) => removedIds.has(item.assetId) ? { ...item, assetId: primary.id, assetName: primary.name } : item); state.transactions = reassign(state.transactions); state.sales = reassign(state.sales); state.payments = reassign(state.payments); state.calendarNotes = reassign(state.calendarNotes); state.priceHistory = reassign(state.priceHistory); state.assets = state.assets.filter((item) => !removedIds.has(item.id)); rebuildPlannedPayments(state, primary); return primary; }); },
+    async createAsset(input) { return mutate(state => {
+      const asset = { ...input, createdAt: new Date().toISOString(), id: id('asset'), dividendRecordRule: input.dividendRecordRule || 'previous_month_end' };
+      if (asset.type === 'crypto_earn') asset.currentPrice = number(asset.currentPrice) || number(asset.purchasePrice);
+      if (asset.type === 'novapay') asset.maturityAmountPerUnit = number(asset.maturityAmount) / number(asset.quantity);
+      state.assets.push(asset);
+      state.transactions.push({ id: id('tx'), createdAt: asset.createdAt, assetId: asset.id, assetName: asset.name, type: 'BUY', quantity: number(asset.quantity), purchasePrice: number(asset.purchasePrice), amount: number(asset.quantity) * number(asset.purchasePrice), currency: asset.currency || 'UAH', date: asset.purchaseDate });
+      rules.updateHolding(state, asset);
+      rebuildPlannedPayments(state, asset);
+      return asset;
+    }); },
+    async updateAsset(assetId, patch) { return mutate(state => {
+      const asset = state.assets.find(item => item.id === assetId);
+      if (!asset) throw new Error('Asset not found.');
+      validation.validateAssetInput({ ...asset, ...patch }, { partial: true });
+      if (!rules.canEditPurchase(state, asset, patch)) throw new Error('Purchase history or currency cannot be rewritten after additional purchases or sales.');
+      Object.assign(asset, patch, { id: assetId, updatedAt: new Date().toISOString() });
+      if (asset.type === 'novapay' && patch.maturityAmount !== undefined) asset.maturityAmountPerUnit = number(asset.maturityAmount) / number(asset.quantity);
+      for (const transaction of state.transactions || []) if (transaction.assetId === assetId) transaction.assetName = asset.name;
+      rules.updateSinglePurchase(state, asset);
+      if (patch.currentPrice !== undefined && number(asset.currentPrice) > 0) recordAssetPrice(state, asset, 'edit', asset.updatedAt);
+      state.payments = state.payments.filter(payment => payment.assetId !== assetId || rules.received(payment));
+      rules.updateHolding(state, asset);
+      rebuildPlannedPayments(state, asset);
+      return asset;
+    }); },
+    async mergeAssets(assetIds) { return mutate(state => {
+      const ids = [...new Set(assetIds)];
+      const assets = state.assets.filter(asset => ids.includes(asset.id));
+      if (assets.length < 2) throw new Error('At least two holdings are required to merge.');
+      if (assets.length !== ids.length) throw new Error('Asset not found.');
+      const primary = assets[0];
+      if (!assets.every(asset => rules.identity(asset) === rules.identity(primary))) throw new Error('Only matching holdings can be merged.');
+      if (assets.some(asset => asset.closedAt || state.payments.some(p => p.assetId === asset.id && p.type === 'MATURITY' && rules.received(p)))) throw new Error('Closed or redeemed holdings cannot be merged.');
+      assets.forEach(asset => rules.completeLegacyPurchases(state, asset, id));
+      const removed = new Set(assets.slice(1).map(asset => asset.id));
+      primary.quantity = assets.reduce((sum, asset) => sum + number(asset.quantity), 0);
+      primary.purchaseDate = assets.map(asset => asset.purchaseDate).filter(Boolean).sort()[0] || primary.purchaseDate;
+      primary.firstDividendDate = assets.map(asset => asset.firstDividendDate).filter(Boolean).sort()[0] || primary.firstDividendDate;
+      for (const collection of ['transactions', 'sales', 'payments', 'calendarNotes', 'priceHistory']) state[collection] = (state[collection] || []).map(item => removed.has(item.assetId) ? { ...item, assetId: primary.id, assetName: primary.name } : item);
+      state.assets = state.assets.filter(asset => !removed.has(asset.id));
+      rules.updateHolding(state, primary);
+      rebuildPlannedPayments(state, primary);
+      return primary;
+    }); },
     async buyMoreAsset(assetId, purchase) { return mutate((state) => {
       const asset = state.assets.find((item) => item.id === assetId);
       if (!asset) throw new Error("Asset not found.");
@@ -739,9 +840,9 @@
       // Canonical fields take precedence over legacy aliases, exactly as in validation.
       const price = number(purchase.purchasePrice ?? purchase.price);
       const date = purchase.purchaseDate ?? purchase.date;
-      asset.purchasePrice = ((oldQty * number(asset.purchasePrice)) + qty * price) / (oldQty + qty);
       asset.quantity = oldQty + qty;
-      state.transactions.push({ id: id("tx"), assetId, assetName: asset.name, instrumentId: purchase.instrumentId || asset.instrumentId, type: "BUY", quantity: qty, purchasePrice: price, amount: qty * price, currency: purchase.currency || asset.currency || "UAH", date });
+      state.transactions.push({ id: id("tx"), createdAt: new Date().toISOString(), assetId, assetName: asset.name, instrumentId: purchase.instrumentId || asset.instrumentId, type: "BUY", quantity: qty, purchasePrice: price, amount: qty * price, currency: purchase.currency || asset.currency || "UAH", date });
+      rules.updateHolding(state, asset);
       rebuildPlannedPayments(state, asset);
       return asset;
     }); },
@@ -767,21 +868,24 @@
       if (!['stock', 'etf', 'crypto_earn'].includes(reference.type) && !Number.isInteger(Number(sale.quantity))) throw new Error('Quantity must be a whole number greater than zero.');
       if (!/^\d{4}-\d{2}-\d{2}$/.test(String(sale.sellDate || '')) || Number.isNaN(new Date(sale.sellDate + 'T00:00:00Z').getTime())) throw new Error('Valid sell date is required.');
       let remaining = number(sale.quantity);
-      const totalAvailable = assets.reduce((sum, asset) => sum + availableQuantity(state, asset), 0);
+      const totalAvailable = assets.reduce((sum, asset) => sum + availableQuantity(state, asset, sale.sellDate), 0);
       if (remaining <= 0 || remaining > totalAvailable + QUANTITY_EPSILON) throw new Error("Not enough units available.");
       const created = [];
       for (const asset of assets) {
         if (remaining <= QUANTITY_EPSILON) break;
-        const quantity = Math.min(remaining, availableQuantity(state, asset));
+        const quantity = Math.min(remaining, availableQuantity(state, asset, sale.sellDate));
         if (quantity <= 0) continue;
         const sellPrice = number(sale.sellPrice);
-        const costBasis = quantity * number(asset.purchasePrice);
+        const purchasePrice = rules.holdingsAtDate(state, asset, sale.sellDate).averagePrice;
+        const costBasis = quantity * purchasePrice;
         const saleProceeds = quantity * sellPrice;
         const profit = saleProceeds - costBasis;
         const roi = costBasis > 0 ? profit / costBasis * 100 : 0;
-        const record = { ...sale, assetIds: undefined, assetId: asset.id, assetName: asset.name, type: asset.type, quantity, currency: asset.currency || sale.currency || "UAH", costBasis, saleProceeds, profit, roi, id: id("sale") };
+        const record = { ...sale, createdAt: new Date().toISOString(), costBasisMethod: "moving_average", assetIds: undefined, assetId: asset.id, assetName: asset.name, type: asset.type, quantity, currency: asset.currency || sale.currency || "UAH", purchasePrice, costBasis, saleProceeds, profit, roi, id: id("sale") };
         state.sales.push(record);
-        state.transactions.push({ ...record, id: id("tx"), date: sale.sellDate, amount: saleProceeds, type: "SELL" });
+        state.transactions.push({ ...record, saleId: record.id, id: id("tx"), date: sale.sellDate, amount: saleProceeds, type: "SELL" });
+        rules.updateHolding(state, asset);
+        rules.refreshPayments(state, asset.id);
         created.push(record);
         remaining -= quantity;
       }
@@ -795,6 +899,7 @@
       if (payment.status === "received" || payment.status === "paid" || payment.received) return payment;
       const receivedNow = new Date();
       const receivedDate = `${receivedNow.getFullYear()}-${String(receivedNow.getMonth() + 1).padStart(2, "0")}-${String(receivedNow.getDate()).padStart(2, "0")}`;
+      if (payment.type === 'MATURITY') payment.costBasis = rules.holdingsAtDate(state, payment.assetId).remainingCost;
       payment.status = "received";
       payment.received = true;
       payment.receivedAt = receivedNow.toISOString();

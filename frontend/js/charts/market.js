@@ -22,7 +22,7 @@ function populateMarketSymbols() {
   (state.data?.assets || [])
     .filter((asset) => ["stock", "etf"].includes(asset.type))
     .forEach((asset) => suggestions.add(String(asset.underlyingSymbol || asset.ticker || asset.symbol || asset.name || "").trim().toUpperCase()));
-  const currencyOptions = [...marketCurrencies].map(([code, name]) => `<option value="${escapeHtml(code)}">${escapeHtml(name)} · ${code}/UAH · NBU</option>`);
+  const currencyOptions = [...marketCurrencies].map(([code, name]) => `<option value="${escapeHtml(code)}">${escapeHtml(name)} · ${escapeHtml(code)}/UAH · NBU</option>`);
   currencyOptions.splice(1, 0, '<option value="USEU">USD/EUR · Frankfurter</option>');
   currencyOptions.splice(2, 0, '<option value="EUUS">EUR/USD · Frankfurter</option>');
   const indexNames = { ".INX": "S&P 500 Index", ".DJI": "Dow Jones Industrial Average", ".IXIC": "NASDAQ Composite Index" };

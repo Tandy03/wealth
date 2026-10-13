@@ -9,7 +9,8 @@ function createService(repository) {
     async function createTransaction(body) {
         const data = await readData();
         const transaction = validateTransaction(data, body);
-        data.transactions.push(transaction);
+        const rules = require('../../frontend/js/portfolio-rules');
+        rules.recordTransaction(data, data.assets.find(asset => asset.id === transaction.assetId), transaction, require('../utils/values').createId);
         await saveData(data);
         return transaction;
     }

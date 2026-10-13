@@ -2,6 +2,9 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { google } = require("googleapis");
 const { authenticate } = require("@google-cloud/local-auth");
+const { atomicWrite } = require('../../data/atomicFile');
+const { AuthRequiredError } = require('../../../frontend/js/errors');
+const { logEvent } = require('../../utils/observability');
 
 const projectRoot = path.resolve(__dirname, "..", "..", "..");
 const credentialsPath = path.resolve(projectRoot, process.env.GOOGLE_DRIVE_CREDENTIALS_PATH || "backend/config/google-credentials.json");
@@ -11,25 +14,29 @@ const AUTHORIZATION_OPTIONS = { access_type: "offline", scope: [DRIVE_SCOPE] };
 
 async function readJson(filePath) { return JSON.parse(await fs.readFile(filePath, "utf8")); }
 
-async function saveToken(tokens) {
+let tokenWrites = Promise.resolve();
+function saveToken(tokens) {
+  const operation = tokenWrites.then(async () => {
   const current = await readJson(tokenPath).catch(() => ({}));
   await fs.mkdir(path.dirname(tokenPath), { recursive: true });
-  await fs.writeFile(tokenPath, JSON.stringify({ ...current, ...tokens }, null, 2), { encoding: "utf8", mode: 0o600 });
+  await atomicWrite(tokenPath, JSON.stringify({ ...current, ...tokens }, null, 2), { privateFile: true });
+  });
+  tokenWrites = operation.catch(() => {}); return operation;
 }
 
 async function createAuthorizedClient() {
-  const credentials = await readJson(credentialsPath);
+  let credentials;
+  try { credentials = process.env.GOOGLE_OAUTH_CREDENTIALS_JSON ? JSON.parse(process.env.GOOGLE_OAUTH_CREDENTIALS_JSON) : await readJson(credentialsPath); }
+  catch (cause) { throw new AuthRequiredError({ code: 'GOOGLE_AUTH_REQUIRED', message: 'Google OAuth credentials are missing or invalid.', cause }); }
   const definition = credentials.installed || credentials.web;
-  if (!definition?.client_id || !definition?.client_secret) throw new Error("Invalid Google OAuth credentials.");
-  const token = await readJson(tokenPath).catch(() => null);
+  if (!definition?.client_id || !definition?.client_secret) throw new AuthRequiredError({ code: 'GOOGLE_AUTH_REQUIRED' });
+  const token = process.env.GOOGLE_DRIVE_REFRESH_TOKEN ? { refresh_token: process.env.GOOGLE_DRIVE_REFRESH_TOKEN } : await readJson(tokenPath).catch(() => null);
   if (!token?.refresh_token) {
-    const error = new Error("Google Drive authorization is required. Run npm run google-auth.");
-    error.code = "GOOGLE_AUTH_REQUIRED";
-    throw error;
+    throw new AuthRequiredError({ code: 'GOOGLE_AUTH_REQUIRED' });
   }
   const auth = new google.auth.OAuth2(definition.client_id, definition.client_secret, definition.redirect_uris?.[0]);
   auth.setCredentials(token);
-  auth.on("tokens", (tokens) => saveToken(tokens).catch((error) => console.error("Could not persist refreshed Google token:", error.message)));
+  if (!process.env.GOOGLE_DRIVE_REFRESH_TOKEN) auth.on("tokens", tokens => saveToken(tokens).catch(() => logEvent('auth.token_storage_failed', { code: 'STORAGE_FAILURE' })));
   return auth;
 }
 

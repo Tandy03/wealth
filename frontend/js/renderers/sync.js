@@ -1,11 +1,12 @@
 // renderers/sync.js
 function driveStatusLabel(status) {
   if (status.syncing) return "Syncing";
+  if (status.state) return ({ 'local-saved': 'Saved locally', 'sync-pending': 'Saved locally — upload pending', 'sync-confirmed': 'Synced', conflict: 'Conflict detected', 'auth-required': 'Authorization required' })[status.state] || 'Saved locally';
   if (status.authorizationRequired) return "Authorization required";
   if (status.conflict) return "Conflict detected";
   if (status.error) return "Offline — changes saved locally";
   if (status.pendingUpload && status.connected) return "Pending upload";
-  if (status.connected && !status.pendingUpload && status.lastSyncAt) return "Synced";
+  if (status.remoteConfirmed === true && !status.pendingUpload) return "Synced";
   return "Offline — changes saved locally";
 }
 

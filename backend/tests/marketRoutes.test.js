@@ -57,7 +57,7 @@ test("market routes delegate to providers and preserve cached and failure respon
   });
   await t.test("preserves upstream error status and code", async () => {
     providerFailure = true;
-    assert.deepEqual(await get("/api/market-data/time-series?symbol=AAPL"), { status: 429, data: { error: "Quota reached", code: "TWELVE_DATA_RATE_LIMITED" } });
+    assert.deepEqual(await get("/api/market-data/time-series?symbol=AAPL"), { status: 429, data: { category: "remote_unavailable", error: "The external provider is unavailable. Try again later.", code: "TWELVE_DATA_RATE_LIMITED" } });
   });
   await t.test("serves cached NBU rates when an expired cache cannot be refreshed", async () => {
     assert.equal((await get("/api/exchange-rates")).data.cached, null);

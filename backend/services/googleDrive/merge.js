@@ -8,8 +8,6 @@ function merge(local, remote, { strategy } = {}) {
   if (JSON.stringify(left) === JSON.stringify(right)) return left;
   if (strategy === 'local') return left;
   if (strategy === 'remote') return right;
-  const error = new Error('Divergent portfolio snapshots require local or remote conflict resolution.');
-  error.code = 'GOOGLE_DRIVE_CONFLICT';
-  throw error;
+  throw new (require('../../../frontend/js/errors').ConflictError)({ code: 'GOOGLE_DRIVE_CONFLICT', message: 'Divergent portfolio snapshots require local or remote conflict resolution.' });
 }
 module.exports = { merge, resolveConflict: merge };

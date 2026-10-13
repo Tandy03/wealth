@@ -1,3 +1,4 @@
+const { providerFetch } = require('../market/fetch');
 const { inflateRawSync } = require("node:zlib");
 
 const USER_AGENT = "Wealth-Dashboard/1.0";
@@ -12,7 +13,7 @@ async function request(url, accept = "application/json", timeoutMs = 25000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(url, { headers: { Accept: accept, "User-Agent": USER_AGENT }, signal: controller.signal });
+    const response = await providerFetch(url, { headers: { Accept: accept, "User-Agent": USER_AGENT }, signal: controller.signal });
     if (!response.ok) throw new Error(`${new URL(url).hostname} returned ${response.status}`);
     return response;
   } finally { clearTimeout(timer); }

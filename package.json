@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Personal investment portfolio tracker",
   "main": "backend/server.js",
+  "engines": {
+    "node": "^22.13.0 || >=24.0.0"
+  },
   "scripts": {
     "start": "node backend/server.js",
     "dev": "node --watch backend/server.js",
@@ -11,24 +14,33 @@
     "test:ui": "node --test backend/tests/uiSmoke.test.js",
     "smoke:serve": "node backend/scripts/uiSmokeServer.js",
     "mobile:config": "node backend/scripts/generateMobileConfig.js",
+    "mobile:check": "node backend/scripts/checkMobileReadiness.js",
     "mobile:sync": "npm run mobile:config && npx cap sync android",
     "mobile:open": "npx cap open android",
     "mobile:build": "npm run mobile:sync && cd android && gradlew.bat assembleDebug",
     "mobile:apk": "npm run mobile:build"
   },
   "dependencies": {
-    "@capacitor/android": "^8.5.1",
-    "@capacitor/app": "^8.1.1",
-    "@capacitor/core": "^8.5.1",
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.5.3",
     "@capacitor/network": "^8.0.1",
     "@capacitor/preferences": "^8.0.1",
     "@google-cloud/local-auth": "^3.0.1",
-    "cors": "^2.8.5",
-    "express": "^5.1.0",
-    "googleapis": "^178.0.0"
+    "cors": "^2.8.6",
+    "express": "^5.3.0",
+    "googleapis": "^178.1.1"
   },
   "devDependencies": {
-    "@capacitor/cli": "^8.5.1",
+    "@capacitor/cli": "^8.5.3",
     "jsdom": "^29.1.1"
+  },
+  "overrides": {
+    "gaxios@6": {
+      "uuid": "11.1.1"
+    },
+    "xcode": {
+      "uuid": "11.1.1"
+    }
   }
 }

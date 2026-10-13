@@ -56,6 +56,11 @@ function createPayment(data, body) {
   const payment = { id: createId('payment'), createdAt: new Date().toISOString(), assetId: asset.id, assetName: asset.name, type: body.type,
     date: date(body.date, 'payment date'), amount: nonnegative(body.amount, 'Amount'), currency: currency(body.currency, asset), status: 'planned' };
   if (body.amountPerUnit != null) payment.amountPerUnit = nonnegative(body.amountPerUnit, 'Amount per unit');
+  if (body.recordDate != null) {
+    if (body.type !== 'DIVIDEND') fail('Only dividends support a record date.');
+    payment.recordDate = date(body.recordDate, 'dividend record date');
+    if (payment.recordDate > payment.date) fail('Dividend record date cannot follow payment date.');
+  }
   return payment;
 }
 module.exports = { createTransaction, createPayment };

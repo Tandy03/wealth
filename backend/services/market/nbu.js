@@ -1,14 +1,12 @@
 const { normalizeNumber } = require('../../utils/values');
 const { getNbuCurrencyHistory } = require('../nbu/exchangeHistory');
 const URL = 'https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?json';
-function createSource({ fetchImpl = (...args) => fetch(...args), now = () => Date.now() } = {}) {
+const { requestJson } = require('./request');
+function createSource({ fetchImpl = (...args) => fetch(...args), now = () => Date.now(), timeoutMs = 10000 } = {}) {
   let cache = { updatedAt: 0, exchangeDate: null, rates: null };
   async function readRates() {
-    const response = await fetchImpl(URL, { headers: { Accept: 'application/json', 'User-Agent': 'Wealth-Dashboard/1.0' } });
-    if (!response.ok) throw new Error(`NBU API returned ${response.status}`);
-    const payload = await response.json();
-    if (!Array.isArray(payload)) throw new Error('NBU API returned an invalid payload.');
-    return payload;
+    const payload = await requestJson(URL, { headers: { Accept: 'application/json', 'User-Agent': 'Wealth-Dashboard/1.0' } }, { fetchImpl, timeoutMs });
+    return require('../../../frontend/js/market-model').nbuRates(payload);
   }
   async function getExchangeRates() {
     const fresh = cache.rates && now() - cache.updatedAt < 60 * 60 * 1000;

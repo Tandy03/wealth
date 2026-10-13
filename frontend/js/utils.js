@@ -19,7 +19,7 @@ function money(value, currency = "UAH") {
   const number = Number(value) || 0;
 
   const symbols = { UAH: "₴", USD: "$", EUR: "€" };
-  return `${currencyFormatter.format(number)} ${symbols[currency] || currency}`;
+  return `${currencyFormatter.format(number)} ${symbols[currency] || escapeHtml(currency)}`;
 }
 
 function usdMoney(value) {

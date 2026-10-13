@@ -192,6 +192,6 @@ function renderAssetTransactionsModal(state = stateStore.getState()) {
   transactions.sort((a, b) => String(getTransactionEffectiveDate(b) || "").localeCompare(String(getTransactionEffectiveDate(a) || "")));
   body.innerHTML = transactions.length ? transactions.map((transaction) => {
     const asset = state.data.assets.find((item) => item.id === transaction.assetId);
-    return `<tr><td>${formatDate(getTransactionEffectiveDate(transaction))}</td><td><span translate="no">${escapeHtml(asset?.instrumentName || "—")}</span></td><td>${escapeHtml(transaction.type)}</td><td>${transaction.quantity ?? "—"}</td><td>${money(transaction.amount, transaction.currency || asset?.currency)}</td><td></td></tr>`;
+    return `<tr><td>${formatDate(getTransactionEffectiveDate(transaction))}</td><td><span translate="no">${escapeHtml(asset?.instrumentName || "—")}</span></td><td>${escapeHtml(transaction.type)}</td><td>${escapeHtml(transaction.quantity ?? "—")}</td><td>${money(transaction.amount, transaction.currency || asset?.currency)}</td><td></td></tr>`;
   }).join("") : '<tr><td colspan="6" class="empty-state">No matching transactions.</td></tr>';
 }

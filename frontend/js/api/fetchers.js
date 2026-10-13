@@ -12,8 +12,14 @@
       error.status = response.status;
       error.category = response.headers?.get('x-error-category') || null;
       error.requestId = response.headers?.get('x-request-id') || null;
+      error.code = data.code || null;
+      error.details = data.status || null;
       throw error;
     }
+    const state = response.headers?.get('x-save-state');
+    if (state && data && typeof data === 'object') Object.defineProperty(data, 'persistence', { value: {
+      state, savedLocally: response.headers.get('x-saved-locally') === 'true', savedRemotely: response.headers.get('x-saved-remotely') === 'true',
+      backupSaved: response.headers.get('x-backup-saved') === 'true' }, enumerable: false });
     return data;
   }
   function createService({ fetch: fetchRequest }) {

@@ -16,6 +16,15 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        debug {
+            // Reuse the working Android OAuth identity in CLI and Android Studio builds.
+            def preservedKey = rootProject.file('../.tmp/android-tools/user-home/debug.keystore')
+            if (preservedKey.exists()) {
+                storeFile = preservedKey
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false

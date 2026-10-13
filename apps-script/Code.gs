@@ -34,6 +34,7 @@ function doPost(event) {
   try {
     const request = parseRequest(event);
     authorize(request.token);
+    consumeBudget('requests', 120);
     switch (String(request.action || "")) {
       case "health": return responseOk({ service: "fino-market-proxy", version: 1, time: new Date().toISOString() });
       case "twelve": return responseOk(getTwelveTimeSeries(request));
@@ -46,8 +47,9 @@ function doPost(event) {
       default: throw apiError("Unknown proxy action.", "UNKNOWN_ACTION", 400);
     }
   } catch (error) {
-    console.error(String(error && error.stack || error));
-    return responseError(error.message || "Proxy request failed.", error.code || "PROXY_ERROR", error.status || 500);
+    const code = /^[A-Z0-9_]{1,60}$/.test(error.code || '') ? error.code : 'PROXY_ERROR';
+    console.error(JSON.stringify({ event: 'proxy.failed', code: code, status: Number(error.status) || 500 }));
+    return responseError(error.publicMessage ? error.message : 'Proxy request failed.', code, error.status || 500);
   }
 }
 
@@ -119,11 +121,12 @@ function getMacroeconomics() {
     result.inflation.annual = pick("prices_price_cpi_", "PCCM_");
     result.inflation.monthly = pick("prices_price_cpi_", "PCPM_");
   } catch (error) {
-    result.errors.nbu = error.message || "Could not load NBU data.";
+    result.errors.nbu = "Could not load NBU data.";
   }
 
   try {
     const gdpUrl = "https://stat.gov.ua/sdmx/workspaces/default:integration/registry/sdmx/3.0/data/dataflow/SSSU/DF_ANNUAL_NATIONAL_ACCOUNTS/latest/*?startPeriod=2010";
+    consumeBudget('upstream', 120);
     const response = UrlFetchApp.fetch(gdpUrl, { muteHttpExceptions: true, followRedirects: true, headers: { Accept: "text/csv" } });
     if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) throw apiError("State Statistics Service returned " + response.getResponseCode() + ".", "SSSU_ERROR", response.getResponseCode());
     const rows = parseMacroCsv(response.getContentText().replace(/^\uFEFF/, ""));
@@ -137,7 +140,7 @@ function getMacroeconomics() {
     result.gdp.nominal = select("CURR_PRICES");
     result.gdp.realIndex = select("IDX_VOL_PY");
   } catch (error) {
-    result.errors.gdp = error.message || "Could not load GDP data.";
+    result.errors.gdp = "Could not load GDP data.";
   }
 
   writeCache(cacheKey, result, 21600);
@@ -190,10 +193,12 @@ function parseMacroCsv(text) {
 
 function parseRequest(event) {
   if (!event || !event.postData || !event.postData.contents) throw apiError("A JSON request body is required.", "INVALID_BODY", 400);
+  if (event.postData.contents.length > 2 * 1024 * 1024) throw apiError('Request body is too large.', 'INVALID_BODY', 413);
   let body;
   try { body = JSON.parse(event.postData.contents); }
   catch (_) { throw apiError("The request body must be valid JSON.", "INVALID_JSON", 400); }
   if (!body || Object.prototype.toString.call(body) !== "[object Object]") throw apiError("The request body must be an object.", "INVALID_BODY", 400);
+  validateJsonTree(body);
   return body;
 }
 
@@ -206,7 +211,8 @@ function getTwelveTimeSeries(request) {
   const symbol = validateSymbol(request.symbol);
   const interval = String(request.interval || "1day");
   if (ALLOWED_INTERVALS.indexOf(interval) === -1) throw apiError("Unsupported time-series interval.", "INVALID_INTERVAL", 400);
-  const outputsize = Math.min(CONFIG.maxOutputSize, Math.max(1, Math.floor(Number(request.outputsize) || 365)));
+  const outputsize = request.outputsize == null ? 365 : Number(request.outputsize);
+  if (!Number.isInteger(outputsize) || outputsize < 1 || outputsize > CONFIG.maxOutputSize) throw apiError('Invalid output size.', 'INVALID_OUTPUT_SIZE', 400);
   const startDate = optionalDateTime(request.startDate, "startDate");
   const endDate = optionalDateTime(request.endDate, "endDate");
   if (startDate && endDate && startDate > endDate) throw apiError("startDate cannot be later than endDate.", "INVALID_DATE", 400);
@@ -224,7 +230,7 @@ function getTwelveTimeSeries(request) {
   const fetched = fetchJson(CONFIG.twelveBaseUrl + "/time_series?" + encodeQuery(query), { headers: { Accept: "application/json" } }, "Twelve Data");
   const payload = fetched.data;
   if (fetched.status === 429 || Number(payload && payload.code) === 429) throw apiError("Twelve Data request limit reached. Try again later.", "TWELVE_DATA_RATE_LIMITED", 429);
-  if (fetched.status < 200 || fetched.status >= 300 || (payload && payload.status === "error")) throw apiError((payload && payload.message) || "Twelve Data request failed.", "TWELVE_DATA_ERROR", fetched.status || 502);
+  if (fetched.status < 200 || fetched.status >= 300 || (payload && payload.status === "error")) throw apiError("Twelve Data request failed.", "TWELVE_DATA_ERROR", fetched.status || 502);
   if (!payload || !Array.isArray(payload.values)) throw apiError("Twelve Data returned no price history for this symbol.", "TIME_SERIES_NOT_FOUND", 404);
 
   const result = {
@@ -232,7 +238,7 @@ function getTwelveTimeSeries(request) {
     meta: payload.meta || { symbol: symbol, interval: interval },
     values: payload.values.map(function (point) {
       return { datetime: point.datetime, open: numeric(point.open), high: numeric(point.high), low: numeric(point.low), close: numeric(point.close), volume: point.volume == null ? null : numeric(point.volume) };
-    }),
+    }).filter(function (point) { return ['open', 'high', 'low', 'close'].every(function (field) { return point[field] != null && isFinite(point[field]) && point[field] > 0; }); }),
     cached: false, fetchedAt: new Date().toISOString(),
   };
   writeCache(cacheKey, result, CONFIG.cacheSeconds.twelve);
@@ -256,7 +262,7 @@ function getFredIndexHistory(request) {
   });
   const fetched = fetchJson(url, { headers: { Accept: "application/json" } }, "FRED");
   if (fetched.status === 429) throw apiError("FRED API request limit reached. Try again later.", "FRED_RATE_LIMITED", 429);
-  if (fetched.status < 200 || fetched.status >= 300 || (fetched.data && fetched.data.error_code)) throw apiError((fetched.data && fetched.data.error_message) || "FRED request failed.", "FRED_API_ERROR", fetched.status || 502);
+  if (fetched.status < 200 || fetched.status >= 300 || (fetched.data && fetched.data.error_code)) throw apiError("FRED request failed.", "FRED_API_ERROR", fetched.status || 502);
   const observations = Array.isArray(fetched.data && fetched.data.observations)
     ? fetched.data.observations.filter(function (item) { return item && item.value !== "." && isFinite(Number(item.value)); }) : [];
   if (!observations.length) throw apiError("FRED returned no " + index.name + " history for this period.", "INDEX_HISTORY_NOT_FOUND", 404);
@@ -307,12 +313,15 @@ function getBinanceEquityPrice(request) {
 }
 
 function fetchJson(url, options, provider) {
+  consumeBudget('upstream', 120);
   const response = UrlFetchApp.fetch(url, Object.assign({ muteHttpExceptions: true, followRedirects: true }, options || {}));
   const status = response.getResponseCode();
   const text = response.getContentText();
+  if (text.length > 5 * 1024 * 1024) throw apiError('Provider response is too large.', 'UPSTREAM_TOO_LARGE', 502);
   let data = null;
   try { data = text ? JSON.parse(text) : null; }
   catch (_) { throw apiError(provider + " returned an invalid response.", "UPSTREAM_INVALID_JSON", 502); }
+  validateJsonTree(data);
   return { status: status, data: data };
 }
 
@@ -329,8 +338,8 @@ function validateSymbol(value) {
 }
 
 function requiredDate(value, name) {
-  const date = String(value || "").slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || isNaN(new Date(date + "T00:00:00Z").getTime())) throw apiError(name + " must be a valid date.", "INVALID_DATE", 400);
+  const date = String(value || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || isNaN(new Date(date + "T00:00:00Z").getTime()) || new Date(date + 'T00:00:00Z').toISOString().slice(0, 10) !== date) throw apiError(name + " must be a valid date.", "INVALID_DATE", 400);
   return date;
 }
 
@@ -338,6 +347,8 @@ function optionalDateTime(value, name) {
   if (value == null || value === "") return null;
   const text = String(value).trim();
   if (!/^\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?$/.test(text) || isNaN(new Date(text.replace(" ", "T")).getTime())) throw apiError(name + " must be a valid date.", "INVALID_DATE", 400);
+  requiredDate(text.slice(0, 10), name);
+  if (text.length > 10 && (Number(text.slice(11, 13)) > 23 || Number(text.slice(14, 16)) > 59 || Number(text.slice(17, 19) || 0) > 59)) throw apiError('Invalid clock time.', 'INVALID_DATE', 400);
   return text;
 }
 
@@ -347,7 +358,31 @@ function cacheKeyFor(prefix, values) { const digest = Utilities.computeDigest(Ut
 function readCache(key) { const value = CacheService.getScriptCache().get(key); if (!value) return null; try { return JSON.parse(value); } catch (_) { return null; } }
 function writeCache(key, value, seconds) { const serialized = JSON.stringify(value); if (serialized.length <= CONFIG.cacheLimitBytes) CacheService.getScriptCache().put(key, serialized, seconds); }
 function withCached(value) { const copy = JSON.parse(JSON.stringify(value)); copy.cached = true; return copy; }
-function apiError(message, code, status) { const error = new Error(message); error.code = code; error.status = status; return error; }
+function apiError(message, code, status) { const error = new Error(message); error.code = code; error.status = status; error.publicMessage = true; return error; }
+
+function validateJsonTree(value, depth) {
+  depth = depth || 0;
+  if (depth > 64) throw apiError('JSON nesting is too deep.', 'INVALID_DATA', 400);
+  if (typeof value === 'number' && !isFinite(value)) throw apiError('Nonfinite JSON number.', 'INVALID_DATA', 400);
+  if (!value || typeof value !== 'object') return;
+  Object.keys(value).forEach(function (key) {
+    if (['__proto__', 'prototype', 'constructor'].indexOf(key) !== -1) throw apiError('Unsafe JSON property.', 'INVALID_DATA', 400);
+    validateJsonTree(value[key], depth + 1);
+  });
+}
+
+function consumeBudget(group, limit) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) throw apiError('Proxy is busy. Retry later.', 'PROXY_RATE_LIMITED', 429);
+  try {
+    const properties = PropertiesService.getScriptProperties(), key = 'FINO_BUDGET_' + group.toUpperCase(), minute = Math.floor(Date.now() / 60000);
+    let saved = null;
+    try { saved = JSON.parse(properties.getProperty(key) || 'null'); } catch (_) {}
+    const count = saved && saved.minute === minute ? Number(saved.count) : 0;
+    if (count >= limit) throw apiError('Proxy request limit reached.', 'PROXY_RATE_LIMITED', 429);
+    properties.setProperty(key, JSON.stringify({ minute: minute, count: count + 1 }));
+  } finally { lock.releaseLock(); }
+}
 function responseOk(data) { return jsonOutput({ ok: true, data: data }); }
 function responseError(message, code, status) { return jsonOutput({ ok: false, error: { message: message, code: code, status: status } }); }
 function jsonOutput(value) { return ContentService.createTextOutput(JSON.stringify(value)).setMimeType(ContentService.MimeType.JSON); }

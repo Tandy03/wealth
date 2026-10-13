@@ -8,10 +8,10 @@ function createRouter(service, repository) {
             res.status(200).json(result);
         }
         catch (error) {
-            if (error instanceof DomainError)
+            if (error instanceof DomainError || (error.status && error.payload))
                 return res.status(error.status).json(error.payload);
-            console.error("POST /api/assets/sync-inzhur:", error);
-            res.status(502).json({ error: "Could not synchronize assets with Inzhur." });
+            require('../utils/observability').logEvent('request.failed', { code: error.code || 'INTERNAL_ERROR' });
+            res.status(error.status || 502).json({ error: "Could not synchronize assets with Inzhur." });
         }
     });
     router.get("/api/assets", async (req, res) => {
@@ -20,9 +20,9 @@ function createRouter(service, repository) {
             res.status(200).json(result);
         }
         catch (error) {
-            if (error instanceof DomainError)
+            if (error instanceof DomainError || (error.status && error.payload))
                 return res.status(error.status).json(error.payload);
-            console.error("GET /api/assets:", error);
+            require('../utils/observability').logEvent('request.failed', { code: error.code || 'INTERNAL_ERROR' });
             res.status(500).json({
                 error: "Failed to read assets.",
             });
@@ -34,9 +34,9 @@ function createRouter(service, repository) {
             res.status(201).json(result);
         }
         catch (error) {
-            if (error instanceof DomainError)
+            if (error instanceof DomainError || (error.status && error.payload))
                 return res.status(error.status).json(error.payload);
-            console.error("POST /api/assets:", error);
+            require('../utils/observability').logEvent('request.failed', { code: error.code || 'INTERNAL_ERROR' });
             res.status(500).json({
                 error: "Failed to create asset.",
             });
@@ -48,9 +48,9 @@ function createRouter(service, repository) {
             res.status(200).json(result);
         }
         catch (error) {
-            if (error instanceof DomainError)
+            if (error instanceof DomainError || (error.status && error.payload))
                 return res.status(error.status).json(error.payload);
-            console.error("POST /api/assets/merge:", error);
+            require('../utils/observability').logEvent('request.failed', { code: error.code || 'INTERNAL_ERROR' });
             res.status(500).json({ error: "Failed to merge duplicate holdings." });
         }
     });
@@ -60,9 +60,9 @@ function createRouter(service, repository) {
             res.status(200).json(result);
         }
         catch (error) {
-            if (error instanceof DomainError)
+            if (error instanceof DomainError || (error.status && error.payload))
                 return res.status(error.status).json(error.payload);
-            console.error("PUT /api/assets/:id:", error);
+            require('../utils/observability').logEvent('request.failed', { code: error.code || 'INTERNAL_ERROR' });
             res.status(500).json({
                 error: "Failed to update asset.",
             });
@@ -74,9 +74,9 @@ function createRouter(service, repository) {
             res.status(201).json(result);
         }
         catch (error) {
-            if (error instanceof DomainError)
+            if (error instanceof DomainError || (error.status && error.payload))
                 return res.status(error.status).json(error.payload);
-            console.error("POST /api/assets/:id/buy:", error);
+            require('../utils/observability').logEvent('request.failed', { code: error.code || 'INTERNAL_ERROR' });
             res.status(500).json({
                 error: "Failed to buy more asset.",
             });
@@ -88,9 +88,9 @@ function createRouter(service, repository) {
             res.status(200).json(result);
         }
         catch (error) {
-            if (error instanceof DomainError)
+            if (error instanceof DomainError || (error.status && error.payload))
                 return res.status(error.status).json(error.payload);
-            console.error("DELETE /api/assets/:id:", error);
+            require('../utils/observability').logEvent('request.failed', { code: error.code || 'INTERNAL_ERROR' });
             res.status(500).json({
                 error: "Failed to delete asset.",
             });

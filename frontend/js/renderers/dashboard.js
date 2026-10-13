@@ -274,7 +274,7 @@ function renderUpcomingPayments(state = stateStore.getState()) {
                             <div class="payment-meta">
                                 ${formatDate(payment.date)}
                                 ·
-                                ${paymentTypeLabel(payment.type)}
+                                ${escapeHtml(paymentTypeLabel(payment.type))}
                             </div>
 
                         </div>

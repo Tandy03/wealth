@@ -1,3 +1,4 @@
+const { providerFetch } = require('../market/fetch');
 const NBU_HISTORY_URL = process.env.NBU_HISTORY_URL || "https://bank.gov.ua/NBU_Exchange/exchange_site";
 const CACHE_TTL_MS = 60 * 60 * 1000;
 const cache = new Map();
@@ -49,7 +50,7 @@ async function getNbuCurrencyHistory({ code, startDate, endDate }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12000);
   try {
-    const response = await fetch(url, { headers: { Accept: "application/json", "User-Agent": "Wealth-Dashboard/1.0" }, signal: controller.signal });
+    const response = await providerFetch(url, { headers: { Accept: "application/json", "User-Agent": "Wealth-Dashboard/1.0" }, signal: controller.signal });
     if (!response.ok) throw new NbuExchangeError(`NBU API returned ${response.status}.`);
     const payload = await response.json();
     if (!Array.isArray(payload) || !payload.length) throw new NbuExchangeError(`No NBU rates found for ${currency}.`, 404);

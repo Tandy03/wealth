@@ -8,10 +8,10 @@ function createRouter(service, repository) {
             res.status(200).json(result);
         }
         catch (error) {
-            if (error instanceof DomainError)
+            if (error instanceof DomainError || (error.status && error.payload))
                 return res.status(error.status).json(error.payload);
-            console.error("GET /api/exchange-rates:", error);
-            res.status(502).json({ error: "Could not load exchange rates from the NBU." });
+            require('../utils/observability').logEvent('request.failed', { code: error.code || 'INTERNAL_ERROR' });
+            res.status(error.status || 502).json({ category: 'remote_unavailable', error: "Could not load exchange rates from the NBU." });
         }
     });
     router.get("/api/market-data/time-series", async (req, res) => {
@@ -20,10 +20,10 @@ function createRouter(service, repository) {
             res.status(200).json(result);
         }
         catch (error) {
-            if (error instanceof DomainError)
+            if (error instanceof DomainError || (error.status && error.payload))
                 return res.status(error.status).json(error.payload);
-            console.error("GET /api/market-data/time-series:", error.code || error.message);
-            res.status(error.status || 502).json({ error: error.message, code: error.code || "TWELVE_DATA_ERROR" });
+            require('../utils/observability').logEvent('request.failed', { code: error.code || 'INTERNAL_ERROR' });
+            res.status(error.status || 502).json({ category: 'remote_unavailable', error: 'The external provider is unavailable. Try again later.', code: error.code || "TWELVE_DATA_ERROR" });
         }
     });
     router.get("/api/market-data/currencies", async (req, res) => {
@@ -32,10 +32,10 @@ function createRouter(service, repository) {
             res.status(200).json(result);
         }
         catch (error) {
-            if (error instanceof DomainError)
+            if (error instanceof DomainError || (error.status && error.payload))
                 return res.status(error.status).json(error.payload);
-            console.error("GET /api/market-data/currencies:", error.message);
-            res.status(502).json({ error: "Could not load the NBU currency list." });
+            require('../utils/observability').logEvent('request.failed', { code: error.code || 'INTERNAL_ERROR' });
+            res.status(error.status || 502).json({ category: 'remote_unavailable', error: "Could not load the NBU currency list." });
         }
     });
     router.get("/api/market-data/currency-history", async (req, res) => {
@@ -44,10 +44,10 @@ function createRouter(service, repository) {
             res.status(200).json(result);
         }
         catch (error) {
-            if (error instanceof DomainError)
+            if (error instanceof DomainError || (error.status && error.payload))
                 return res.status(error.status).json(error.payload);
-            console.error("GET /api/market-data/currency-history:", error.message);
-            res.status(error.status || 502).json({ error: error.message });
+            require('../utils/observability').logEvent('request.failed', { code: error.code || 'INTERNAL_ERROR' });
+            res.status(error.status || 502).json({ category: 'remote_unavailable', error: 'The external provider is unavailable. Try again later.' });
         }
     });
     router.get("/api/market-data/frankfurter-history", async (req, res) => {
@@ -56,10 +56,10 @@ function createRouter(service, repository) {
             res.status(200).json(result);
         }
         catch (error) {
-            if (error instanceof DomainError)
+            if (error instanceof DomainError || (error.status && error.payload))
                 return res.status(error.status).json(error.payload);
-            console.error("GET /api/market-data/frankfurter-history:", error.message);
-            res.status(error.status || 502).json({ error: error.message });
+            require('../utils/observability').logEvent('request.failed', { code: error.code || 'INTERNAL_ERROR' });
+            res.status(error.status || 502).json({ category: 'remote_unavailable', error: 'The external provider is unavailable. Try again later.' });
         }
     });
     router.get("/api/market-data/index-history", async (req, res) => {
@@ -68,10 +68,10 @@ function createRouter(service, repository) {
             res.status(200).json(result);
         }
         catch (error) {
-            if (error instanceof DomainError)
+            if (error instanceof DomainError || (error.status && error.payload))
                 return res.status(error.status).json(error.payload);
-            console.error("GET /api/market-data/index-history:", error.code || error.message);
-            res.status(error.status || 502).json({ error: error.message, code: error.code || "FRED_API_ERROR" });
+            require('../utils/observability').logEvent('request.failed', { code: error.code || 'INTERNAL_ERROR' });
+            res.status(error.status || 502).json({ category: 'remote_unavailable', error: 'The external provider is unavailable. Try again later.', code: error.code || "FRED_API_ERROR" });
         }
     });
     router.get("/api/macroeconomics", async (req, res) => {
@@ -80,10 +80,10 @@ function createRouter(service, repository) {
             res.status(200).json(result);
         }
         catch (error) {
-            if (error instanceof DomainError)
+            if (error instanceof DomainError || (error.status && error.payload))
                 return res.status(error.status).json(error.payload);
-            console.error("GET /api/macroeconomics:", error.message);
-            res.status(502).json({ error: "Could not load macroeconomic data." });
+            require('../utils/observability').logEvent('request.failed', { code: error.code || 'INTERNAL_ERROR' });
+            res.status(502).json({ category: 'remote_unavailable', error: "Could not load macroeconomic data." });
         }
     });
     router.get("/api/macroeconomics/policy-rate", async (req, res) => {
@@ -92,10 +92,10 @@ function createRouter(service, repository) {
             res.status(200).json(result);
         }
         catch (error) {
-            if (error instanceof DomainError)
+            if (error instanceof DomainError || (error.status && error.payload))
                 return res.status(error.status).json(error.payload);
-            console.error("GET /api/macroeconomics/policy-rate:", error.message);
-            res.status(502).json({ error: "Could not load the NBU key policy rate." });
+            require('../utils/observability').logEvent('request.failed', { code: error.code || 'INTERNAL_ERROR' });
+            res.status(502).json({ category: 'remote_unavailable', error: "Could not load the NBU key policy rate." });
         }
     });
     router.get("/api/inzhur-assets", async (req, res) => {
@@ -104,11 +104,11 @@ function createRouter(service, repository) {
             res.status(200).json(result);
         }
         catch (error) {
-            if (error instanceof DomainError)
+            if (error instanceof DomainError || (error.status && error.payload))
                 return res.status(error.status).json(error.payload);
-            console.error("GET /api/inzhur-assets:", error);
-            res.status(502).json({
-                error: "Could not load the Inzhur asset catalog.",
+            require('../utils/observability').logEvent('request.failed', { code: error.code || 'INTERNAL_ERROR' });
+            res.status(error.status || 502).json({
+                error: "Could not load the Inzhur asset catalog.", category: "remote_unavailable",
             });
         }
     });

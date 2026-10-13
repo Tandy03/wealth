@@ -1,5 +1,6 @@
 (function () {
 const state = stateStore.getState();
+const stackedDoughnutLegendPlugin = window.FinoChartPlugins.stackedDoughnutLegend;
 // charts/wallet.js
 let walletCategoryChart = null;
 

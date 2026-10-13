@@ -56,6 +56,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(GoogleDriveAuthPlugin.class);
         registerPlugin(AppLockPlugin.class);
+        registerPlugin(FinoStoragePlugin.class);
         super.onCreate(savedInstanceState);
         lockPreferences = getSharedPreferences(LOCK_PREFERENCES, MODE_PRIVATE);
         showLaunchLock();

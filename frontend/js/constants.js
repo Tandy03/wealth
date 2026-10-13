@@ -10,6 +10,7 @@ return Object.freeze({
   ASSET_TYPES: Object.freeze(['ovdp', 'inzhur_reit', 's1_reit', 'inzhur_miltech', 'etf', 'stock', 'savings', 'novapay', 'deposit', 'crypto_earn']),
   FRACTIONAL_ASSET_TYPES: Object.freeze(['etf', 'stock', 'crypto_earn']),
   PAYMENT_TYPES: Object.freeze(['DIVIDEND', 'COUPON', 'MATURITY']),
+  DIVIDEND_RECORD_RULES: Object.freeze(['previous_month_end', 'payment_date']),
   PAYMENT_STATUSES: Object.freeze(['planned', 'received', 'paid']),
   SYNC_ACTIONS: Object.freeze(['sync', 'upload', 'download', 'backup', 'reconnect']),
   QUANTITY_EPSILON: 1e-10,

@@ -1,6 +1,6 @@
 package com.tandy03.fino;
 
-import android.content.Intent;
+import android.app.Activity;
 import androidx.activity.result.ActivityResult;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -16,13 +16,14 @@ import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
 import com.google.android.gms.auth.api.signin.GoogleSignInClient;
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
 import com.google.android.gms.common.api.Scope;
-import com.google.android.gms.tasks.Tasks;
 import java.io.IOException;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
 
 @CapacitorPlugin(name = "GoogleDriveAuth")
 public class GoogleDriveAuthPlugin extends Plugin {
     private static final String DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+    private final ExecutorService tokenExecutor = Executors.newSingleThreadExecutor();
 
     private GoogleSignInClient signInClient() {
         GoogleSignInOptions options = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
@@ -44,19 +45,23 @@ public class GoogleDriveAuthPlugin extends Plugin {
     public void signOut(PluginCall call) {
         signInClient().signOut()
             .addOnSuccessListener(ignored -> call.resolve())
-            .addOnFailureListener(error -> call.reject("Could not sign out of Google.", error));
+            .addOnFailureListener(error -> call.reject("Could not sign out of Google.", "AUTHORIZATION_REQUIRED"));
     }
 
     @ActivityCallback
     private void signInResult(PluginCall call, ActivityResult result) {
-        if (call == null || result.getData() == null) return;
+        if (call == null) return;
+        if (result.getResultCode() != Activity.RESULT_OK || result.getData() == null) {
+            call.reject("Google authorization was cancelled.", "AUTHORIZATION_REQUIRED");
+            return;
+        }
         GoogleSignIn.getSignedInAccountFromIntent(result.getData())
             .addOnSuccessListener(account -> resolveToken(call, account))
-            .addOnFailureListener(error -> call.reject("Google authorization failed.", error));
+            .addOnFailureListener(error -> call.reject("Google authorization failed.", "AUTHORIZATION_REQUIRED"));
     }
 
     private void resolveToken(PluginCall call, GoogleSignInAccount account) {
-        Executors.newSingleThreadExecutor().execute(() -> {
+        tokenExecutor.execute(() -> {
             try {
                 String token = GoogleAuthUtil.getToken(
                     getContext(), account.getAccount(), "oauth2:" + DRIVE_SCOPE);
@@ -67,7 +72,9 @@ public class GoogleDriveAuthPlugin extends Plugin {
             } catch (UserRecoverableAuthException error) {
                 getActivity().runOnUiThread(() -> startActivityForResult(call, error.getIntent(), "recoverToken"));
             } catch (IOException | GoogleAuthException error) {
-                call.reject("Could not obtain a Google Drive token.", error);
+                call.reject("Could not obtain a Google Drive token.", "AUTHORIZATION_REQUIRED");
+            } catch (RuntimeException error) {
+                call.reject("Could not obtain a Google Drive token.", "AUTHORIZATION_REQUIRED");
             }
         });
     }
@@ -75,7 +82,16 @@ public class GoogleDriveAuthPlugin extends Plugin {
     @ActivityCallback
     private void recoverToken(PluginCall call, ActivityResult result) {
         GoogleSignInAccount account = GoogleSignIn.getLastSignedInAccount(getContext());
-        if (call == null || account == null) return;
+        if (call == null) return;
+        if (result.getResultCode() != Activity.RESULT_OK || account == null) {
+            call.reject("Google authorization was cancelled.", "AUTHORIZATION_REQUIRED");
+            return;
+        }
         resolveToken(call, account);
+    }
+
+    @Override
+    protected void handleOnDestroy() {
+        tokenExecutor.shutdownNow();
     }
 }

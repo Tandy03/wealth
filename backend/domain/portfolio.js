@@ -1,3 +1,4 @@
+const rules = require('../../frontend/js/portfolio-rules');
 const { BASE_CURRENCY, normalizeNumber, createId } = require("../utils/values");
 const { DAYS_PER_YEAR, MILLISECONDS_PER_DAY } = require('../config/constants');
 function normalizeAssetNames(data) {
@@ -39,113 +40,13 @@ function getSoldQuantity(data, assetId) {
         .filter((sale) => sale.assetId === assetId)
         .reduce((sum, sale) => sum + normalizeNumber(sale.quantity), 0);
 }
-function getAvailableQuantity(data, assetId) {
-    const asset = data.assets.find((item) => item.id === assetId);
-    if (!asset) {
-        return 0;
-    }
-    const hasReceivedMaturity = asset.type === "ovdp" &&
-        data.payments.some((payment) => payment.assetId === assetId &&
-            payment.type === "MATURITY" &&
-            (payment.status === "received" || payment.status === "paid"));
-    if (asset.closedAt || hasReceivedMaturity) {
-        return 0;
-    }
-    if (asset.type === "crypto_earn") {
-        const annualRate = Math.max(0, normalizeNumber(asset.annualRate)) / 100;
-        const targetTime = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`).getTime();
-        const purchases = (data.transactions || []).filter((transaction) => transaction.assetId === asset.id && transaction.type === "BUY" && transaction.date);
-        const sources = purchases.length
-            ? purchases.map((transaction) => ({ date: transaction.date, quantity: normalizeNumber(transaction.quantity) }))
-            : [{ date: asset.purchaseDate, quantity: normalizeNumber(asset.quantity) }];
-        const accrued = sources.reduce((sum, source) => {
-            const startTime = new Date(`${source.date}T00:00:00Z`).getTime();
-            const days = Number.isFinite(startTime) ? Math.max(0, Math.floor((targetTime - startTime) / MILLISECONDS_PER_DAY)) : 0;
-            return sum + source.quantity * ((1 + annualRate / DAYS_PER_YEAR) ** days);
-        }, 0);
-        const removed = (data.sales || []).filter((sale) => sale.assetId === asset.id && sale.sellDate).reduce((sum, sale) => {
-            const soldTime = new Date(`${sale.sellDate}T00:00:00Z`).getTime();
-            const days = Number.isFinite(soldTime) ? Math.max(0, Math.floor((targetTime - soldTime) / MILLISECONDS_PER_DAY)) : 0;
-            return sum + normalizeNumber(sale.quantity) * ((1 + annualRate / DAYS_PER_YEAR) ** days);
-        }, 0);
-        return Math.max(0, accrued - removed);
-    }
-    const originalQuantity = normalizeNumber(asset.quantity);
-    const soldQuantity = getSoldQuantity(data, assetId);
-    return Math.max(0, originalQuantity - soldQuantity);
-}
-function getPurchasedQuantityOnDate(data, assetId, targetDate) {
-    const target = new Date(`${targetDate}T23:59:59`);
-    return (data.transactions || [])
-        .filter((transaction) => transaction.assetId === assetId &&
-        transaction.type === "BUY" &&
-        transaction.date &&
-        new Date(`${transaction.date}T00:00:00`) <= target)
-        .reduce((sum, transaction) => sum + normalizeNumber(transaction.quantity), 0);
-}
-function getDividendEligibleQuantity(data, assetId, paymentDate) {
-    const payment = new Date(`${paymentDate}T00:00:00`);
-    const cutoff = new Date(payment.getFullYear(), payment.getMonth(), 0);
-    const purchasedQuantity = getPurchasedQuantityOnDate(data, assetId, `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, "0")}-${String(cutoff.getDate()).padStart(2, "0")}`);
-    const asset = data.assets.find((item) => item.id === assetId);
-    return Math.min(purchasedQuantity, normalizeNumber(asset?.quantity));
-}
+function getAvailableQuantity(data, assetId) { return rules.quantityOnDate(data, assetId); }
+function getPurchasedQuantityOnDate(data, assetId, targetDate) { return rules.holdingsAtDate(data, assetId, targetDate).purchasedQuantity; }
+function getDividendEligibleQuantity(data, assetId, paymentDate, recordDate) { const asset = data.assets.find(item => item.id === assetId); return asset ? rules.quantityOnDate(data, asset, rules.dividendRecordDate(asset, { date: paymentDate, recordDate })) : 0; }
 function repairLegacyPurchaseHistory(data) {
-    (data.assets || []).forEach((asset) => {
-        const buys = (data.transactions || []).filter((transaction) => transaction.assetId === asset.id && transaction.type === "BUY");
-        const excess = buys.reduce((sum, transaction) => sum + normalizeNumber(transaction.quantity), 0)
-            - normalizeNumber(asset.quantity);
-        if (excess <= 1e-8 || !buys.length)
-            return;
-        const earliest = [...buys].sort((a, b) => String(a.date || a.createdAt).localeCompare(String(b.date || b.createdAt)))[0];
-        const correctedQuantity = normalizeNumber(earliest.quantity) - excess;
-        if (correctedQuantity <= 0)
-            return;
-        const otherCost = buys.filter((transaction) => transaction !== earliest)
-            .reduce((sum, transaction) => sum + normalizeNumber(transaction.amount), 0);
-        const correctedCost = Math.max(0, normalizeNumber(asset.quantity) * normalizeNumber(asset.purchasePrice) - otherCost);
-        earliest.quantity = correctedQuantity;
-        earliest.amount = correctedCost;
-        earliest.purchasePrice = correctedCost / correctedQuantity;
-        delete earliest.price;
-    });
+    return rules.repairLegacyPurchaseHistory(data);
 }
-function updatePlannedPaymentsForAsset(data, assetId) {
-    data.payments = data.payments.map((payment) => {
-        if (payment.assetId !== assetId) {
-            return payment;
-        }
-        /*
-         * Never modify payments that
-         * have already been received.
-         */
-        if (payment.status === "received" || payment.status === "paid") {
-            return payment;
-        }
-        /*
-         * Only coupons and dividends
-         * depend on the number of units.
-         */
-        if (payment.type !== "COUPON" && payment.type !== "DIVIDEND") {
-            return payment;
-        }
-        /*
-         * Calculate the quantity that
-         * existed on THIS payment date.
-         *
-         * This is important when the asset
-         * was purchased in several portions.
-         */
-        const quantity = payment.type === "DIVIDEND"
-            ? getDividendEligibleQuantity(data, assetId, payment.date)
-            : getPurchasedQuantityOnDate(data, assetId, payment.date);
-        const amountPerUnit = normalizeNumber(payment.amountPerUnit);
-        return {
-            ...payment,
-            amount: amountPerUnit * quantity,
-        };
-    });
-}
+function updatePlannedPaymentsForAsset(data, assetId) { return rules.refreshPayments(data, assetId); }
 function hasReceivedPayment(data, assetId, type, date) {
     return data.payments.some((payment) => payment.assetId === assetId && payment.type === type && payment.date === date &&
         (payment.status === "received" || payment.status === "paid"));

@@ -8,5 +8,14 @@ backend/config/google-token.json
 backend/config/google-drive-state.json
 backend/data/data.json
 backend/data/backups/
+backend/data/*.journal.ndjson
+backend/data/*.tmp
+api.txt
+*.keystore
+*.jks
+# Other APKs are ignored; the verified, already tracked debug APK is published explicitly.
+*.apk
 Microsoft/Windows/PowerShell/ModuleAnalysisCache
 frontend/js/mobile-config.generated.js
+# Local build tooling and diagnostic artifacts
+.tmp/

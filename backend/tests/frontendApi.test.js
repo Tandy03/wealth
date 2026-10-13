@@ -20,7 +20,7 @@ test('facade chooses desktop or native at call time without changing the caller 
   const calls = [];
   const desktop = desktopApi.createService({ request: async (url, options) => { calls.push({ url, options }); return 'desktop'; } });
   const adapter = { getData: async options => ({ native: options.sync }), syncApiAssets: async () => 'native-sync' };
-  const mobile = mobileApi.createService({ getAdapter: () => adapter, request: async () => [{ cc: 'USD', rate: 40, exchangedate: '01.01.2026' }] });
+  const mobile = mobileApi.createService({ getAdapter: () => adapter, request: async () => [{ cc: 'USD', txt: 'US Dollar', rate: 40, exchangedate: '01.01.2026' }] });
   let native = false;
   const api = mobileApi.createFacade({ desktop, mobile, isNative: () => native });
   assert.equal(await api.getData(), 'desktop');
@@ -30,4 +30,11 @@ test('facade chooses desktop or native at call time without changing the caller 
   assert.equal((await api.getExchangeRates()).rates.USD, 40);
   assert.deepEqual(Object.keys(mobile).sort(), Object.keys(desktop).sort());
   assert.equal(calls.length, 1);
+});
+
+test('native exchange-rate facade rejects invalid provider numbers, codes and calendar dates', async () => {
+  for (const patch of [{ rate: true }, { rate: 'not-a-number' }, { rate: -1 }, { cc: '<img>' }, { exchangedate: '31.02.2026' }]) {
+    const service = mobileApi.createService({ getAdapter: () => ({}), request: async () => [{ cc: 'USD', txt: 'US Dollar', rate: 40, exchangedate: '01.01.2026', ...patch }] });
+    await assert.rejects(service.getExchangeRates());
+  }
 });

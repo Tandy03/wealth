@@ -1,114 +1,34 @@
 (function (root, factory) {
-  const api = factory();
+  const api = factory(typeof module === 'object' && module.exports ? require('../portfolio-rules') : root.FinoPortfolioRules);
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.FinoPortfolioFinance = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (rules) {
   function createService({ state, market, values }) {
     const { normalizeNumber, getDateString } = values;
     const { toUAH, toUAHAtDate, toUAHPurchaseCost, getExchangeRateOnDate } = market;
 function getAssetInvestedUah(asset, quantity = getAvailableQuantity(asset.id)) {
-  if (asset.type === "crypto_earn") {
-    quantity = Math.min(quantity, Math.max(0, normalizeNumber(asset.quantity) - getSoldQuantity(asset.id)));
-  }
-  return toUAHPurchaseCost(
-    quantity * normalizeNumber(asset.purchasePrice),
-    asset.currency,
-    asset.id,
-    asset.purchaseDate,
-  );
+  const holding = rules.holdingsAtDate(state.data, asset);
+  const cost = holding.remainingCost * Math.min(1, Math.max(0, quantity) / (holding.remainingQuantity || 1));
+  return toUAHPurchaseCost(cost, asset.currency, asset.id, asset.purchaseDate);
 }
-
 function getAssetInvestedUsd(asset, quantity = getAvailableQuantity(asset.id)) {
-  if (asset.type === "crypto_earn") {
-    quantity = Math.min(quantity, Math.max(0, normalizeNumber(asset.quantity) - getSoldQuantity(asset.id)));
-  }
-  const purchases = (state.data.transactions || []).filter(
-    (transaction) => transaction.assetId === asset.id && transaction.type === "BUY",
-  );
-  const totalQuantity = purchases.reduce((sum, transaction) => sum + normalizeNumber(transaction.quantity), 0);
-  const investedUsd = purchases.reduce((sum, transaction) => {
-    const currency = String(transaction.currency || asset.currency || "UAH").toUpperCase();
-    const amount = normalizeNumber(transaction.amount) ||
-      normalizeNumber(transaction.quantity) * normalizeNumber(transaction.purchasePrice ?? transaction.price);
-    if (currency === "USD") return sum + amount;
-    const amountUah = currency === "UAH" ? amount : toUAHAtDate(amount, currency, transaction.date);
-    return sum + amountUah / getExchangeRateOnDate("USD", transaction.date || asset.purchaseDate);
-  }, 0);
-  if (totalQuantity > 0) return investedUsd * Math.min(1, normalizeNumber(quantity) / totalQuantity);
-
-  const amount = normalizeNumber(quantity) * normalizeNumber(asset.purchasePrice);
-  const currency = String(asset.currency || "UAH").toUpperCase();
-  if (currency === "USD") return amount;
-  const amountUah = currency === "UAH" ? amount : toUAHAtDate(amount, currency, asset.purchaseDate);
-  return amountUah / getExchangeRateOnDate("USD", asset.purchaseDate);
+  const holding = rules.holdingsAtDate(state.data, asset);
+  const cost = holding.remainingCost * Math.min(1, Math.max(0, quantity) / (holding.remainingQuantity || 1));
+  if (asset.currency === 'USD') return cost;
+  return toUAHPurchaseCost(cost, asset.currency, asset.id, asset.purchaseDate) / getExchangeRateOnDate('USD', asset.purchaseDate);
 }
-
 function getSoldQuantity(assetId) {
   return (state.data.sales || [])
     .filter((sale) => sale.assetId === assetId)
     .reduce((sum, sale) => sum + normalizeNumber(sale.quantity), 0);
 }
 
-function getCryptoEarnQuantity(asset, targetDate = getDateString(new Date())) {
-  const annualRate = Math.max(0, normalizeNumber(asset.annualRate)) / 100;
-  const targetTime = new Date(`${targetDate}T00:00:00Z`).getTime();
-  const purchases = (state.data.transactions || []).filter(
-    (transaction) => transaction.assetId === asset.id && transaction.type === "BUY" && transaction.date,
-  );
-  const sources = purchases.length
-    ? purchases.map((transaction) => ({ date: transaction.date, quantity: normalizeNumber(transaction.quantity) }))
-    : [{ date: asset.purchaseDate, quantity: normalizeNumber(asset.quantity) }];
-  const accrued = sources.reduce((sum, source) => {
-    const startTime = new Date(`${source.date}T00:00:00Z`).getTime();
-    const days = Number.isFinite(startTime) ? Math.max(0, Math.floor((targetTime - startTime) / 86400000)) : 0;
-    return sum + source.quantity * ((1 + annualRate / 365) ** days);
-  }, 0);
-  const removed = (state.data.sales || []).filter((sale) => sale.assetId === asset.id && sale.sellDate).reduce((sum, sale) => {
-    const soldTime = new Date(`${sale.sellDate}T00:00:00Z`).getTime();
-    const days = Number.isFinite(soldTime) ? Math.max(0, Math.floor((targetTime - soldTime) / 86400000)) : 0;
-    return sum + normalizeNumber(sale.quantity) * ((1 + annualRate / 365) ** days);
-  }, 0);
-  return Math.max(0, accrued - removed);
-}
-
-function getAvailableQuantity(assetId) {
-  const asset = state.data.assets.find((item) => item.id === assetId);
-
-  if (!asset) {
-    return 0;
-  }
-
-  const hasReceivedMaturity =
-    asset.type === "ovdp" &&
-    (state.data.payments || []).some(
-      (payment) =>
-        payment.assetId === assetId &&
-        payment.type === "MATURITY" &&
-        (payment.status === "received" || payment.status === "paid"),
-    );
-
-  if (asset.closedAt || hasReceivedMaturity) {
-    return 0;
-  }
-
-  if (asset.type === "crypto_earn") return getCryptoEarnQuantity(asset);
-
-  const originalQuantity = normalizeNumber(asset.quantity);
-
-  const soldQuantity = getSoldQuantity(assetId);
-
-  return Math.max(0, originalQuantity - soldQuantity);
-}
-
+function getCryptoEarnQuantity(asset, targetDate = getDateString(new Date())) { return rules.quantityOnDate(state.data, asset, targetDate); }
+function getAvailableQuantity(assetId) { return rules.quantityOnDate(state.data, assetId); }
 function getMaturityCostBasis(assetId) {
-  const asset = state.data.assets.find((item) => item.id === assetId);
-
-  return asset
-    ? Math.max(0, normalizeNumber(asset.quantity) - getSoldQuantity(assetId)) *
-      normalizeNumber(asset.purchasePrice)
-    : 0;
+  const payment = (state.data.payments || []).find(p => p.assetId === assetId && p.type === 'MATURITY' && rules.received(p));
+  return payment?.costBasis ?? rules.holdingsAtDate(state.data, assetId, payment?.receivedDate || payment?.date || getDateString(new Date()), { ignoreClosure: true }).remainingCost;
 }
-
 function calculateInvested() {
   return state.data.assets.reduce((sum, asset) => {
     if (asset.type === "savings") return sum;
@@ -139,23 +59,16 @@ function calculatePortfolioValue() {
 }
 
 function getUnrealizedPriceGrowth(asset) {
-  if (["savings", "novapay", "deposit"].includes(asset.type)) return 0;
-  if (asset.type === "crypto_earn") {
-    const available = getAvailableQuantity(asset.id);
-    const principal = Math.max(0, normalizeNumber(asset.quantity) - getSoldQuantity(asset.id));
-    return available * getCurrentPrice(asset) - principal * normalizeNumber(asset.purchasePrice);
-  }
-  return getAvailableQuantity(asset.id) *
-    (getCurrentPrice(asset) - normalizeNumber(asset.purchasePrice));
+  if (['savings', 'novapay', 'deposit'].includes(asset.type)) return 0;
+  return getAvailableQuantity(asset.id) * getCurrentPrice(asset) - rules.holdingsAtDate(state.data, asset).remainingCost;
 }
-
 function getGroupedSaleCost(assets, quantity) {
   let remaining = quantity;
   let cost = 0;
   assets.forEach((asset) => {
     if (remaining <= 0) return;
     const taken = Math.min(remaining, getAvailableQuantity(asset.id));
-    cost += taken * normalizeNumber(asset.purchasePrice);
+      cost += taken * rules.holdingsAtDate(state.data, asset).averagePrice;
     remaining -= taken;
   });
   return cost;

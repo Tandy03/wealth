@@ -1,6 +1,7 @@
 const { normalizeNumber } = require("../utils/values");
 const { getTimeSeries } = require("../services/twelveData/client");
 const { INZHUR_ASSETS_URL, INZHUR_CACHE_TTL_MS } = require('../config/constants');
+const { requestJson } = require('../services/market/request');
 function createService(sources = {}) {
     const nbu = sources.nbu || require('../services/market/nbu').createSource();
     const fred = sources.fred || require('../services/market/fred');
@@ -16,31 +17,15 @@ function createService(sources = {}) {
         if (cacheIsFresh) {
             return inzhurAssetsCache.assets;
         }
-        const response = await fetch(INZHUR_ASSETS_URL, {
+        const payload = await requestJson(INZHUR_ASSETS_URL, {
             headers: { Accept: "application/json" },
         });
-        if (!response.ok) {
-            throw new Error(`Inzhur API returned ${response.status}`);
-        }
-        const payload = await response.json();
         if (!Array.isArray(payload)) {
             throw new Error("Inzhur API returned an invalid payload.");
         }
         inzhurAssetsCache = {
             updatedAt: Date.now(),
-            assets: payload.map((asset) => ({
-                id: asset.id,
-                slug: asset.slug,
-                type: asset.type,
-                status: asset.status,
-                title: asset.title,
-                offerPage: asset.offerPage,
-                isin: asset.assetDetails?.isin || null,
-                maturityDate: asset.assetDetails?.maturityDate || null,
-                prices: asset.assetDetails?.prices || null,
-                returnRates: asset.assetDetails?.returnRates || null,
-                paymentSchedule: asset.assetDetails?.paymentSchedule || [],
-            })),
+            assets: require('../../frontend/js/market-model').inzhurCatalog(payload),
         };
         return inzhurAssetsCache.assets;
     }
@@ -75,31 +60,15 @@ function createService(sources = {}) {
         const cacheIsFresh = inzhurAssetsCache.assets &&
             Date.now() - inzhurAssetsCache.updatedAt < INZHUR_CACHE_TTL_MS;
         if (!cacheIsFresh) {
-            const response = await fetch(INZHUR_ASSETS_URL, {
+            const payload = await requestJson(INZHUR_ASSETS_URL, {
                 headers: { Accept: "application/json" },
             });
-            if (!response.ok) {
-                throw new Error(`Inzhur API returned ${response.status}`);
-            }
-            const payload = await response.json();
             if (!Array.isArray(payload)) {
                 throw new Error("Inzhur API returned an invalid payload.");
             }
             inzhurAssetsCache = {
                 updatedAt: Date.now(),
-                assets: payload.map((asset) => ({
-                    id: asset.id,
-                    slug: asset.slug,
-                    type: asset.type,
-                    status: asset.status,
-                    title: asset.title,
-                    offerPage: asset.offerPage,
-                    isin: asset.assetDetails?.isin || null,
-                    maturityDate: asset.assetDetails?.maturityDate || null,
-                    prices: asset.assetDetails?.prices || null,
-                    returnRates: asset.assetDetails?.returnRates || null,
-                    paymentSchedule: asset.assetDetails?.paymentSchedule || [],
-                })),
+                assets: require('../../frontend/js/market-model').inzhurCatalog(payload),
             };
         }
         return {

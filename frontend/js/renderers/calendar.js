@@ -213,7 +213,7 @@ function showCalendarEvent(event) {
                     ${
                       event.source === "note"
                         ? "Planned purchase"
-                        : paymentTypeLabel(event.type)
+                        : escapeHtml(paymentTypeLabel(event.type))
                     }
                 </div>
 

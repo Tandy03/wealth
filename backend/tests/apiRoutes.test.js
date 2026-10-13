@@ -53,7 +53,7 @@ test("HTTP API retains portfolio, payment, calendar, wallet and sync behavior", 
   await t.test("creates fractional holdings and preserves validation responses", async () => {
     await reset(emptyData());
     const invalid = await request("POST", "/api/assets", {});
-    assert.deepEqual(invalid, { status: 400, data: { error: "Asset name is required." } });
+    assert.deepEqual(invalid, { status: 400, data: { error: "Asset name is required.", code: "VALIDATION_FAILURE", category: "validation" } });
     const created = await request("POST", "/api/assets", { ...stock(), id: undefined, quantity: 1.5 });
     assert.equal(created.status, 201);
     assert.equal(created.data.quantity, 1.5);
@@ -145,17 +145,19 @@ test("HTTP API retains portfolio, payment, calendar, wallet and sync behavior", 
   await t.test("keeps sync aliases, backup behavior, and error payloads", async () => {
     await reset();
     for (const url of ["/api/sync/status", "/api/google-drive/status"]) {
-      assert.deepEqual(await request("GET", url), { status: 200, data: { enabled: false, connected: false } });
+      const status = await request("GET", url);
+      assert.equal(status.status, 200); assert.equal(status.data.state, "local-saved"); assert.equal(status.data.savedLocally, true); assert.equal(status.data.savedRemotely, false);
     }
     assert.equal((await request("POST", "/api/sync/google-drive", { action: "backup" })).status, 200);
     assert.equal(driveCalls.at(-1)[0], "backup");
-    assert.deepEqual(await request("POST", "/api/google-drive/sync", { action: "download" }), { status: 404, data: { error: "fino-data.json was not found on Google Drive." } });
+    const missing = await request("POST", "/api/google-drive/sync", { action: "download" });
+    assert.equal(missing.status, 404); assert.equal(missing.data.error, "fino-data.json was not found on Google Drive.");
     const originalUpload = drive.uploadData;
     drive.uploadData = async () => { throw new Error("mock offline"); };
     const failed = await request("POST", "/api/sync/google-drive", { action: "upload" });
     assert.equal(failed.status, 502);
-    assert.equal(failed.data.error, "mock offline");
-    assert.deepEqual(failed.data.status, drive.getStatus());
+    assert.equal(failed.data.code, "REMOTE_UNAVAILABLE");
+    assert.equal(failed.data.status.state, "local-saved"); assert.equal(failed.data.status.savedLocally, true);
     drive.uploadData = originalUpload;
   });
   await t.test("transaction validation supports fractions and ignores injected identity fields", async () => {

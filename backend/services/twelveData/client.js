@@ -1,3 +1,4 @@
+const { providerFetch } = require('../market/fetch');
 const TWELVE_DATA_BASE_URL = process.env.TWELVE_DATA_BASE_URL || "https://api.twelvedata.com";
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const ALLOWED_INTERVALS = new Set(["1min", "5min", "15min", "30min", "45min", "1h", "2h", "4h", "8h", "1day", "1week", "1month"]);
@@ -58,13 +59,13 @@ async function getTimeSeries(options = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12000);
   try {
-    const response = await fetch(url, { headers: { Accept: "application/json" }, signal: controller.signal });
+    const response = await providerFetch(url, { headers: { Accept: "application/json" }, signal: controller.signal });
     const payload = await response.json().catch(() => null);
     if (response.status === 429 || payload?.code === 429) {
       throw new TwelveDataError("Twelve Data request limit reached. Try again later.", "TWELVE_DATA_RATE_LIMITED", 429);
     }
     if (!response.ok || payload?.status === "error") {
-      throw new TwelveDataError(payload?.message || "Twelve Data request failed.", "TWELVE_DATA_ERROR", response.status >= 400 ? response.status : 502);
+      throw new TwelveDataError("Twelve Data request failed.", "TWELVE_DATA_ERROR", response.status >= 400 ? response.status : 502);
     }
     if (!Array.isArray(payload?.values)) {
       throw new TwelveDataError("Twelve Data returned no price history for this symbol.", "TIME_SERIES_NOT_FOUND", 404);
@@ -84,6 +85,8 @@ async function getTimeSeries(options = {}) {
       cached: false,
       fetchedAt: new Date().toISOString(),
     };
+    const validated = require('../../../frontend/js/market-model').history(data);
+    data.values = validated.values;
     cache.set(cacheKey, { updatedAt: Date.now(), data });
     return data;
   } catch (error) {

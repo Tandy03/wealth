@@ -94,7 +94,7 @@ function renderTransactions(state = stateStore.getState()) {
                                         </span>
                                     `
                                 : isPayment
-                                  ? paymentTypeLabel(tx.type)
+                                  ? escapeHtml(paymentTypeLabel(tx.type))
                                   : escapeHtml(tx.type || "-")
                             }
                         </td>

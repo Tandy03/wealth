@@ -10,6 +10,7 @@ function recalculatePortfolio(data) {
   normalizeAssetNames(data);
   initializeAssetPriceHistory(data);
   repairLegacyPurchaseHistory(data);
+  data.assets.forEach(asset => require('../../frontend/js/portfolio-rules').updateHolding(data, asset));
   updatePlannedPayments(data);
   const assetIds = new Set(data.assets.map(asset => asset.id));
   data.payments = data.payments.filter(payment => assetIds.has(payment.assetId) || payment.status === 'received' || payment.status === 'paid');

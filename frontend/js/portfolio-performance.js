@@ -1,8 +1,8 @@
 (function (root, factory) {
-  const api = factory();
+  const api = factory(typeof module === 'object' && module.exports ? require('./portfolio-rules') : root.FinoPortfolioRules);
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.PortfolioPerformance = api;
-})(typeof globalThis !== "undefined" ? globalThis : this, function () {
+})(typeof globalThis !== "undefined" ? globalThis : this, function (rules) {
   const number = (value) => Number.isFinite(Number(value)) ? Number(value) : 0;
   const day = (value) => String(value || "").slice(0, 10);
   const validDay = (value) => /^\d{4}-\d{2}-\d{2}$/.test(day(value));
@@ -26,18 +26,18 @@
       const quantity = number(tx.quantity);
       const price = number(tx.purchasePrice) || (quantity > 0 ? number(tx.amount) / quantity : 0);
       if (!(quantity > 0) || !(price > 0)) return;
-      events.push({ kind: "buy", date: day(tx.date), timestamp: String(tx.createdAt || tx.date), assetId: tx.assetId, quantity, price, currency: tx.currency || asset.currency || "UAH" });
+      events.push({ kind: "buy", sequence: data.transactions.indexOf(tx), date: day(tx.date), timestamp: String(tx.createdAt || tx.date), assetId: tx.assetId, quantity, price, currency: tx.currency || asset.currency || "UAH" });
       addPrice(tx.assetId, tx.date, tx.createdAt || tx.date, price);
     });
     (data.priceHistory || []).forEach((point) => addPrice(point.assetId, point.recordedAt || point.date, point.recordedAt || point.date, point.price));
     prices.forEach((series) => series.sort((a, b) => a.date.localeCompare(b.date) || a.timestamp.localeCompare(b.timestamp)));
 
     (data.sales || []).filter((sale) => assets.has(sale.assetId) && validDay(sale.sellDate)).forEach((sale) => {
-      events.push({ kind: "sale", date: day(sale.sellDate), timestamp: String(sale.createdAt || sale.sellDate), assetId: sale.assetId, quantity: number(sale.quantity), proceeds: number(sale.saleProceeds) || number(sale.quantity) * number(sale.sellPrice), fees: number(sale.fees), currency: sale.currency || assets.get(sale.assetId)?.currency || "UAH" });
+      events.push({ kind: "sale", method: sale.costBasisMethod, sequence: (data.transactions || []).findIndex(tx => (sale.id && tx.saleId === sale.id) || (tx.type === "SELL" && tx.assetId === sale.assetId && tx.date === sale.sellDate && number(tx.quantity) === number(sale.quantity))), date: day(sale.sellDate), timestamp: String(sale.createdAt || sale.sellDate), assetId: sale.assetId, quantity: number(sale.quantity), proceeds: number(sale.saleProceeds) || number(sale.quantity) * number(sale.sellPrice), fees: number(sale.fees), currency: sale.currency || assets.get(sale.assetId)?.currency || "UAH" });
     });
     (data.transactions || []).filter((tx) => tx.type === "SELL" && assets.has(tx.assetId) && validDay(tx.date)).forEach((tx) => {
       const duplicate = (data.sales || []).some((sale) => sale.assetId === tx.assetId && day(sale.sellDate) === day(tx.date) && Math.abs(number(sale.quantity) - number(tx.quantity)) < 1e-9 && Math.abs((number(sale.saleProceeds) || number(sale.quantity) * number(sale.sellPrice)) - number(tx.amount)) < 0.01);
-      if (!duplicate) events.push({ kind: "sale", date: day(tx.date), timestamp: String(tx.createdAt || tx.date), assetId: tx.assetId, quantity: number(tx.quantity), proceeds: number(tx.amount), fees: number(tx.fees), currency: tx.currency || assets.get(tx.assetId)?.currency || "UAH" });
+      if (!duplicate) events.push({ kind: "sale", method: tx.costBasisMethod, sequence: data.transactions.indexOf(tx), date: day(tx.date), timestamp: String(tx.createdAt || tx.date), assetId: tx.assetId, quantity: number(tx.quantity), proceeds: number(tx.amount), fees: number(tx.fees), currency: tx.currency || assets.get(tx.assetId)?.currency || "UAH" });
     });
 
     const paymentIds = new Set();
@@ -51,7 +51,7 @@
       events.push({ kind: tx.type === "MATURITY" ? "maturity" : "income", date: day(tx.date), timestamp: String(tx.createdAt || tx.date), assetId: tx.assetId, amount: number(tx.amount), currency: tx.currency || assets.get(tx.assetId)?.currency || "UAH" });
     });
     const order = { buy: 0, sale: 1, income: 2, maturity: 3 };
-    events.sort((a, b) => a.date.localeCompare(b.date) || order[a.kind] - order[b.kind] || a.timestamp.localeCompare(b.timestamp));
+    events.sort((a, b) => a.date.localeCompare(b.date) || ((a.sequence >= 0 ? a.sequence : Infinity) - (b.sequence >= 0 ? b.sequence : Infinity)) || a.timestamp.localeCompare(b.timestamp) || order[a.kind] - order[b.kind]);
     if (!events.length) return { points: [], limitations: [] };
 
     const growthFactor = (assetId, startDate, targetDate) => {
@@ -63,22 +63,7 @@
       const days = Number.isFinite(started) && Number.isFinite(ended) ? Math.max(0, Math.floor((ended - started) / 86400000)) : 0;
       return (1 + rate / 365) ** days;
     };
-    const consume = (assetId, requested, date) => {
-      const assetLots = lots.get(assetId) || [];
-      let remaining = Math.max(0, number(requested));
-      let basis = 0;
-      for (const lot of assetLots) {
-        if (remaining <= 1e-9) break;
-        const factor = growthFactor(assetId, lot.date, date);
-        const available = lot.quantity * factor;
-        const used = Math.min(available, remaining);
-        const principalUsed = used / factor;
-        basis += principalUsed * lot.unitCostUah;
-        lot.quantity -= principalUsed;
-        remaining -= used;
-      }
-      return { basis, shortfall: remaining };
-    };
+    const consume = (assetId, requested, date, method) => rules.consumeLots(lots.get(assetId) || [], requested, lot => growthFactor(assetId, lot.date, date), method === 'moving_average');
     const priceAt = (assetId, date) => {
       let found = null;
       for (const point of prices.get(assetId) || []) {
@@ -110,7 +95,7 @@
           if (!lots.has(event.assetId)) lots.set(event.assetId, []);
           lots.get(event.assetId).push({ date: event.date, quantity: event.quantity, unitCostUah: rate == null ? NaN : event.price * rate });
         } else if (event.kind === "sale") {
-          const consumed = consume(event.assetId, event.quantity, event.date);
+          const consumed = consume(event.assetId, event.quantity, event.date, event.method);
           if (consumed.shortfall > 1e-9) { limitations.add(`Sale exceeds reconstructed quantity for ${event.assetId} on ${event.date}`); reliable = false; }
           if (rate == null || !Number.isFinite(consumed.basis)) { limitations.add(`Sale result unavailable for ${event.assetId} on ${event.date}`); reliable = false; }
           else realized += (event.proceeds - event.fees) * rate - consumed.basis;

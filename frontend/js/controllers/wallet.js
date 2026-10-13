@@ -4,8 +4,12 @@ const state = stateStore.getState();
 function bindWalletPlanActions(body, key) {
   body.querySelectorAll('[data-wallet-plan]').forEach(input => {
     input.addEventListener('change', () => runUiAction(async () => {
-      await walletActions.mutate(wallet => { FinoWalletActions.month(wallet, key).plans[input.dataset.walletPlan] = normalizeNumber(input.value); });
-      renderWalletCurrent();
+      input.disabled = true;
+      try {
+        await walletActions.mutate(wallet => { FinoWalletActions.month(wallet, key).plans[input.dataset.walletPlan] = normalizeNumber(input.value); });
+      } finally {
+        renderWalletCurrent();
+      }
     }));
     input.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); input.blur(); } });
   });

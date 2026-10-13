@@ -33,6 +33,7 @@ function createService(repository) {
         /*
          * Mark payment as received.
          */
+        if (payment.type === 'MATURITY') payment.costBasis = require('../../frontend/js/portfolio-rules').holdingsAtDate(data, payment.assetId, new Date().toISOString().slice(0, 10)).remainingCost;
         payment.status = "received";
         const receivedNow = new Date();
         payment.receivedAt = receivedNow.toISOString();

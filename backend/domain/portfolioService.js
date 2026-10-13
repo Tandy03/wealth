@@ -1,157 +1,25 @@
+const rules = require('../../frontend/js/portfolio-rules');
 const { BASE_CURRENCY, normalizeCurrency, normalizeNumber, createId } = require('../utils/values');
 const { isValidDateString, supportsFractionalQuantity, isValidQuantity } = require('../validators');
 const { validateAssetBasics, validatePurchase } = require('../validators/assets');
 const { DomainError } = require('../utils/domainError');
-const { recordAssetPrice, getSoldQuantity, getAvailableQuantity, getPurchasedQuantityOnDate, getDividendEligibleQuantity, updatePlannedPaymentsForAsset, hasReceivedPayment } = require('./portfolio');
+const { recordAssetPrice, getSoldQuantity, updatePlannedPaymentsForAsset } = require('./portfolio');
 const { normalizeData, recalculatePortfolio, updatePlannedPayments } = require('./state');
-const { getTokenizedEquityPrice } = require('../services/market/binance');
-const { validateRequest, validateAssetCurrency } = require('../validators/requests');
+const { validateRequest, validateAssetCurrency, validateAssetInput } = require('../validators/requests');
 const { QUANTITY_EPSILON, DEFAULT_BOND_REDEMPTION } = require('../config/constants');
-const { maturityPayout, saleFinancials } = require('./calculations');
+const { saleFinancials } = require('./calculations');
 
 function createService(repository, market = {}) {
   const { saveData } = repository;
   const readData = require('./readState').createStateReader(repository);
-  const { getInzhurCatalogAssets } = market;
-async function syncAssets() {
-        const data = await readData();
-        const catalog = await getInzhurCatalogAssets();
-        const fundSlugs = {
-            inzhur_reit: "inzhur-reit",
-            inzhur_miltech: "inzhur-miltech",
-        };
-        const synced = [];
-        const skipped = [];
-        const binanceSynced = [];
-        const binanceSkipped = [];
-        data.assets.forEach((asset) => {
-            if (!["ovdp", "inzhur_reit", "inzhur_miltech"].includes(asset.type))
-                return;
-            let remoteAsset = null;
-            if (asset.type === "ovdp") {
-                const isin = String(asset.isin || "").trim().toUpperCase();
-                remoteAsset = catalog.find((item) => item.type === "bond" && item.isin === isin);
-            }
-            else {
-                const slug = asset.inzhurSlug || fundSlugs[asset.type];
-                remoteAsset = catalog.find((item) => item.type === "fund" && item.slug === slug);
-            }
-            if (!remoteAsset) {
-                skipped.push({ id: asset.id, name: asset.name });
-                return;
-            }
-            const currentPrice = normalizeNumber(remoteAsset.prices?.sellUAH || remoteAsset.prices?.buyUAH || remoteAsset.prices?.buy);
-            if (currentPrice > 0) {
-                asset.currentPrice = currentPrice;
-            }
-            asset.inzhurSlug = remoteAsset.slug;
-            asset.lastSyncedAt = new Date().toISOString();
-            if (currentPrice > 0)
-                recordAssetPrice(data, asset, "sync", asset.lastSyncedAt);
-            if (asset.type === "ovdp") {
-                asset.maturityDate = remoteAsset.maturityDate || asset.maturityDate;
-                const quantity = getAvailableQuantity(data, asset.id);
-                const today = new Date().toISOString().slice(0, 10);
-                const maturityDate = String(asset.maturityDate || "").slice(0, 10);
-                const remoteSchedule = (remoteAsset.paymentSchedule || [])
-                    .map((payment) => {
-                    const amountPerUnit = normalizeNumber(payment.amount) / 100;
-                    const date = String(payment.date || "").slice(0, 10);
-                    const type = date === maturityDate && amountPerUnit >= 500 ? "MATURITY" : "COUPON";
-                    return { date, amountPerUnit, type };
-                })
-                    .filter((payment) => isValidDateString(payment.date) && payment.date >= today && payment.amountPerUnit > 0);
-                /* Keep the asset editor in sync with the authoritative API schedule. */
-                asset.coupons = remoteSchedule
-                    .filter((payment) => payment.type === "COUPON")
-                    .map(({ date, amountPerUnit }) => ({ date, amountPerUnit }));
-                const maturityPayment = remoteSchedule.find((payment) => payment.type === "MATURITY");
-                if (maturityPayment)
-                    asset.redemptionValue = maturityPayment.amountPerUnit;
-                data.payments = data.payments.filter((payment) => payment.assetId !== asset.id ||
-                    payment.status === "received" ||
-                    payment.status === "paid" ||
-                    !["COUPON", "MATURITY"].includes(payment.type));
-                remoteSchedule.forEach((payment) => {
-                    data.payments.push({
-                        id: createId("payment"),
-                        createdAt: new Date().toISOString(),
-                        assetId: asset.id,
-                        assetName: asset.name,
-                        date: payment.date,
-                        type: payment.type,
-                        amountPerUnit: payment.amountPerUnit,
-                        amount: payment.amountPerUnit * quantity,
-                        currency: BASE_CURRENCY,
-                        status: "planned",
-                    });
-                });
-            }
-            synced.push({
-                id: asset.id,
-                name: asset.name,
-                price: asset.currentPrice || null,
-                paymentScheduleUpdated: asset.type === "ovdp",
-            });
-        });
-        const binanceAssets = data.assets.filter((asset) => {
-            if (!["stock", "etf"].includes(asset.type))
-                return false;
-            const nameCode = String(asset.name || "").trim().toUpperCase();
-            const code = /^[A-Z0-9.-]+B$/.test(nameCode) ? nameCode : String(asset.ticker || asset.symbol || nameCode).trim().toUpperCase();
-            return String(asset.instrumentName || "").trim().toLowerCase() === "binance" || /^[A-Z0-9.-]+B$/.test(code);
-        });
-        for (const asset of binanceAssets) {
-            const nameCode = String(asset.name || "").trim().toUpperCase();
-            const assetCode = /^[A-Z0-9.-]+B$/.test(nameCode) ? nameCode : String(asset.ticker || asset.symbol || nameCode).trim().toUpperCase();
-            try {
-                const market = await getTokenizedEquityPrice(assetCode);
-                asset.ticker = assetCode;
-                asset.symbol = assetCode;
-                asset.provider = "binance";
-                asset.underlyingSymbol = market.underlyingSymbol;
-                asset.currentPrice = market.currentPrice;
-                asset.currency = market.quoteCurrency;
-                asset.lastSyncedAt = new Date().toISOString();
-                recordAssetPrice(data, asset, "sync", asset.lastSyncedAt);
-                asset.marketData = {
-                    provider: "binance",
-                    bidPrice: market.bidPrice,
-                    askPrice: market.askPrice,
-                    multiplier: market.multiplier,
-                    tradability: market.tradability,
-                };
-                binanceSynced.push({ id: asset.id, name: asset.name, symbol: assetCode, underlyingSymbol: market.underlyingSymbol, price: market.currentPrice, currency: market.quoteCurrency });
-            }
-            catch (error) {
-                binanceSkipped.push({
-                    id: asset.id,
-                    name: asset.name,
-                    symbol: assetCode,
-                    error: error.code || "BINANCE_API_ERROR",
-                    message: error.message,
-                });
-                if (error.code === "BINANCE_NOT_CONFIGURED")
-                    break;
-            }
-        }
-        await saveData(data);
-        return {
-            synced,
-            skipped,
-            binanceSynced,
-            binanceSkipped,
-            note: "Inzhur and configured Binance stock/ETF holdings were synchronized. Binance tokenized assets use the official underlying mapping and latest bid/ask midpoint.",
-        };
-    }
-
+const { syncAssets } = require('./assetSyncService').createService(repository, market);
 async function getAssets() {
         const data = await readData();
         return data.assets;
     }
 
 async function createAsset(body = {}) {
-        validateRequest('asset', body);
+        validateAssetInput(body);
         const data = await readData();
         const name = typeof body.name === "string" ? body.name.trim() : "";
         const type = typeof body.type === "string" ? body.type : "";
@@ -174,6 +42,7 @@ async function createAsset(body = {}) {
             isin: type === "ovdp" ? isin : "",
             currentPrice: ["s1_reit", "etf", "stock", "crypto_earn"].includes(type) && currentPrice > 0 ? currentPrice : undefined,
             instrumentName: typeof body.instrumentName === "string" ? body.instrumentName.trim() : "",
+            dividendRecordRule: body.dividendRecordRule || "previous_month_end",
             instrumentType: typeof body.instrumentType === "string" ? body.instrumentType.trim() : "",
         };
         if (type === "inzhur_reit" || type === "s1_reit") {
@@ -219,6 +88,7 @@ async function createAsset(body = {}) {
             asset.paymentMethod = "coupons";
             asset.maturityDate = maturityDate;
             asset.coupons = coupons;
+            asset.redemptionValue = normalizeNumber(body.redemptionValue) || DEFAULT_BOND_REDEMPTION;
         }
         if (type === "inzhur_miltech") {
             asset.paymentMethod = "capitalization";
@@ -242,7 +112,7 @@ async function createAsset(body = {}) {
             const maturityDate = body.maturityDate;
             if (!isValidDateString(maturityDate) || maturityAmount <= 0)
                 throw new DomainError({ error: "NovaPay maturity date and payout are required." }, 400);
-            Object.assign(asset, { termMonths, maturityDate, maturityAmount, paymentMethod: "fixed_maturity", earlyWithdrawal: false });
+            Object.assign(asset, { termMonths, maturityDate, maturityAmount, maturityAmountPerUnit: maturityAmount / quantity, paymentMethod: "fixed_maturity", earlyWithdrawal: false });
         }
         if (type === "deposit") {
             const annualRate = normalizeNumber(body.annualRate);
@@ -274,85 +144,8 @@ async function createAsset(body = {}) {
             amount: quantity * purchasePrice,
             currency,
         });
-        if (type === "ovdp") {
-            /*
-             * Coupons
-             */
-            asset.coupons.forEach((coupon) => {
-                if (hasReceivedPayment(data, asset.id, "COUPON", coupon.date))
-                    return;
-                data.payments.push({
-                    id: createId("payment"),
-                    createdAt: new Date().toISOString(),
-                    assetId: asset.id,
-                    assetName: asset.name,
-                    date: coupon.date,
-                    type: "COUPON",
-                    amountPerUnit: coupon.amountPerUnit,
-                    amount: coupon.amountPerUnit * quantity,
-                    currency,
-                    status: "planned",
-                });
-            });
-            /*
-             * Maturity / redemption
-             *
-             * Ukrainian domestic bonds normally redeem at nominal value.
-             */
-            if (!hasReceivedPayment(data, asset.id, "MATURITY", asset.maturityDate))
-                data.payments.push({
-                    id: createId("payment"),
-                    createdAt: new Date().toISOString(),
-                    assetId: asset.id,
-                    assetName: asset.name,
-                    date: asset.maturityDate,
-                    type: "MATURITY",
-                    amountPerUnit: normalizeNumber(body.redemptionValue) || DEFAULT_BOND_REDEMPTION,
-                    amount: (normalizeNumber(body.redemptionValue) || DEFAULT_BOND_REDEMPTION) * quantity,
-                    currency,
-                    status: "planned",
-                });
-        }
-        if (type === "inzhur_reit" || type === "s1_reit") {
-            const startDate = new Date(`${asset.firstDividendDate}T00:00:00`);
-            /*
-             * Generate 24 monthly
-             * dividend payments.
-             */
-            for (let i = 0; i < 24; i++) {
-                const paymentDate = new Date(startDate.getFullYear(), startDate.getMonth() + i, 10);
-                /*
-                 * Do not generate a payment
-                 * before the first dividend date.
-                 */
-                if (paymentDate < startDate) {
-                    continue;
-                }
-                const dateString = `${paymentDate.getFullYear()}-${String(paymentDate.getMonth() + 1).padStart(2, "0")}-${String(paymentDate.getDate()).padStart(2, "0")}`;
-                if (hasReceivedPayment(data, asset.id, "DIVIDEND", dateString))
-                    continue;
-                data.payments.push({
-                    id: createId("payment"),
-                    createdAt: new Date().toISOString(),
-                    assetId: asset.id,
-                    assetName: asset.name,
-                    date: dateString,
-                    type: "DIVIDEND",
-                    amountPerUnit: asset.dividendPerUnit,
-                    amount: asset.dividendPerUnit * getDividendEligibleQuantity(data, asset.id, dateString),
-                    currency,
-                    status: "planned",
-                });
-            }
-        }
-        if (type === "novapay" || type === "deposit") {
-            const principal = quantity * purchasePrice;
-            let payout = asset.maturityAmount;
-            if (type === "deposit") {
-                payout = maturityPayout(principal, asset.annualRate, purchaseDate, asset.maturityDate);
-            }
-            data.payments.push({ id: createId("payment"), createdAt: new Date().toISOString(), assetId: asset.id, assetName: asset.name, date: asset.maturityDate, type: "MATURITY", amountPerUnit: payout / quantity, amount: payout, currency, status: "planned" });
-        }
+        rules.updateHolding(data, asset);
+        rules.rebuildPayments(data, asset, createId);
         await saveData(data);
         return asset;
     }
@@ -363,19 +156,20 @@ async function mergeAssets(assetIds = []) {
         const assets = data.assets.filter((asset) => ids.includes(asset.id));
         if (assets.length < 2)
             throw new DomainError({ error: "At least two holdings are required to merge." }, 400);
-        const identity = (asset) => [asset.type, asset.name, asset.instrumentName || "", asset.instrumentType || "", asset.currency || "UAH"]
-            .map((value) => String(value).trim().toLowerCase()).join("::");
+        if (assets.length !== ids.length) throw new DomainError({ error: 'One or more holdings were not found.' }, 404);
+        const identity = rules.identity;
         if (new Set(assets.map(identity)).size !== 1) {
             throw new DomainError({ error: "Only the same asset on the same instrument can be merged." }, 400);
         }
+        if (assets.some(asset => asset.closedAt || data.payments.some(p => p.assetId === asset.id && p.type === 'MATURITY' && rules.received(p)))) throw new DomainError({ error: 'Closed or redeemed holdings cannot be merged.' }, 400);
+        assets.forEach(asset => rules.completeLegacyPurchases(data, asset, createId));
         const primary = assets[0];
         const mergedIds = new Set(assets.slice(1).map((asset) => asset.id));
         const totalQuantity = assets.reduce((sum, asset) => sum + normalizeNumber(asset.quantity), 0);
-        const totalCost = assets.reduce((sum, asset) => sum + normalizeNumber(asset.quantity) * normalizeNumber(asset.purchasePrice), 0);
-        const totalCurrentValue = assets.reduce((sum, asset) => sum + normalizeNumber(asset.quantity) * normalizeNumber(asset.currentPrice || asset.purchasePrice), 0);
+        const totalAvailable = assets.reduce((sum, asset) => sum + rules.quantityOnDate(data, asset), 0);
+        const totalCurrentValue = assets.reduce((sum, asset) => sum + rules.quantityOnDate(data, asset) * normalizeNumber(asset.currentPrice || asset.purchasePrice), 0);
         primary.quantity = totalQuantity;
-        primary.purchasePrice = totalQuantity > 0 ? totalCost / totalQuantity : 0;
-        primary.currentPrice = totalQuantity > 0 ? totalCurrentValue / totalQuantity : primary.currentPrice;
+        primary.currentPrice = totalAvailable > 0 ? totalCurrentValue / totalAvailable : primary.currentPrice;
         primary.purchaseDate = assets.map((asset) => asset.purchaseDate).filter(Boolean).sort()[0] || primary.purchaseDate;
         primary.firstDividendDate = assets.map((asset) => asset.firstDividendDate).filter(Boolean).sort()[0] || primary.firstDividendDate;
         primary.updatedAt = new Date().toISOString();
@@ -388,25 +182,14 @@ async function mergeAssets(assetIds = []) {
         data.calendarNotes = reassign(data.calendarNotes);
         data.priceHistory = reassign(data.priceHistory);
         data.assets = data.assets.filter((asset) => !mergedIds.has(asset.id));
-        const plannedKeys = new Set();
-        data.payments = data.payments.filter((payment) => {
-            if (payment.assetId !== primary.id || payment.status === "received" || payment.status === "paid")
-                return true;
-            if (hasReceivedPayment(data, primary.id, payment.type, payment.date))
-                return false;
-            const key = [payment.type, payment.date, payment.currency || primary.currency].join("|");
-            if (plannedKeys.has(key))
-                return false;
-            plannedKeys.add(key);
-            return true;
-        });
-        updatePlannedPaymentsForAsset(data, primary.id);
+        rules.updateHolding(data, primary);
+        rules.rebuildPayments(data, primary, createId);
         await saveData(data);
         return primary;
     }
 
 async function updateAsset(assetId, body = {}) {
-        validateRequest('asset', body);
+        validateAssetInput(body);
         const data = await readData();
         const asset = data.assets.find((item) => item.id === assetId);
         if (!asset) {
@@ -477,12 +260,14 @@ async function updateAsset(assetId, body = {}) {
         if (type === "inzhur_miltech") {
             paymentMethod = "capitalization";
         }
+        if (!rules.canEditPurchase(data, asset, body)) throw new DomainError({ error: 'Purchase history or currency cannot be rewritten after additional purchases or sales. Use buy/sell operations.' }, 400);
         const soldQuantity = getSoldQuantity(data, assetId);
         if (quantity < soldQuantity) {
             throw new DomainError({
                 error: `Asset quantity cannot be less than already sold quantity (${soldQuantity}).`,
             }, 400);
         }
+        asset.dividendRecordRule = body.dividendRecordRule || asset.dividendRecordRule || "previous_month_end";
         asset.name = name;
         asset.type = type;
         asset.currency = currency;
@@ -525,7 +310,7 @@ async function updateAsset(assetId, body = {}) {
             asset.currentPrice = purchasePrice;
         }
         if (type === "novapay") {
-            Object.assign(asset, { termMonths: Math.min(12, Math.max(1, Math.trunc(normalizeNumber(body.termMonths)))), maturityDate: body.maturityDate, maturityAmount: normalizeNumber(body.maturityAmount), earlyWithdrawal: false, paymentMethod: "fixed_maturity" });
+            Object.assign(asset, { termMonths: Math.min(12, Math.max(1, Math.trunc(normalizeNumber(body.termMonths)))), maturityDate: body.maturityDate, maturityAmount: normalizeNumber(body.maturityAmount), maturityAmountPerUnit: normalizeNumber(body.maturityAmount) / quantity, earlyWithdrawal: false, paymentMethod: "fixed_maturity" });
         }
         if (type === "deposit") {
             Object.assign(asset, { annualRate: normalizeNumber(body.annualRate), maturityDate: body.maturityDate, earlyWithdrawal: Boolean(body.earlyWithdrawal), paymentMethod: "deposit_interest" });
@@ -591,139 +376,11 @@ async function updateAsset(assetId, body = {}) {
             buyTransaction.assetName = asset.name;
             buyTransaction.currency = asset.currency;
         }
-        data.payments = data.payments.filter((payment) => {
-            if (payment.assetId !== assetId) {
-                return true;
-            }
-            return payment.status === "received" || payment.status === "paid";
-        });
-        /*
-         * Update preserved payment names/currency.
-         */
-        data.payments = data.payments.map((payment) => {
-            if (payment.assetId !== assetId) {
-                return payment;
-            }
-            return {
-                ...payment,
-                assetName: asset.name,
-                currency: asset.currency,
-            };
-        });
-        if (type === "ovdp") {
-            asset.coupons.forEach((coupon) => {
-                if (hasReceivedPayment(data, asset.id, "COUPON", coupon.date))
-                    return;
-                data.payments.push({
-                    id: createId("payment"),
-                    createdAt: new Date().toISOString(),
-                    assetId: asset.id,
-                    assetName: asset.name,
-                    date: coupon.date,
-                    type: "COUPON",
-                    amountPerUnit: coupon.amountPerUnit,
-                    amount: coupon.amountPerUnit * getPurchasedQuantityOnDate(data, asset.id, coupon.date),
-                    currency: asset.currency,
-                    status: "planned",
-                });
-            });
-            /*
-             * Maturity payment
-             */
-            if (!hasReceivedPayment(data, asset.id, "MATURITY", asset.maturityDate))
-                data.payments.push({
-                    id: createId("payment"),
-                    createdAt: new Date().toISOString(),
-                    assetId: asset.id,
-                    assetName: asset.name,
-                    date: asset.maturityDate,
-                    type: "MATURITY",
-                    amountPerUnit: asset.redemptionValue,
-                    amount: asset.redemptionValue * asset.quantity,
-                    currency: asset.currency,
-                    status: "planned",
-                });
-        }
-        if (type === "inzhur_reit" || type === "s1_reit") {
-            const startDate = new Date(`${asset.firstDividendDate}T00:00:00`);
-            /*
-             * Generate 24 monthly dividends.
-             */
-            for (let i = 0; i < 24; i++) {
-                const paymentDate = new Date(startDate.getFullYear(), startDate.getMonth() + i, 10);
-                if (paymentDate < startDate) {
-                    continue;
-                }
-                const dateString = `${paymentDate.getFullYear()}-${String(paymentDate.getMonth() + 1).padStart(2, "0")}-${String(paymentDate.getDate()).padStart(2, "0")}`;
-                if (hasReceivedPayment(data, asset.id, "DIVIDEND", dateString))
-                    continue;
-                data.payments.push({
-                    id: createId("payment"),
-                    createdAt: new Date().toISOString(),
-                    assetId: asset.id,
-                    assetName: asset.name,
-                    date: dateString,
-                    type: "DIVIDEND",
-                    amountPerUnit: asset.dividendPerUnit,
-                    amount: asset.dividendPerUnit * getDividendEligibleQuantity(data, asset.id, dateString),
-                    currency: asset.currency,
-                    status: "planned",
-                });
-            }
-        }
-        if (type === "novapay" || type === "deposit") {
-            const principal = asset.quantity * asset.purchasePrice;
-            let payout = asset.maturityAmount;
-            if (type === "deposit") {
-                payout = maturityPayout(principal, asset.annualRate, asset.purchaseDate, asset.maturityDate);
-            }
-            if (!hasReceivedPayment(data, asset.id, "MATURITY", asset.maturityDate))
-                data.payments.push({ id: createId("payment"), createdAt: new Date().toISOString(), assetId: asset.id, assetName: asset.name, date: asset.maturityDate, type: "MATURITY", amountPerUnit: payout / asset.quantity, amount: payout, currency: asset.currency, status: "planned" });
-        }
-        data.sales = (data.sales || []).map((sale) => {
-            if (sale.assetId !== assetId) {
-                return sale;
-            }
-            const saleQuantity = normalizeNumber(sale.quantity);
-            const costBasis = saleQuantity * asset.purchasePrice;
-            const saleProceeds = normalizeNumber(sale.saleProceeds);
-            const profit = saleProceeds - costBasis;
-            const roi = costBasis > 0 ? (profit / costBasis) * 100 : 0;
-            return {
-                ...sale,
-                assetName: asset.name,
-                type: asset.type,
-                currency: asset.currency,
-                purchasePrice: asset.purchasePrice,
-                costBasis,
-                profit,
-                roi,
-            };
-        });
-        data.transactions = data.transactions.map((transaction) => {
-            if (transaction.assetId !== assetId || transaction.type !== "SELL") {
-                return transaction;
-            }
-            const sale = data.sales.find((item) => item.assetId === assetId &&
-                item.sellDate === transaction.date &&
-                normalizeNumber(item.quantity) ===
-                    normalizeNumber(transaction.quantity));
-            if (!sale) {
-                return {
-                    ...transaction,
-                    assetName: asset.name,
-                    currency: asset.currency,
-                };
-            }
-            return {
-                ...transaction,
-                assetName: asset.name,
-                currency: sale.currency,
-                costBasis: sale.costBasis,
-                profit: sale.profit,
-                roi: sale.roi,
-            };
-        });
+        rules.updateSinglePurchase(data, asset);
+        // Received payments and historical sale cost/profit remain immutable.
+        data.payments = data.payments.filter(p => p.assetId !== assetId || rules.received(p));
+        rules.updateHolding(data, asset);
+        rules.rebuildPayments(data, asset, createId);
         await saveData(data);
         return asset;
     }
@@ -743,14 +400,8 @@ async function buyMoreAsset(assetId, body = {}) {
         validatePurchase({ quantity, type: asset.type, purchasePrice, purchaseDate });
         validateAssetCurrency(body, asset);
         const oldQuantity = normalizeNumber(asset.quantity);
-        const oldAveragePrice = normalizeNumber(asset.purchasePrice);
-        const oldCost = oldQuantity * oldAveragePrice;
         const newCost = quantity * purchasePrice;
-        const totalQuantity = oldQuantity + quantity;
-        const totalCost = oldCost + newCost;
-        const averagePurchasePrice = totalQuantity > 0 ? totalCost / totalQuantity : 0;
-        asset.quantity = totalQuantity;
-        asset.purchasePrice = averagePurchasePrice;
+        asset.quantity = oldQuantity + quantity;
         asset.updatedAt = new Date().toISOString();
         const transaction = {
             id: createId("tx"),
@@ -772,20 +423,9 @@ async function buyMoreAsset(assetId, body = {}) {
             currency: asset.currency,
         };
         data.transactions.push(transaction);
+        rules.updateHolding(data, asset);
         updatePlannedPaymentsForAsset(data, assetId);
-        if (asset.type === "novapay" || asset.type === "deposit") {
-            const maturity = data.payments.find((payment) => payment.assetId === assetId && payment.type === "MATURITY" && payment.status === "planned");
-            if (maturity) {
-                if (asset.type === "novapay") {
-                    const payoutPerUnit = normalizeNumber(maturity.amountPerUnit);
-                    maturity.amount = payoutPerUnit * asset.quantity;
-                }
-                else {
-                    maturity.amount = maturityPayout(asset.quantity * asset.purchasePrice, normalizeNumber(asset.annualRate), asset.purchaseDate, asset.maturityDate);
-                    maturity.amountPerUnit = maturity.amount / asset.quantity;
-                }
-            }
-        }
+        rules.rebuildPayments(data, asset, createId);
         data.sales = (data.sales || []).map((sale) => {
             if (sale.assetId !== assetId) {
                 return sale;
@@ -872,7 +512,7 @@ async function sellAsset(body = {}) {
                 throw new DomainError({ error: "Sell price cannot be negative." }, 400);
             if (!isValidDateString(sellDate))
                 throw new DomainError({ error: "Valid sell date is required." }, 400);
-            const availableQuantity = groupedAssets.reduce((sum, item) => sum + getAvailableQuantity(data, item.id), 0);
+            const availableQuantity = groupedAssets.reduce((sum, item) => sum + rules.quantityForSale(data, item.id, sellDate), 0);
             if (soldQuantity > availableQuantity + QUANTITY_EPSILON)
                 throw new DomainError({ error: `You cannot sell ${soldQuantity} units. Only ${availableQuantity} units are available.` }, 400);
             let remaining = soldQuantity;
@@ -881,17 +521,19 @@ async function sellAsset(body = {}) {
             for (const asset of groupedAssets) {
                 if (remaining <= QUANTITY_EPSILON)
                     break;
-                const quantity = Math.min(remaining, getAvailableQuantity(data, asset.id));
+                const quantity = Math.min(remaining, rules.quantityForSale(data, asset, sellDate));
                 if (quantity <= 0)
                     continue;
-                const purchasePrice = normalizeNumber(asset.purchasePrice);
+                const purchasePrice = rules.holdingsAtDate(data, asset, sellDate).averagePrice;
                 const { costBasis, saleProceeds, profit, roi } = saleFinancials(quantity, price, purchasePrice);
                 const currency = asset.currency || normalizeCurrency(body.currency);
                 const createdAt = new Date().toISOString();
-                const sale = { id: createId("sale"), createdAt, assetId: asset.id, assetName: asset.name, type: asset.type, quantity, sellPrice: price, sellDate, currency, purchasePrice, costBasis, saleProceeds, profit, roi };
-                const transaction = { id: createId("tx"), createdAt, date: sellDate, assetId: asset.id, assetName: asset.name, type: "SELL", quantity, amount: saleProceeds, currency, costBasis, profit, roi };
+                const sale = { id: createId("sale"), costBasisMethod: "moving_average", createdAt, assetId: asset.id, assetName: asset.name, type: asset.type, quantity, sellPrice: price, sellDate, currency, purchasePrice, costBasis, saleProceeds, profit, roi };
+                const transaction = { id: createId("tx"), createdAt, date: sellDate, assetId: asset.id, assetName: asset.name, type: "SELL", saleId: sale.id, costBasisMethod: "moving_average", quantity, amount: saleProceeds, currency, costBasis, profit, roi };
                 data.sales.push(sale);
                 data.transactions.push(transaction);
+                rules.updateHolding(data, asset);
+                rules.refreshPayments(data, asset.id);
                 createdSales.push(sale);
                 createdTransactions.push(transaction);
                 remaining -= quantity;
@@ -930,17 +572,18 @@ async function sellAsset(body = {}) {
                 error: "Valid sell date is required.",
             }, 400);
         }
-        const availableQuantity = getAvailableQuantity(data, assetId);
+        const availableQuantity = rules.quantityForSale(data, assetId, sellDate);
         if (soldQuantity > availableQuantity) {
             throw new DomainError({
                 error: `You cannot sell ${soldQuantity} units. ` +
                     `Only ${availableQuantity} units are available.`,
             }, 400);
         }
-        const purchasePrice = normalizeNumber(asset.purchasePrice);
+        const purchasePrice = rules.holdingsAtDate(data, asset, sellDate).averagePrice;
         const { costBasis, saleProceeds, profit, roi } = saleFinancials(soldQuantity, price, purchasePrice);
         const saleCurrency = asset.currency || normalizeCurrency(currency);
         const sale = {
+            costBasisMethod: "moving_average",
             id: createId("sale"),
             createdAt: new Date().toISOString(),
             assetId: asset.id,
@@ -964,6 +607,8 @@ async function sellAsset(body = {}) {
             assetId: asset.id,
             assetName: asset.name,
             type: "SELL",
+            saleId: sale.id,
+            costBasisMethod: "moving_average",
             quantity: soldQuantity,
             amount: saleProceeds,
             currency: saleCurrency,
@@ -972,6 +617,8 @@ async function sellAsset(body = {}) {
             roi,
         };
         data.transactions.push(transaction);
+        rules.updateHolding(data, asset);
+        rules.refreshPayments(data, asset.id);
         await saveData(data);
         return {
             sale,
@@ -979,7 +626,7 @@ async function sellAsset(body = {}) {
             remainingQuantity: availableQuantity - soldQuantity,
         };
     }
-  return { syncAssets: (...args) => repository.runMutation(() => syncAssets(...args)), getAssets, createAsset: (...args) => repository.runMutation(() => createAsset(...args)), mergeAssets: (...args) => repository.runMutation(() => mergeAssets(...args)), updateAsset: (...args) => repository.runMutation(() => updateAsset(...args)), buyMoreAsset: (...args) => repository.runMutation(() => buyMoreAsset(...args)), deleteAsset: (...args) => repository.runMutation(() => deleteAsset(...args)), getSales, sellAsset: (...args) => repository.runMutation(() => sellAsset(...args)),
+  return { syncAssets, getAssets, createAsset: (...args) => repository.runMutation(() => createAsset(...args)), mergeAssets: (...args) => repository.runMutation(() => mergeAssets(...args)), updateAsset: (...args) => repository.runMutation(() => updateAsset(...args)), buyMoreAsset: (...args) => repository.runMutation(() => buyMoreAsset(...args)), deleteAsset: (...args) => repository.runMutation(() => deleteAsset(...args)), getSales, sellAsset: (...args) => repository.runMutation(() => sellAsset(...args)),
     normalizeData, recalculatePortfolio, updatePlannedPayments };
 }
 module.exports = { createService, normalizeData, recalculatePortfolio, updatePlannedPayments };
