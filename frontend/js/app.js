@@ -24,9 +24,7 @@ async function init() {
   }
   try {
     await loadData();
-    if (window.mobileApi) {
-      void api.getData().then(() => loadData()).catch(error => console.warn('Background portfolio refresh failed:', error.message));
-    }
+    void api.getData({ sync: true }).then(() => loadData()).catch(error => console.warn('Background portfolio refresh failed:', error.message));
   } catch (error) {
     console.error('INITIALIZATION ERROR:', error);
     void showNotice(window.mobileApi ? (error.message || 'Could not load your local portfolio. Reconnect Google Drive or restore a backup.') : 'Could not connect to the local API. Start the server with npm run dev.');

@@ -19,6 +19,12 @@
         label.textContent = item.text;
         label.setAttribute("translate", "no");
         button.append(marker, label);
+        if (item.share != null) {
+          const share = document.createElement('span');
+          share.className = 'doughnut-legend-share';
+          share.setAttribute('translate', 'no'); share.textContent = item.share;
+          button.append(share);
+        }
         button.addEventListener("click", () => {
           chart.toggleDataVisibility(item.index);
           chart.update();

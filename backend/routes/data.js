@@ -4,7 +4,7 @@ function createRouter(service, repository) {
     const router = Router();
     router.get("/api/data", async (req, res) => {
         try {
-            const result = await service.getData();
+            const result = await service.getData({ sync: req.query.sync === 'true' });
             res.status(200).json(result);
         }
         catch (error) {

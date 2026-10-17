@@ -36,9 +36,11 @@
       return sessionRenewal;
     }
     return {
-      async request(url, { method = 'GET', body, message = 'Request failed.' } = {}) {
+      async request(url, { method = 'GET', body, message = 'Request failed.', keepalive = false } = {}) {
         const options = { method };
         if (body !== undefined) { options.headers = { 'Content-Type': 'application/json' }; options.body = JSON.stringify(body); }
+        // Three bytes per UTF-16 code unit is a conservative UTF-8 bound.
+        if (keepalive && options.body && options.body.length * 3 < 60000) options.keepalive = true;
         const generation = sessionGeneration;
         try { return await readJson(await fetchRequest(url, options), message); }
         catch (error) {

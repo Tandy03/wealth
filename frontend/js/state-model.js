@@ -97,6 +97,7 @@
       for (const item of value[key] || []) if (item.id) { if (ids.has(item.id)) throw new errors.ValidationError({ message: 'Duplicate ' + key + ' identifier.' }); ids.add(item.id); }
     }
     if (value.wallet !== undefined) validateEntity('Wallet', value.wallet, 'wallet');
+    if (value.rebalance !== undefined) validateRebalance(value.rebalance);
     if (value.sync !== undefined && (!isRecord(value.sync) || (value.sync.revision !== undefined && (!Number.isSafeInteger(Number(value.sync.revision)) || Number(value.sync.revision) < 0)))) throw new errors.ValidationError({ message: 'Invalid sync metadata.' });
     validateJson(value);
     return value;
@@ -123,6 +124,41 @@
   function buildIndexes(state) {
     return { assetsById: new Map(state.assets.map(asset => [asset.id, asset])), instrumentsById: new Map((state.instruments || []).map(item => [item.id, item])) };
   }
+  // A draft may total less/more than 100%; calculation requires exactly 100%.
+  function validateRebalance(plan) {
+    const fail = () => { throw new errors.ValidationError({ message: 'Invalid rebalance plan.' }); };
+    validateJson(plan);
+    if (!isRecord(plan) || Object.keys(plan).some(key => !['targets', 'plannedAssets', 'excluded'].includes(key)) ||
+        !isRecord(plan.targets) || !Array.isArray(plan.plannedAssets) || !Array.isArray(plan.excluded)) fail();
+    const validId = id => typeof id === 'string' && id.length > 0 && id.length <= 1000;
+    if ([Object.keys(plan.targets), plan.plannedAssets, plan.excluded].some(items => items.length > 1000)) fail();
+    for (const [id, share] of Object.entries(plan.targets)) if (!validId(id) || typeof share !== 'number' ||
+        !Number.isFinite(share) || share < 0 || share > 100 || Math.abs(share * 10 - Math.round(share * 10)) > 1e-6) fail();
+    const ids = new Set();
+    for (const item of plan.plannedAssets) {
+      if (!isRecord(item) || Object.keys(item).some(key => !['id', 'label'].includes(key)) || !validId(item.id) ||
+          !item.id.startsWith('planned-') || ids.has(item.id) || typeof item.label !== 'string' || !item.label.trim() || item.label.length > 500) fail();
+      ids.add(item.id);
+    }
+    if (plan.excluded.some(id => !validId(id) || ids.has(id)) || new Set(plan.excluded).size !== plan.excluded.length) fail();
+    return plan;
+  }
+  function rebalanceSignature(plan) {
+    if (plan == null) return 'null';
+    validateRebalance(plan);
+    return JSON.stringify({ targets: Object.fromEntries(Object.entries(plan.targets).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)),
+      plannedAssets: plan.plannedAssets.map(({ id, label }) => ({ id, label })), excluded: [...plan.excluded].sort() });
+  }
+  function applyRebalance(state, request) {
+    validateJson(request);
+    if (!isRecord(request) || !Object.hasOwn(request, 'expected') || Object.keys(request).some(key => !['plan', 'expected'].includes(key)))
+      throw new errors.ValidationError({ message: 'Invalid rebalance plan.' });
+    validateRebalance(request.plan);
+    if (rebalanceSignature(state.rebalance) !== rebalanceSignature(request.expected))
+      throw new errors.ConflictError({ message: 'The rebalance plan changed. Reload before editing it again.' });
+    state.rebalance = JSON.parse(JSON.stringify(request.plan));
+    return state.rebalance;
+  }
   return { schemaVersion, entityFields, migrations, createEmptyState, normalizeState, validateState, validateEntity, buildIndexes,
-    validateJson, isDate, ...contract, read: normalizeState, write: normalizeState };
+    validateRebalance, rebalanceSignature, applyRebalance, validateJson, isDate, ...contract, read: normalizeState, write: normalizeState };
 });

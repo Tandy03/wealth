@@ -9,7 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Comic+Relief:wght@400;700&amp;family=DM+Sans:wght@400;500;600;700&amp;family=Inter:wght@400;500;600;700&amp;family=Montserrat:wght@400;500;600;700&amp;family=Oswald:wght@400;500;600;700&amp;family=Roboto+Mono:wght@400;500;600;700&amp;family=Roboto:wght@400;500;700&amp;display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="/css/style.css?v=20261017-flat-switch" />
+  <link rel="stylesheet" href="/css/rebalance.css?v=20261018-usd-hover" />
 </head>
 
 <body>
@@ -279,10 +280,55 @@
           </div>
 
           <div class="asset-allocation-chart">
-            <div class="doughnut-canvas"><canvas id="asset-allocation-chart"></canvas></div>
+            <div class="doughnut-canvas">
+              <canvas id="asset-allocation-chart" role="img" aria-label="Asset allocation"></canvas>
+              <div class="allocation-chart-center"><span>Portfolio value</span><strong id="asset-allocation-center" translate="no">—</strong></div>
+            </div>
+            <p id="asset-allocation-empty" hidden>No current holdings to display.</p>
             <div class="doughnut-legend" id="asset-allocation-legend"></div>
           </div>
         </div>
+
+        <article class="panel portfolio-history-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Portfolio investment dynamics</h2>
+              <p id="portfolio-history-description">Portfolio value by month</p>
+            </div>
+            <label class="portfolio-history-mode">
+              <select id="portfolio-history-mode" aria-label="Portfolio investment dynamics">
+                <option value="value">Portfolio value</option>
+                <option value="profit">Cumulative portfolio profit</option>
+                <option value="earned">Money earned by month</option>
+                <option value="invested">Invested by month</option>
+              </select>
+            </label>
+          </div>
+          <div class="portfolio-history-chart">
+            <canvas id="portfolio-history-chart"></canvas>
+          </div>
+        </article>
+
+        <article class="panel portfolio-history-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Asset price history</h2>
+              <p id="asset-price-history-description">Prices recorded after edits and synchronization</p>
+            </div>
+            <label class="portfolio-history-mode">
+              <span>Asset</span>
+              <select id="asset-price-history-select"></select>
+            </label>
+          </div>
+          <div class="asset-price-history-filters" role="group" aria-label="Chart period">
+            <label><span>From</span><input type="date" id="asset-price-history-from" /></label>
+            <label><span>To</span><input type="date" id="asset-price-history-to" /></label>
+            <button type="button" class="secondary-btn" id="asset-price-history-all-time">All time</button>
+          </div>
+          <div class="portfolio-history-chart">
+            <canvas id="asset-price-history-chart"></canvas>
+          </div>
+        </article>
 
         <article class="analytics-panel">
 
@@ -431,58 +477,64 @@
 
         </article>
 
-        <article class="panel portfolio-history-panel">
-          <div class="panel-header">
-            <div>
-              <h2>Portfolio investment dynamics</h2>
-              <p id="portfolio-history-description">Portfolio value by month</p>
-            </div>
-            <label class="portfolio-history-mode">
-              <select id="portfolio-history-mode" aria-label="Portfolio investment dynamics">
-                <option value="value">Portfolio value</option>
-                <option value="profit">Cumulative portfolio profit</option>
-                <option value="earned">Money earned by month</option>
-                <option value="invested">Invested by month</option>
-              </select>
-            </label>
-          </div>
-          <div class="portfolio-history-chart">
-            <canvas id="portfolio-history-chart"></canvas>
-          </div>
-        </article>
-
-        <article class="panel portfolio-history-panel">
-          <div class="panel-header">
-            <div>
-              <h2>Asset price history</h2>
-              <p id="asset-price-history-description">Prices recorded after edits and synchronization</p>
-            </div>
-            <label class="portfolio-history-mode">
-              <span>Asset</span>
-              <select id="asset-price-history-select"></select>
-            </label>
-          </div>
-          <div class="portfolio-history-chart">
-            <canvas id="asset-price-history-chart"></canvas>
-          </div>
-        </article>
-
       </section>
 
       <section id="rebalance-section" class="page-section">
-        <article class="panel rebalance-panel" aria-labelledby="rebalance-title">
+        <div class="rebalance-save-feedback" aria-live="polite"><span id="rebalance-save-status" hidden></span><button type="button" class="secondary-btn" id="rebalance-save-retry" hidden>Retry saving plan</button><button type="button" class="secondary-btn" id="rebalance-save-reload" hidden>Reload saved plan</button></div>
+        <header class="rebalance-heading">
+          <div>
+            <p class="eyebrow">REBALANCE</p>
+            <h2 id="rebalance-title">Portfolio rebalance</h2>
+            <p>Compare your allocation and plan your next investment.</p>
+          </div>
+          <p class="rebalance-method">This plan uses purchases only. Existing holdings are not sold.</p>
+        </header>
+        <div class="rebalance-summary">
+          <article class="panel"><span>Portfolio value</span><strong id="rebalance-portfolio-value" translate="no">—</strong></article>
+          <article class="panel"><span>Total to invest</span><strong id="rebalance-invest-value" translate="no">—</strong></article>
+          <article class="panel"><span>Assets in plan</span><strong id="rebalance-asset-count" translate="no">0</strong></article>
+        </div>
+        <article class="panel rebalance-comparison" aria-labelledby="rebalance-comparison-title">
+          <div class="panel-header"><h3 id="rebalance-comparison-title">Allocation comparison</h3></div>
+          <div class="rebalance-charts">
+            <section aria-labelledby="rebalance-current-title">
+              <h4 id="rebalance-current-title">Current allocation</h4>
+              <div class="rebalance-donut">
+                <canvas id="rebalance-current-chart" role="img" aria-label="Current allocation"></canvas>
+                <div class="rebalance-chart-center"><span>Portfolio value</span><strong id="rebalance-current-center" translate="no">—</strong></div>
+              </div>
+              <p class="rebalance-chart-empty" id="rebalance-current-empty" hidden>No current holdings to display.</p>
+            </section>
+            <section aria-labelledby="rebalance-target-title">
+              <h4 id="rebalance-target-title">Target allocation</h4>
+              <div class="rebalance-donut">
+                <canvas id="rebalance-target-chart" role="img" aria-label="Target allocation"></canvas>
+                <div class="rebalance-chart-center"><span>Total allocation</span><strong id="rebalance-target-center" translate="no">0%</strong></div>
+              </div>
+              <p class="rebalance-chart-empty" id="rebalance-target-empty">Set target shares to build your allocation.</p>
+            </section>
+          </div>
+          <div id="rebalance-legend" class="rebalance-legend" aria-label="Allocation comparison"></div>
+          <p id="rebalance-chart-status" class="rebalance-chart-empty" role="status" hidden>Charts are unavailable. You can still edit and calculate.</p>
+        </article>
+        <article class="panel rebalance-panel" aria-labelledby="rebalance-editor-title">
           <div class="panel-header">
-            <div>
-              <h2 id="rebalance-title">Portfolio rebalance</h2>
-            </div>
+            <div><h3 id="rebalance-editor-title">Target allocation</h3><p>Adjust each share independently. Changes stay in this plan.</p></div>
+            <button type="button" class="secondary-btn" id="add-rebalance-asset">+ Add planned asset</button>
           </div>
           <form id="rebalance-form">
+            <div class="rebalance-editor-head" aria-hidden="true"><span>Asset</span><span>Current %</span><span>Target allocation</span><span>Target %</span><span></span></div>
             <div id="rebalance-targets" class="rebalance-targets"></div>
-            <button type="button" class="secondary-btn" id="add-rebalance-asset">+ Add planned asset</button>
-            <div class="rebalance-total">Target total: <strong id="rebalance-total">0%</strong></div>
-            <button type="submit" class="primary-btn">Calculate rebalance</button>
+            <div class="rebalance-validation">
+              <div><div class="rebalance-total"><span>Total allocation</span> <strong id="rebalance-total" translate="no">0%</strong><span translate="no"> / 100%</span></div><p id="rebalance-allocation-status" role="status"></p></div>
+              <button type="button" class="secondary-btn" id="normalize-rebalance" disabled>Normalize to 100%</button>
+              <button type="submit" class="primary-btn" id="calculate-rebalance" disabled>Calculate rebalance</button>
+            </div>
           </form>
-          <div id="rebalance-results" class="rebalance-results" aria-live="polite"></div>
+        </article>
+        <article class="panel rebalance-results-panel" aria-labelledby="rebalance-results-title">
+          <div class="panel-header"><h3 id="rebalance-results-title">Rebalance results</h3></div>
+          <div id="rebalance-results" class="rebalance-results" aria-live="polite"><p class="rebalance-empty">Set your targets, then calculate the investment plan.</p></div>
         </article>
       </section>
 
@@ -1245,6 +1297,7 @@
   <script src="/js/utils.js"></script>
   <script src="/js/market-data.js"></script>
   <script src="/js/analytics/portfolio-finance.js"></script>
+  <script src="/js/rebalance/model.js"></script>
   <script src="/js/cashflow.js"></script>
   <script src="/js/wallet-analytics.js"></script>
   <script src="/js/analytics/dashboard.js"></script>
@@ -1256,6 +1309,8 @@
   <script src="/js/renderers/transactions.js"></script>
   <script src="/js/renderers/calendar.js"></script>
   <script src="/js/renderers/calculators.js"></script>
+  <script src="/js/rebalance/dashboard.js"></script>
+  <script src="/js/rebalance/currency-hover.js"></script>
   <script src="/js/renderers/sync.js"></script>
   <script src="/js/renderers/wallet.js"></script>
   <script src="/js/forms/assets.js"></script>

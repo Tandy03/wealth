@@ -136,48 +136,5 @@ function renderProfitCalculator(state = stateStore.getState()) {
 }
 
 function renderRebalanceCalculator(state = stateStore.getState()) {
-  const { getRebalanceGroups } = createRenderServices(state);
-  const targets = document.querySelector("#rebalance-targets");
-
-  if (!targets) {
-    return;
-  }
-
-  const groups = getRebalanceGroups().filter(group => !state.rebalanceExcluded.includes(group.id));
-
-  if (!groups.length) {
-    targets.innerHTML = '<p class="rebalance-empty">Add an asset to calculate a rebalance.</p>';
-    const total = document.querySelector("#rebalance-total");
-    const results = document.querySelector("#rebalance-results");
-
-    if (total) {
-      total.textContent = "0%";
-    }
-
-    if (results) {
-      results.innerHTML = "";
-    }
-
-    return;
-  }
-
-  targets.innerHTML = groups
-    .map((group) => `
-      <label class="rebalance-field">
-        <span title="${escapeHtml(group.label)}">${escapeHtml(group.label)}</span>
-        <input type="number" min="0" max="100" step="0.1" value="0" data-rebalance-group="${escapeHtml(group.id)}" aria-label="Target share for ${escapeHtml(group.label)}" />
-        <button type="button" class="icon-btn" data-remove-rebalance="${escapeHtml(group.id)}" aria-label="Remove ${escapeHtml(group.label)}">×</button>
-      </label>
-    `)
-    .join("");
-
-  const results = document.querySelector("#rebalance-results");
-
-  if (results) {
-    results.innerHTML = "";
-  }
-
-  bindRebalanceActions(targets);
-
-  updateRebalanceTotal();
+  window.FinoRebalanceDashboard.render(state);
 }

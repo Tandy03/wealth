@@ -51,7 +51,10 @@ function createJournal(file) {
     return entries.filter(e => e.kind === 'commit' && prepared.has(e.id)).map(e => prepared.get(e.id));
   }
   function last() { return commits().at(-1) || null; }
-  function confirmed(snapshot) { return entries.some(e => e.kind === 'confirmed' && e.checksum === digest(snapshot)); }
+  function confirmed(snapshot) {
+    const checksum = digest(snapshot);
+    return entries.some(e => e.kind === 'confirmed' && e.checksum === checksum);
+  }
   async function commit(snapshot, apply, rollback) {
     return queued(async () => {
       await load();

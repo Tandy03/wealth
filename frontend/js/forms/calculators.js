@@ -52,51 +52,22 @@ function setupProfitCalculator() {
   historyMode?.addEventListener("change", () => renderPortfolioHistoryChart());
   allocationMode?.addEventListener("change", () => renderAssetAllocationChart());
   document.querySelector("#asset-price-history-select")?.addEventListener("change", () => renderAssetPriceHistoryChart());
+  const priceFrom = document.querySelector("#asset-price-history-from");
+  const priceTo = document.querySelector("#asset-price-history-to");
+  [priceFrom, priceTo].forEach(input => input?.addEventListener("change", () => renderAssetPriceHistoryChart()));
+  document.querySelector("#asset-price-history-all-time")?.addEventListener("click", () => {
+    if (priceFrom) priceFrom.value = "";
+    if (priceTo) priceTo.value = "";
+    renderAssetPriceHistoryChart();
+  });
 }
 
 function updateRebalanceTotal() {
-  const total = [...document.querySelectorAll("[data-rebalance-group]")].reduce(
-    (sum, input) => sum + normalizeNumber(input.value),
-    0,
-  );
-  const element = document.querySelector("#rebalance-total");
-
-  if (element) {
-    element.textContent = `${total.toFixed(1)}%`;
-    element.classList.toggle("invalid", Math.abs(total - 100) > 0.01);
-  }
+  window.FinoRebalanceDashboard.update();
 }
 
 function calculateRebalance(event) {
-  event.preventDefault();
-
-  const result = document.querySelector("#rebalance-results");
-  const inputs = [...document.querySelectorAll("[data-rebalance-group]")];
-
-  if (!result || !inputs.length) {
-    return;
-  }
-
-  const targets = inputs.map((input) => ({
-    groupId: input.dataset.rebalanceGroup,
-    percent: normalizeNumber(input.value),
-  }));
-  let plan;
-  try {
-    plan = calculateRebalancePlan(targets);
-  } catch (error) {
-    result.innerHTML = `<p class="rebalance-message">${escapeHtml(error.message)}</p>`;
-    return;
-  }
-  const { recommendations, totalToInvest } = plan;
-
-  result.innerHTML = recommendations
-    .map((item) => {
-      const difference = item.difference;
-      const action = difference > 0.005 ? `Buy ${money(difference)}` : "No purchase";
-      return `<div class="rebalance-result"><span>${escapeHtml(item.group?.label || "Asset")}</span><strong>${action}</strong></div>`;
-    })
-    .join("") + `<div class="rebalance-result rebalance-result-total"><span>Total to invest</span><strong>${money(totalToInvest)}</strong></div>`;
+  window.FinoRebalanceDashboard.calculate(event);
 }
 
 function setupRebalanceCalculator() {
@@ -111,6 +82,7 @@ function setupRebalanceCalculator() {
   if (form) {
     form.addEventListener("submit", calculateRebalance);
   }
+  document.querySelector('#normalize-rebalance')?.addEventListener('click', () => window.FinoRebalanceDashboard.normalize());
 
   document.querySelector("#add-rebalance-asset")?.addEventListener("click", () => {
     modal?.classList.add("open");
@@ -119,13 +91,15 @@ function setupRebalanceCalculator() {
 
   document.querySelector("#close-rebalance-asset-modal")?.addEventListener("click", closeModal);
   document.querySelector("#cancel-rebalance-asset")?.addEventListener("click", closeModal);
+  assetForm?.elements.name.addEventListener('input', () => assetForm.elements.name.setCustomValidity(''));
   assetForm?.addEventListener("submit", (event) => {
     event.preventDefault();
     const name = String(new FormData(assetForm).get("name") || "").trim();
-    if (!name) return;
-    state.rebalanceDrafts.push({ id: `planned-${Date.now()}`, label: name });
+    if (!name) { assetForm.elements.name.setCustomValidity(window.FinoI18n.t('Asset name is required.')); assetForm.elements.name.reportValidity(); return; }
+    state.rebalanceDrafts.push({ id: `planned-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, label: name });
     closeModal();
     renderRebalanceCalculator();
+    window.FinoRebalanceDashboard.changed();
   });
 }
 Object.assign(window, { setupProfitCalculator, updateRebalanceTotal, calculateRebalance, setupRebalanceCalculator });

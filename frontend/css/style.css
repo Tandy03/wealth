@@ -1512,6 +1512,8 @@ textarea:focus {
   margin-top: 18px;
 }
 
+#analytics-section > * + * { margin-top: 20px; }
+
 .portfolio-history-chart {
   position: relative;
   height: 340px;
@@ -1527,10 +1529,16 @@ textarea:focus {
 .portfolio-history-mode > span { flex: 0 0 auto; margin: 0; }
 .portfolio-history-mode select { min-width: 230px; }
 
+.asset-price-history-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin-bottom: 18px; }
+.asset-price-history-filters label { display: flex; flex-direction: column; gap: 6px; flex: 1 1 160px; max-width: 220px; min-width: 0; margin: 0; }
+.asset-price-history-filters input { width: 100%; min-width: 0; }
+.asset-price-history-filters button { white-space: nowrap; }
+
 @media (max-width: 700px) {
   .portfolio-history-panel .panel-header { align-items: stretch; flex-direction: column; }
   .portfolio-history-mode { width: 100%; min-width: 0; }
   .portfolio-history-mode select { flex: 1; min-width: 0; }
+  .asset-price-history-filters label { max-width: none; }
   .rebalance-panel .rebalance-targets {
     grid-template-columns: 1fr;
   }
@@ -1562,36 +1570,39 @@ textarea:focus {
   width: min(100%, 240px);
   padding: 2px;
   margin-bottom: 22px;
-  background: color-mix(in srgb, var(--surface-2) 88%, var(--bg));
-  border: 1px solid color-mix(in srgb, var(--border) 72%, var(--muted));
+  background: var(--surface-2);
+  border: 1px solid var(--border);
   border-radius: 999px;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, .24), 0 8px 22px rgba(0, 0, 0, .16);
+  box-shadow: none;
 }
 
 .app-mode-switch button {
+  -webkit-appearance: none;
+  appearance: none;
   min-width: 0;
   height: 36px;
   padding: 0 9px;
   color: var(--muted);
   background: transparent;
   border: 0;
+  box-shadow: none;
   border-radius: 999px;
   font-size: 13px;
   font-weight: 600;
   line-height: 1;
   white-space: nowrap;
-  transition: color .18s ease, background .18s ease, box-shadow .18s ease, transform .18s ease;
+  transition: color .18s ease, background .18s ease, transform .18s ease;
 }
 
 .app-mode-switch button:not(.active):hover {
   color: var(--text);
-  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  background: var(--surface);
 }
 
 .app-mode-switch button.active {
   color: #fff;
-  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 84%, white), var(--accent));
-  box-shadow: 0 5px 14px color-mix(in srgb, var(--accent) 38%, transparent), inset 0 1px 0 rgba(255, 255, 255, .18);
+  background: var(--accent);
+  box-shadow: none;
 }
 
 .app-mode-switch button:active {
@@ -1599,7 +1610,7 @@ textarea:focus {
 }
 
 .app-mode-switch button:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent) 60%, white);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 [hidden] { display: none !important; }
@@ -2254,3 +2265,34 @@ input[type="month"] { max-width: 100%; min-width: 0; }
   .drive-sync-heading { min-width: 0; }
   .drive-sync-heading strong { min-width: 0; overflow-wrap: anywhere; }
 }
+/* Native scrolling with a theme-aware, rounded rail and thumb. */
+* { scrollbar-width: thin; scrollbar-color: var(--muted) var(--surface-2); }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: var(--surface-2); border-radius: 10px; }
+*::-webkit-scrollbar-thumb { background: var(--muted); border: 2px solid var(--surface-2); border-radius: 10px; min-height: 32px; }
+*::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+*::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+*::-webkit-scrollbar-corner { background: var(--surface-2); }
+@supports selector(::-webkit-scrollbar) {
+  * { scrollbar-width: auto; scrollbar-color: auto; }
+}
+@media (forced-colors: active) {
+  * { scrollbar-color: auto; }
+  *::-webkit-scrollbar-thumb { background: ButtonText; border-color: Canvas; }
+  *::-webkit-scrollbar-track { background: Canvas; }
+}
+/* Match the rebalance allocation rings and compact legend. */
+#analytics-section .asset-allocation-chart { min-height: 0; gap: 18px; padding: 20px; }
+#analytics-section .asset-allocation-chart .doughnut-canvas { flex: none; height: 245px; min-height: 245px; max-width: 310px; margin-inline: auto; }
+#analytics-section .asset-allocation-chart canvas { height: 100% !important; position: relative; z-index: 1; }
+#analytics-section .allocation-chart-center { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 64%; text-align: center; pointer-events: none; z-index: 2; }
+#analytics-section .allocation-chart-center span { display: block; color: var(--muted); font-size: 11px; margin-bottom: 7px; }
+#analytics-section .allocation-chart-center strong { font-size: clamp(16px, 1.6vw, 21px); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+#analytics-section .doughnut-canvas.is-empty::before { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(229px, 100%); aspect-ratio: 1; border: 24px solid var(--surface-2); border-radius: 50%; }
+#analytics-section #asset-allocation-empty { text-align: center; color: var(--muted); font-size: 12px; margin: 0; }
+#analytics-section #asset-allocation-legend { max-height: 250px; overflow-y: auto; }
+#analytics-section #asset-allocation-legend ul { display: block; margin: 0; }
+#analytics-section #asset-allocation-legend li + li { border-top: 1px solid var(--border); }
+#analytics-section #asset-allocation-legend button { padding: 10px 4px; font-size: 12px; font-weight: 400; gap: 10px; }
+#analytics-section #asset-allocation-legend .doughnut-legend-marker { border-radius: 3px; }
+#analytics-section #asset-allocation-legend .doughnut-legend-share { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }

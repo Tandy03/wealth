@@ -148,19 +148,45 @@
   }
 
   async function loadLocal() {
-    await ensureAccount(true);
     if (data) return data;
+    // Open the last committed account without obtaining a network token.
+    // A different Google account is rejected by token(context) before Drive access.
+    if (!activeEmail) {
+      const saved = await Preferences.get({ key: 'fino-active-account' });
+      if (saved.value) {
+        const email = String(saved.value).trim().toLowerCase();
+        const key = LEGACY_STORAGE_KEY + ':' + accountSuffix(email);
+        const stored = await Preferences.get({ key });
+        const journal = await Preferences.get({ key: 'fino-journal-v1:' + accountSuffix(email) });
+        if (stored.value || journal.value) {
+          activeEmail = email; storageKey = key;
+          fileId = (await Preferences.get({ key: 'fino-drive-file:' + accountSuffix(email) })).value || null;
+        }
+      }
+    }
+    if (!activeEmail) await ensureAccount(true);
     localHistory = [];
     const stored = await Preferences.get({ key: storageKey });
     const journal = await Preferences.get({ key: journalKey() });
     let committed = null;
     if (journal.value) {
       try {
-        const entries = JSON.parse(journal.value).entries;
-        if (!Array.isArray(entries)) throw new Error('Invalid journal');
-        for (const entry of entries) {
+        const document = JSON.parse(journal.value);
+        if (![1, 2].includes(document.version) || !Array.isArray(document.entries)) throw new Error('Invalid journal');
+        const entries = [];
+        for (const record of document.entries) {
+          const previous = entries.at(-1);
+          if (record.delta) {
+            window.FinoStateModel.validateJson(record.delta.snapshot);
+            window.FinoStateModel.validateJson({ ...record.delta.metadata, set: { ...record.delta.metadata?.set, baseline: null } });
+          }
+          const entry = record.delta ? { ...record, snapshot: applyChanges(previous?.snapshot, record.delta.snapshot), metadata: applyChanges(previous?.metadata, record.delta.metadata) } : record;
           validateSnapshot(entry.snapshot);
+          window.FinoStateModel.validateJson({ ...entry.metadata, baseline: null });
+          if (entry.metadata?.baseline != null && typeof entry.metadata.baseline !== 'string') throw new Error('Invalid journal baseline');
           if (!entry.metadata || typeof entry.metadata.pendingUpload !== 'boolean' || entry.checksum !== await syncModel.checksum({ snapshot: entry.snapshot, metadata: entry.metadata })) throw new Error('Invalid journal checksum');
+          if (previous && !entry.delta) entry.delta = { snapshot: changes(previous.snapshot, entry.snapshot), metadata: changes(previous.metadata, entry.metadata) };
+          entries.push(entry);
         }
         localHistory = entries; committed = entries.at(-1);
       } catch (cause) { throw new errors.StorageError({ message: 'Local recovery journal is corrupted. Preserve device data before restoring a backup.', cause }); }
@@ -196,27 +222,33 @@
     await persistJournal(data, syncMeta);
   }
 
-  async function token() {
-    return (await ensureAccount()).accessToken;
+  async function token(context) {
+    let result;
+    try { result = await DriveAuth.getAccessToken(); }
+    catch (cause) { throw new errors.AuthRequiredError({ cause }); }
+    if (!result?.accessToken || String(result.email || '').trim().toLowerCase() !== context.email) {
+      throw new errors.AuthRequiredError({ message: 'Google account changed during synchronization. Reconnect and retry.' });
+    }
+    return result.accessToken;
   }
 
-  async function rememberFileId(idValue) {
-    fileId = idValue;
-    await Preferences.set({ key: `fino-drive-file:${accountSuffix(activeEmail)}`, value: idValue });
+  async function rememberFileId(context, idValue) {
+    context.fileId = idValue;
+    await Preferences.set({ key: `fino-drive-file:${accountSuffix(context.email)}`, value: idValue });
   }
 
-  async function locateDriveFile(accessToken, allowDeleted = false) {
-    if (fileId) {
-      const check = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,trashed,ownedByMe`, { headers: { Authorization: `Bearer ${accessToken}` } });
+  async function locateDriveFile(context, accessToken, allowDeleted = false) {
+    if (context.fileId) {
+      const check = await fetch(`https://www.googleapis.com/drive/v3/files/${context.fileId}?fields=id,version,md5Checksum,ownedByMe,trashed`, { headers: { Authorization: `Bearer ${accessToken}` } });
       if (!check.ok && check.status !== 404) throw new errors.RemoteUnavailableError();
       const details = check.ok ? await check.json() : { trashed: true };
       if (details.trashed) {
         if (!allowDeleted) throw conflictError();
-        await Preferences.remove({ key: `fino-drive-file:${accountSuffix(activeEmail)}` });
-        fileId = null;
+        await Preferences.remove({ key: `fino-drive-file:${accountSuffix(context.email)}` });
+        context.fileId = null;
       } else {
         if (details.ownedByMe !== true) throw new errors.AuthRequiredError({ message: 'Portfolio file must belong to the signed-in account.' });
-        return fileId;
+        return { id: context.fileId, metadata: details, etag: check.headers?.get?.('etag') || null };
       }
     }
     const query = new URLSearchParams({
@@ -228,8 +260,8 @@
     const listing = await response.json();
     if ((listing.files?.length || 0) > 1 || listing.nextPageToken) throw new errors.ConflictError({ message: 'Multiple portfolio files found. Select one before synchronizing.' });
     const found = listing.files?.[0]?.id;
-    if (found) await rememberFileId(found);
-    return found || null;
+    if (found) await rememberFileId(context, found);
+    return found ? { id: found } : null;
   }
 
   async function createJsonFile(accessToken, metadata, snapshot) {
@@ -244,9 +276,9 @@
     if (!createdId) throw new Error('Drive file creation returned no ID.');
     return createdId;
   }
-  async function createDriveFile(accessToken, snapshot) {
+  async function createDriveFile(context, accessToken, snapshot) {
     const createdId = await createJsonFile(accessToken, { name: 'fino-data.json', mimeType: 'application/json', appProperties: { finoApp: 'true' } }, snapshot);
-    await rememberFileId(createdId);
+    await rememberFileId(context, createdId);
     return createdId;
   }
 
@@ -254,6 +286,9 @@
   let connected = false;
   let authorizationRequired = false;
   let operationQueue = Promise.resolve();
+  let driveQueue = Promise.resolve();
+  let uploadTimer = null;
+  let uploadScheduled = false;
   let pinnedAccount = null;
   let operationActive = false;
   const queued = (operation) => {
@@ -269,11 +304,34 @@
   };
   const metadataKey = () => 'fino-sync-v2:' + accountSuffix(activeEmail);
   const journalKey = () => 'fino-journal-v1:' + accountSuffix(activeEmail);
+  function changes(previous, next) {
+    const set = {}, append = {}, remove = Object.keys(previous).filter(key => !(key in next));
+    for (const [key, value] of Object.entries(next)) {
+      if (JSON.stringify(previous[key]) === JSON.stringify(value)) continue;
+      const before = previous[key];
+      if (Array.isArray(before) && Array.isArray(value) && value.length > before.length && JSON.stringify(value.slice(0, before.length)) === JSON.stringify(before)) append[key] = value.slice(before.length);
+      else set[key] = value;
+    }
+    return { set, append, remove };
+  }
+  function applyChanges(previous, delta) {
+    if (!previous || !delta || !Array.isArray(delta.remove)) throw new Error('Invalid journal delta');
+    const result = { ...previous, ...delta.set };
+    for (const key of delta.remove) delete result[key];
+    for (const [key, values] of Object.entries(delta.append || {})) {
+      if (!Array.isArray(result[key]) || !Array.isArray(values)) throw new Error('Invalid journal append');
+      result[key] = [...result[key], ...values];
+    }
+    return result;
+  }
   async function persistJournal(snapshot, metadata) {
     const entry = { snapshot: clone(snapshot), metadata: clone(metadata), checksum: await syncModel.checksum({ snapshot, metadata }), at: new Date().toISOString() };
     const history = localHistory.at(-1) && signature(localHistory.at(-1).snapshot) === signature(snapshot) ? localHistory.slice(0, -1) : localHistory;
+    const previous = history.at(-1);
+    if (previous) entry.delta = { snapshot: changes(previous.snapshot, entry.snapshot), metadata: changes(previous.metadata, entry.metadata) };
     const next = [...history, entry].slice(-50);
-    try { await Preferences.set({ key: journalKey(), value: JSON.stringify({ version: 1, entries: next }) }); }
+    const entries = next.map((item, index) => index ? { delta: item.delta, checksum: item.checksum, at: item.at } : { snapshot: item.snapshot, metadata: item.metadata, checksum: item.checksum, at: item.at });
+    try { await Preferences.set({ key: journalKey(), value: JSON.stringify({ version: 2, entries }) }); }
     catch (cause) { throw new errors.StorageError({ cause }); }
     localHistory = next;
     // Journal commit is authoritative. Mirrors can be repaired from it after restart.
@@ -311,22 +369,31 @@
     status.status = syncing ? 'Syncing' : ({ 'local-saved': 'Saved locally', 'sync-pending': 'Pending upload', 'sync-confirmed': 'Synced', conflict: 'Conflict detected', 'auth-required': 'Authorization required' })[status.state];
     return status;
   }
-  async function finishSync(snapshot) {
-    const previous = syncMeta;
-    const confirmed = signature(data) === signature(snapshot);
-    syncMeta = { ...syncMeta, baseline: signature(snapshot), pendingUpload: !confirmed, remoteConfirmed: confirmed, conflict: false, error: null, errorCode: null, confirmedRevision: snapshot.sync?.revision || 0, lastSyncAt: new Date().toISOString() };
-    try { await persistSyncMeta(); } catch (error) { syncMeta = previous; throw error; }
-    connected = true;
-    authorizationRequired = false;
+  async function finishSync(context, snapshot, replacement = null) {
+    await token(context);
+    const baseline = 'sha256:' + await syncModel.checksum(snapshot);
+    return queued(async () => {
+      if (activeEmail !== context.email) throw new errors.AuthRequiredError();
+      if (replacement && signature(data) !== context.localSignature) throw new errors.ConflictError({ message: 'Local changes were saved during download. They were preserved; retry synchronization.' });
+      const previousData = data, previous = syncMeta;
+      if (replacement) data = replacement;
+      const confirmed = signature(data) === signature(snapshot);
+      syncMeta = { ...syncMeta, ...context.backup, baseline, pendingUpload: !confirmed, remoteConfirmed: confirmed, conflict: false, error: null, errorCode: null, confirmedRevision: snapshot.sync?.revision || 0, lastSyncAt: new Date().toISOString() };
+      try { await persistSyncMeta(); } catch (error) { data = previousData; syncMeta = previous; throw error; }
+      fileId = context.fileId;
+      connected = true;
+      authorizationRequired = false;
+    });
   }
-  async function readRemote(allowInvalid = false) {
-    const accessToken = await token();
-    const currentFileId = await locateDriveFile(accessToken, allowInvalid);
-    if (!currentFileId) return null;
+  async function readRemote(context, allowInvalid = false) {
+    const accessToken = await token(context);
+    const located = await locateDriveFile(context, accessToken, allowInvalid);
+    if (!located) return null;
+    const currentFileId = located.id;
     const metadataUrl = 'https://www.googleapis.com/drive/v3/files/' + currentFileId + '?fields=id,version,md5Checksum,ownedByMe,trashed';
-    const metadata = await fetch(metadataUrl, { headers: { Authorization: 'Bearer ' + accessToken } });
-    if (!metadata.ok) throw new Error('Drive metadata lookup failed (' + metadata.status + ').');
-    const before = await metadata.json();
+    const metadata = located.metadata ? null : await fetch(metadataUrl, { headers: { Authorization: 'Bearer ' + accessToken } });
+    if (metadata && !metadata.ok) throw new Error('Drive metadata lookup failed (' + metadata.status + ').');
+    const before = located.metadata || await metadata.json();
     if (before.version == null || typeof before.md5Checksum !== 'string') throw new errors.RemoteUnavailableError();
     if (before.trashed) throw conflictError();
     if (before.ownedByMe !== true) throw new errors.AuthRequiredError({ message: 'Portfolio file must belong to the signed-in account.' });
@@ -343,9 +410,9 @@
       remote = validateSnapshot(JSON.parse(raw));
     } catch (error) {
       if (!allowInvalid) throw new errors.ValidationError({ message: 'Drive file contains invalid data. Local data was preserved; use Upload to replace it after a backup.' });
-      return { data: null, contentSignature: raw || '', etag: metadata.headers?.get?.('etag') || null, valid: false };
+      return { data: null, contentSignature: raw || '', etag: located.etag || metadata?.headers?.get?.('etag') || null, valid: false };
     }
-    return { data: remote, contentSignature: signature(remote), etag: metadata.headers?.get?.('etag') || null, valid: true };
+    return { data: remote, contentSignature: signature(remote), etag: located.etag || metadata?.headers?.get?.('etag') || null, valid: true };
   }
 
   async function backupFolder(accessToken) {
@@ -364,14 +431,14 @@
     if (!created.ok) throw new Error('Drive backup folder creation failed (' + created.status + ').');
     return (await created.json()).id;
   }
-  async function backupLocal(snapshot, reason) {
+  async function backupLocal(context, snapshot, reason) {
     // Keep a recovery copy on the device even if the cloud backup fails.
-    await Preferences.set({ key: 'fino-recovery:' + accountSuffix(activeEmail), value: JSON.stringify(snapshot) });
-    const accessToken = await token();
+    await Preferences.set({ key: 'fino-recovery:' + accountSuffix(context.email), value: JSON.stringify(snapshot) });
+    const accessToken = await token(context);
     const folderId = await backupFolder(accessToken);
     const kind = reason === 'manual' ? 'manual' : 'automatic';
     const result = await createJsonFile(accessToken, { name: 'fino-data-' + Date.now() + '-' + id('backup') + '.json', mimeType: 'application/json', parents: [folderId], description: 'fino ' + reason + ' backup', appProperties: { finoBackup: 'true', kind } }, snapshot);
-    syncMeta.backupSaved = true; syncMeta.lastBackupKind = kind; syncMeta.lastBackupId = result;
+    context.backup = { backupSaved: true, lastBackupKind: kind, lastBackupId: result };
     await trimBackups(accessToken, folderId, kind);
     return result;
   }
@@ -389,86 +456,110 @@
     } catch { console.info('Drive backup retention pending.'); }
   }
 
-  async function backupRemote(accessToken, remoteId) {
+  async function backupRemote(context, accessToken, remoteId) {
     const folderId = await backupFolder(accessToken);
     const response = await fetch('https://www.googleapis.com/drive/v3/files/' + remoteId + '/copy?fields=id', { method: 'POST', headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'fino-data-' + Date.now() + '-' + id('backup') + '.json', parents: [folderId], description: 'fino backup before replacement', appProperties: { finoBackup: 'true', kind: 'automatic' } }) });
     if (!response.ok) throw new Error('Drive remote backup failed (' + response.status + ').');
     const created = await response.json();
     if (!created.id) throw new errors.RemoteUnavailableError();
-    syncMeta.backupSaved = true; syncMeta.lastBackupKind = 'automatic'; syncMeta.lastBackupId = created.id;
+    context.backup = { backupSaved: true, lastBackupKind: 'automatic', lastBackupId: created.id };
     await trimBackups(accessToken, folderId, 'automatic');
   }
-  async function adoptRemote(remote) {
+  async function adoptRemote(context, remote) {
     const next = normalizeData(clone(remote));
     if (signature(next) !== signature(remote)) next.sync = { ...next.sync, revision: Number(next.sync?.revision || 0) + 1, updatedAt: new Date().toISOString(), deviceId: 'android-phone' };
-    const previous = data, previousMeta = clone(syncMeta);
-    data = next;
-    try { await finishSync(remote); } catch (error) { data = previous; syncMeta = previousMeta; throw error; }
+    await finishSync(context, remote, next);
   }
-  async function uploadDrive(force = false) {
-    await loadLocal();
-    const snapshot = clone(data);
-    const remote = await readRemote(force);
-    if (!force && remote && signature(remote.data) !== syncMeta.baseline && signature(remote.data) !== signature(snapshot)) throw conflictError();
-    if (!force && !remote && syncMeta.baseline) throw conflictError();
-    if (remote && signature(remote.data) === signature(snapshot)) { await finishSync(snapshot); return; }
-    const accessToken = await token();
+  async function uploadDrive(context, force = false, initialRemote) {
+    const snapshot = context.data;
+    const remote = initialRemote === undefined ? await readRemote(context, force) : initialRemote;
+    const matchesBaseline = remote && (context.metadata.baseline === signature(remote.data) || context.metadata.baseline === 'sha256:' + await syncModel.checksum(remote.data));
+    if (!force && remote && !matchesBaseline && signature(remote.data) !== signature(snapshot)) throw conflictError();
+    if (!force && !remote && context.metadata.baseline) throw conflictError();
+    if (remote && signature(remote.data) === signature(snapshot)) { await finishSync(context, snapshot); return; }
+    const accessToken = await token(context);
     if (remote) {
-      await backupRemote(accessToken, fileId);
-      const checked = await readRemote(force);
+      await backupRemote(context, accessToken, context.fileId);
+      const checked = await readRemote(context, force);
       if (!checked || checked.contentSignature !== remote.contentSignature) throw conflictError();
       remote.etag = checked.etag;
     }
-    if (!fileId) {
-      await createDriveFile(accessToken, snapshot);
-      const verified = await readRemote();
+    if (!context.fileId) {
+      await createDriveFile(context, accessToken, snapshot);
+      const verified = await readRemote(context);
       if (!verified || signature(verified.data) !== signature(snapshot)) throw conflictError();
-      await finishSync(snapshot); return;
+      await finishSync(context, snapshot); return;
     }
     const headers = { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' };
     if (remote?.etag) headers['If-Match'] = remote.etag;
-    const response = await fetch('https://www.googleapis.com/upload/drive/v3/files/' + fileId + '?uploadType=media', { method: 'PATCH', headers, body: JSON.stringify(snapshot) });
+    const response = await fetch('https://www.googleapis.com/upload/drive/v3/files/' + context.fileId + '?uploadType=media', { method: 'PATCH', headers, body: JSON.stringify(snapshot) });
     if (response.status === 412) throw conflictError();
     if (!response.ok) throw new Error('Drive upload failed (' + response.status + ').');
     await response.json();
-    const verified = await readRemote();
+    const verified = await readRemote(context);
     if (!verified || signature(verified.data) !== signature(snapshot)) throw conflictError();
-    await finishSync(snapshot);
+    await finishSync(context, snapshot);
   }
   function scheduleUpload() {
-    queued(async () => {
-      syncing = true;
-      try { await uploadDrive(); } catch (error) { await recordSyncError(error); }
-      finally { syncing = false; }
-    }).catch(() => console.info('Drive sync remains pending.'));
+    uploadScheduled = true;
+    clearTimeout(uploadTimer);
+    uploadTimer = setTimeout(flushUpload, 150);
+  }
+  function flushUpload() {
+    if (!uploadScheduled) return;
+    uploadScheduled = false; clearTimeout(uploadTimer); uploadTimer = null;
+    enqueueSync('automatic').catch(() => console.info('Drive sync remains pending.'));
+  }
+  function enqueueSync(action) {
+    const result = driveQueue.then(() => synchronize(action), () => synchronize(action));
+    driveQueue = result.catch(() => {});
+    return result;
   }
   async function synchronize(action = 'sync') {
-    validation.validateSyncAction(action);
+    if (action !== 'automatic') validation.validateSyncAction(action);
+    const context = await queued(async () => {
+      if (action === 'automatic' && !data && !activeEmail) return null;
+      await loadLocal();
+      return { email: activeEmail, fileId, data: clone(data), metadata: clone(syncMeta), localSignature: signature(data) };
+    });
+    if (!context) return;
+    if (action === 'automatic' && !context.metadata.pendingUpload) return;
     syncing = true;
     let previousBackupId;
     try {
-      await loadLocal();
-      previousBackupId = syncMeta?.lastBackupId;
+      previousBackupId = context.metadata.lastBackupId;
       if (action === 'reconnect') {
-        await DriveAuth.signOut(); await Preferences.remove({ key: 'fino-active-account' }); authSession = null; activeEmail = ''; fileId = null; data = undefined; localHistory = []; syncMeta = null; connected = false; authorizationRequired = true;
+        await DriveAuth.signOut();
+        await queued(async () => {
+          uploadScheduled = false; clearTimeout(uploadTimer); uploadTimer = null;
+          await Preferences.remove({ key: 'fino-active-account' }); authSession = null; activeEmail = ''; fileId = null; data = undefined; localHistory = []; syncMeta = null; connected = false; authorizationRequired = true;
+        });
       } else if (action === 'backup') {
-        await backupLocal(clone(data), 'manual');
-        connected = true;
-        syncMeta.error = null;
-        await persistSyncMeta();
-      } else if (action === 'upload') await uploadDrive(true);
+        await backupLocal(context, context.data, 'manual');
+        await queued(async () => {
+          if (activeEmail !== context.email) throw new errors.AuthRequiredError();
+          const previous = syncMeta;
+          syncMeta = { ...syncMeta, ...context.backup, error: null };
+          try { await persistSyncMeta(); } catch (error) { syncMeta = previous; throw error; }
+          connected = true;
+        });
+      } else if (action === 'upload') await uploadDrive(context, true);
       else {
-        const remote = await readRemote();
-        if (action === 'download') {
-          if (!remote) throw new Error('fino-data.json was not found on Google Drive.');
-          await backupLocal(clone(data), 'before download');
-          await adoptRemote(remote.data);
-        } else if (syncMeta.pendingUpload) {
-          await uploadDrive();
-        } else if (remote) await adoptRemote(remote.data);
-        else await uploadDrive();
+        if (action !== 'download' && context.metadata.pendingUpload) await uploadDrive(context);
+        else {
+          const remote = await readRemote(context);
+          if (action === 'download') {
+            if (!remote) throw new Error('fino-data.json was not found on Google Drive.');
+            await backupLocal(context, context.data, 'before download');
+            await adoptRemote(context, remote.data);
+          } else if (remote) await adoptRemote(context, remote.data);
+          else await uploadDrive(context, false, remote);
+        }
       }
-    } catch (error) { await recordSyncError(error); throw error; }
+    } catch (error) {
+      await queued(async () => { if (activeEmail === context.email) await recordSyncError(error); });
+      throw error;
+    }
     finally { syncing = false; }
     const status = statusSnapshot();
     return { success: true, action, savedLocally: status.savedLocally, savedRemotely: status.savedRemotely, backupSaved: Boolean(syncMeta?.lastBackupId && syncMeta.lastBackupId !== previousBackupId), status };
@@ -657,25 +748,32 @@
   window.mobileApi = {
     isNative: true,
     async waitForSync() {
-      let pending;
-      do { pending = operationQueue; await pending; } while (pending !== operationQueue);
+      let local, remote;
+      do {
+        local = operationQueue; await local;
+        flushUpload(); remote = driveQueue; await remote;
+      } while (local !== operationQueue || remote !== driveQueue || uploadScheduled);
       return statusSnapshot();
     },
     async getData({ sync = true } = {}) {
+      if (sync) try { await enqueueSync('sync'); } catch (_) { /* Local data and pending status remain available. */ }
       return queued(async () => {
         await loadLocal();
-        if (sync) try { await synchronize(); } catch (_) { /* Status retains the error; local data remains available. */ }
         return clone(data);
       });
     },
     async getGoogleDriveStatus() {
-      if (syncMeta) return statusSnapshot();
+      if (syncMeta || authorizationRequired && !activeEmail && !data) return statusSnapshot();
       return queued(async () => {
         try { await loadLocal(); } catch (error) { await recordSyncError(error); }
         return statusSnapshot();
       });
     },
-    async syncGoogleDrive(action = 'sync') { return queued(() => synchronize(action)); },
+    async syncGoogleDrive(action = 'sync') {
+      validation.validateSyncAction(action);
+      if (action === 'reconnect') { uploadScheduled = false; clearTimeout(uploadTimer); uploadTimer = null; }
+      return enqueueSync(action);
+    },
     async getMarketTimeSeries(parameters) { return proxy("twelve", parameters); },
     async getMarketCurrencies() { return mobileMarketCurrencies(); },
     async getCurrencyHistory(parameters) { return mobileCurrencyHistory(parameters); },
@@ -917,8 +1015,17 @@
     async getCalendarNotes() { return queued(async () => clone((await loadLocal()).calendarNotes || [])); },
     async createCalendarNote(note) { return mutate((state) => { const created = { ...note, id: id("note") }; state.calendarNotes.push(created); return created; }); },
     async saveWallet(wallet) { return mutate((state) => { state.wallet = clone(wallet); return state.wallet; }); },
+    async saveRebalance(request) {
+      const account = activeEmail;
+      return mutate(state => {
+        if (account && account !== activeEmail) throw new errors.AuthRequiredError();
+        return window.FinoStateModel.applyRebalance(state, request);
+      });
+    },
   };
   // Validate before entering the mutation queue; failed raw input never touches local state.
+  // Synchronous identity for isolating UI recovery drafts; never exposes a token.
+  Object.defineProperty(window.mobileApi, 'localAccountScope', { get: () => activeEmail });
   for (const [method, check] of Object.entries({
     createAsset: asset => validation.validateAssetInput(asset),
     updateAsset: (_id, patch) => validation.validateRequest('patch', patch),

@@ -13,6 +13,7 @@ function createService(repository) {
     async function syncDrive(action = "sync") {
         validateSyncAction(action);
         await initializeStorage();
+        await repository.waitForRemoteInitialization?.();
         const previousBackupId = googleDriveStorage.getStatus().lastBackupId;
         try {
             if (action === "download") {

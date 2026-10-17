@@ -48,7 +48,7 @@ async function storage(t, initial = fixture()) {
   };
   const drive = createStorage({ stateFile: path.join(dir, 'drive-state.json'), enabled: () => true, getClient: async () => ({ files }), timeoutMs: 1000 });
   const dataFile = path.join(dir, 'data.json'); await fs.writeFile(dataFile, JSON.stringify(initial));
-  const repository = createRepository({ dataFile, drive }); await repository.readData(); await drive.waitForUploads();
+  const repository = createRepository({ dataFile, drive }); await repository.readData(); await repository.waitForRemoteInitialization(); await drive.waitForUploads();
   return { dir, dataFile, drive, repository, hooks, backups, remote: () => structuredClone(remote), changeRemote(value) { remote = value; version++; } };
 }
 test('local success remains pending until Drive read-back confirms the exact snapshot', async t => {

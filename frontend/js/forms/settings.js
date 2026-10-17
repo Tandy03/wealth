@@ -127,6 +127,7 @@ function setupThemeToggle() {
     localStorage.setItem("investment-tracker-theme", themeSelect.value);
     appLock?.setTheme({ theme: themeSelect.value }).catch(() => {});
     renderProfitCalculator();
+    renderRebalanceCalculator();
     if (document.querySelector("#wallet-charts")?.classList.contains("active")) renderWalletCharts();
   });
   fontSelect?.addEventListener("change", () => {

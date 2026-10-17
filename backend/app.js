@@ -37,6 +37,7 @@ function createApp({ repository = createRepository() } = {}) {
     app.use(require("./routes/payments").createRouter(require("./domain/paymentService").createService(repository), repository));
     app.use(require("./routes/calendar").createRouter(require("./domain/calendarService").createService(repository), repository));
     app.use(require("./routes/wallet").createRouter(require("./domain/walletService").createService(repository), repository));
+    app.use(require('./routes/rebalance').createRouter(require('./domain/rebalanceService').createService(repository)));
     app.use('/api', (_req, res) => res.status(404).json({ error: 'API endpoint not found.' }));
     app.get("*splat", (req, res) => {
         browserSession.issueDocument(req, res);

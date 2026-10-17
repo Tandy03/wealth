@@ -8,7 +8,7 @@
     const write = (url, method, body, message) => request(url, { method, body, message });
     const assetPath = id => '/api/assets/' + encodeURIComponent(id);
     return {
-      getData: () => get('/api/data', 'Failed to load data.'),
+      getData: ({ sync = false } = {}) => get('/api/data', 'Failed to load data.', sync ? { sync: 'true' } : undefined),
       getExchangeRates: () => get('/api/exchange-rates', 'Failed to load NBU exchange rates.'),
       getMarketTimeSeries: params => get('/api/market-data/time-series', 'Failed to load market prices.', params),
       getMarketCurrencies: () => get('/api/market-data/currencies', 'Failed to load NBU currencies.'),
@@ -34,6 +34,7 @@
       getCalendarNotes: () => get('/api/calendar-notes', 'Failed to load calendar notes.'),
       createCalendarNote: note => write('/api/calendar-notes', 'POST', note, 'Failed to create calendar note.'),
       saveWallet: wallet => write('/api/wallet', 'PUT', wallet, 'Failed to save wallet.'),
+      saveRebalance: body => request('/api/rebalance', { method: 'PUT', body, keepalive: true, message: 'Could not save the rebalance plan. Try again.' }),
     };
   }
   return { createService };

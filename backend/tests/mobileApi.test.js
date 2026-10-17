@@ -8,6 +8,29 @@ const clone = (value) => JSON.parse(JSON.stringify(value));
 const signature = (value) => JSON.stringify((function canonical(item) { return Array.isArray(item) ? item.map(canonical) : item && typeof item === 'object' ? Object.fromEntries(Object.keys(item).sort().map(key => [key, canonical(item[key])])) : item; })(value));
 const fixture = () => ({ schemaVersion: 1, sync: { revision: 7, updatedAt: '2026-01-01T00:00:00Z', deviceId: 'desktop' }, assets: [{ id: 'bond', name: 'Bond', type: 'ovdp', quantity: 10, remainingQuantity: 10, remainingCostBasis: 10000, purchasePrice: 1000, currency: 'UAH' }], transactions: [{ id: 'buy', assetId: 'bond', type: 'BUY', quantity: 10, amount: 10000, date: '2026-01-01' }], sales: [], payments: [], calendarNotes: [], priceHistory: [], wallet: { expenses: [], months: {}, loans: [] }, instruments: [] });
 
+test('native rebalance persists web targets through local recovery, Drive upload and subsequent desktop changes', async () => {
+  const local = fixture();
+  const plan = { targets: { ovdp: 30, 'planned-etf': 70 }, plannedAssets: [{ id: 'planned-etf', label: 'ETF' }], excluded: [] };
+  local.rebalance = clone(plan);
+  const h = harness({ local }); await h.api.getData();
+  const changed = clone(plan); changed.targets.ovdp = 40; changed.targets['planned-etf'] = 60;
+  const saved = await h.api.saveRebalance({ plan: changed, expected: plan });
+  assert.equal(saved.persistence.savedLocally, true); assert.equal(saved.persistence.savedRemotely, false);
+  assert.deepEqual(h.local().rebalance, changed);
+  await assert.rejects(h.api.saveRebalance({ plan, expected: plan }), { status: 409 });
+  await h.drain(); assert.deepEqual(h.remote().rebalance, changed);
+  assert.deepEqual(h.local().assets, local.assets);
+  const restart = harness({ local: h.local(), remote: h.remote(), metadata: false });
+  restart.storage.set('fino-journal-v1:test%40example.com', h.storage.get('fino-journal-v1:test%40example.com'));
+  assert.deepEqual(clone((await restart.api.getData({ sync: false })).rebalance), changed);
+  const desktop = h.remote(); desktop.sync.revision++; desktop.rebalance.excluded = ['ovdp'];
+  h.changeRemote(desktop); await h.api.syncGoogleDrive('download');
+  assert.deepEqual(clone((await h.api.getData({ sync: false })).rebalance), desktop.rebalance);
+  const before = h.local();
+  await assert.rejects(h.api.saveRebalance({ plan: { ...changed, targets: { ovdp: Infinity } }, expected: desktop.rebalance }), { code: 'VALIDATION_FAILURE' });
+  assert.deepEqual(h.local(), before);
+});
+
 test('native macroeconomics selects the compact official GDP series and populates both chart datasets', async () => {
   const h = harness();
   h.hooks.externalFetch = async url => {
@@ -225,6 +248,7 @@ function harness({ local = fixture(), remote = clone(local), metadata = true, co
     if (hooks.hangDrive) return new Promise(() => {});
     if (offline) throw new Error('mock offline');
     const parsed = new URL(url);
+    if (parsed.hostname === 'www.googleapis.com') await hooks.beforeDriveRequest?.(parsed, options);
     if (hooks.externalFetch && ['bank.gov.ua', 'stat.gov.ua', 'script.google.com'].includes(parsed.hostname)) return hooks.externalFetch(parsed, options);
     if (parsed.hostname === 'www.inzhur.reit') return response(hooks.inzhurCatalog ? await hooks.inzhurCatalog() : []);
     const method = options.method || 'GET';
@@ -265,7 +289,7 @@ function harness({ local = fixture(), remote = clone(local), metadata = true, co
     return response({ id: 'main', trashed: false, ownedByMe: !hooks.notOwned, version: String(version), md5Checksum: 'checksum-' + version });
   };
   const preferences = { get: async ({ key }) => { const value = storage.get(key) || null; await hooks.beforePreferenceGet?.(key); return { value }; }, set: async ({ key, value }) => { if (hooks.failPreference?.(key)) throw new Error('mock storage failure'); storage.set(key, value); }, remove: async ({ key }) => storage.delete(key) };
-  const auth = { getAccessToken: async () => { if (authOffline || hooks.authFailure?.()) throw new Error('mock authorization offline'); return { email: hooks.authEmail ? hooks.authEmail() : 'test@example.com', accessToken: 'mock' }; }, signOut: async () => {} };
+  const auth = { getAccessToken: async () => { hooks.authCalls = (hooks.authCalls || 0) + 1; if (hooks.hangAuth) return new Promise(() => {}); if (authOffline || hooks.authFailure?.()) throw new Error('mock authorization offline'); return { email: hooks.authEmail ? hooks.authEmail() : 'test@example.com', accessToken: 'mock' }; }, signOut: async () => {} };
   const context = { window: { Capacitor: { isNativePlatform: () => true, Plugins: { Preferences: preferences, GoogleDriveAuth: auth } } }, fetch, URLSearchParams, console };
   if (proxy) context.window.FINO_MOBILE_CONFIG = { proxyUrl: 'https://script.google.com/macros/s/mock/exec', proxyToken: 'mock-token' };
   if (confirmedStorage) {
@@ -302,12 +326,122 @@ function harness({ local = fixture(), remote = clone(local), metadata = true, co
     drain: () => context.window.mobileApi.waitForSync() };
 }
 
+test('a stalled background upload never blocks local reads or another committed edit', async () => {
+  const h = harness(); await h.api.getData();
+  let release, began;
+  const started = new Promise(resolve => { began = resolve; });
+  const gate = new Promise(resolve => { release = resolve; });
+  let inspectedOlderConfirmation = false;
+  h.hooks.beforeDriveRequest = async () => {
+    began(); await gate;
+    if (h.uploads.length === 1 && !inspectedOlderConfirmation) {
+      inspectedOlderConfirmation = true;
+      assert.equal((await h.api.getGoogleDriveStatus()).pendingUpload, true, 'the first upload cannot confirm the newer edit');
+    }
+  };
+  await h.api.createCalendarNote({ assetId: 'bond', date: '2026-10-17', text: 'first' });
+  const syncing = h.drain(); await started;
+  let timer;
+  try {
+    await Promise.race([(async () => {
+      const local = await h.api.getData({ sync: false }); assert.equal(local.calendarNotes.length, 1);
+      await h.api.createCalendarNote({ assetId: 'bond', date: '2026-10-17', text: 'second' });
+      assert.equal((await h.api.getCalendarNotes()).length, 2);
+      assert.equal((await h.api.getGoogleDriveStatus()).pendingUpload, true);
+    })(), new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Drive blocked local operations')), 500); })]);
+  } finally { clearTimeout(timer); release(); await syncing; }
+  assert.equal(inspectedOlderConfirmation, true);
+  assert.equal(h.uploads[0].calendarNotes.length, 1);
+  assert.equal(h.remote().calendarNotes.length, 2);
+  assert.equal((await h.api.getGoogleDriveStatus()).state, 'sync-confirmed');
+});
+
+test('rapid local edits coalesce into one upload and cached reads do not request Google tokens', async () => {
+  const h = harness(); await h.api.getData({ sync: false });
+  const tokens = h.hooks.authCalls;
+  await Promise.all(Array.from({ length: 20 }, (_, i) => h.api.createCalendarNote({ assetId: 'bond', date: '2026-10-17', text: 'edit ' + i })));
+  await h.api.getData({ sync: false }); await h.api.getTransactions(); await h.api.getPayments();
+  assert.equal(h.hooks.authCalls, tokens);
+  await h.drain();
+  assert.equal(h.uploads.length, 1);
+  assert.equal(h.remote().calendarNotes.length, 20);
+});
+
+test('a download cannot replace edits committed while its network requests were running', async () => {
+  const h = harness(); await h.api.getData();
+  const remote = h.remote(); remote.calendarNotes.push({ id: 'remote', text: 'desktop' }); h.changeRemote(remote);
+  let release, began;
+  const started = new Promise(resolve => { began = resolve; });
+  const gate = new Promise(resolve => { release = resolve; });
+  h.hooks.beforeDriveRequest = async parsed => {
+    if (parsed.searchParams.get('alt') === 'media') { began(); await gate; }
+  };
+  const download = h.api.syncGoogleDrive('download');
+  await started;
+  try { await h.api.createCalendarNote({ assetId: 'bond', date: '2026-10-17', text: 'phone' }); }
+  finally { release(); }
+  await assert.rejects(download, { code: 'SYNC_CONFLICT' }); await h.drain();
+  assert.equal(h.local().calendarNotes[0].text, 'phone');
+  assert.equal(h.remote().calendarNotes[0].text, 'desktop');
+  assert.equal(h.uploads.length, 0);
+});
+
+test('compact journals migrate legacy entries, survive rollover and reject altered deltas', async () => {
+  const local = fixture();
+  local.priceHistory = Array.from({ length: 100 }, (_, index) => ({ assetId: 'bond', date: '2026-01-01', price: 1000 + index }));
+  const metadata = { baseline: JSON.stringify(local), pendingUpload: true };
+  const entry = { snapshot: local, metadata, checksum: await require('../../frontend/js/sync-model').checksum({ snapshot: local, metadata }) };
+  const h = harness({ local, metadata: false });
+  h.storage.set('fino-journal-v1:test%40example.com', JSON.stringify({ version: 1, entries: [entry] }));
+  await h.api.getData({ sync: false }); h.offline(true);
+  await Promise.all(Array.from({ length: 55 }, (_, index) => h.api.createCalendarNote({ assetId: 'bond', date: '2026-10-17', text: 'edit ' + index })));
+  await h.drain();
+  const serialized = h.storage.get('fino-journal-v1:test%40example.com');
+  const document = JSON.parse(serialized);
+  assert.equal(document.version, 2); assert.equal(document.entries.length, 50);
+  assert.ok(serialized.length < JSON.stringify(h.local()).length * 10, 'unchanged price history is stored once, not fifty times');
+  const restart = harness({ local: fixture(), metadata: false });
+  restart.storage.set('fino-journal-v1:test%40example.com', serialized);
+  const recovered = await restart.api.getData({ sync: false });
+  assert.equal(recovered.calendarNotes.length, 55); assert.equal(recovered.priceHistory.length, 100);
+  await h.api.deleteAsset('bond'); await h.drain();
+  const afterDelete = harness({ metadata: false });
+  afterDelete.storage.set('fino-journal-v1:test%40example.com', h.storage.get('fino-journal-v1:test%40example.com'));
+  const deleted = await afterDelete.api.getData({ sync: false });
+  assert.equal(deleted.assets.length, 0); assert.equal(deleted.calendarNotes.length, 0); assert.equal(deleted.priceHistory.length, 0);
+  document.entries.at(-1).delta.snapshot.set.assets = [{ id: 'tampered' }];
+  const corrupt = harness({ metadata: false }); corrupt.storage.set('fino-journal-v1:test%40example.com', JSON.stringify(document));
+  await assert.rejects(corrupt.api.getData({ sync: false }), /journal is corrupted/);
+});
+
+test('legacy journals with large full-document baselines remain recoverable', async () => {
+  const local = fixture();
+  local.priceHistory = Array.from({ length: 2500 }, (_, index) => ({ assetId: 'bond', date: '2026-01-01', price: 1000 + index }));
+  const metadata = { baseline: JSON.stringify(local), pendingUpload: true };
+  assert.ok(metadata.baseline.length > 100000);
+  const entry = { snapshot: local, metadata, checksum: await require('../../frontend/js/sync-model').checksum({ snapshot: local, metadata }) };
+  const h = harness({ metadata: false });
+  h.storage.set('fino-journal-v1:test%40example.com', JSON.stringify({ version: 1, entries: [entry] }));
+  assert.equal((await h.api.getData({ sync: false })).priceHistory.length, 2500);
+});
+
+test('reconnect cancels a deferred automatic upload without reopening Google authorization', async () => {
+  const h = harness(); await h.api.getData({ sync: false });
+  await h.api.createCalendarNote({ assetId: 'bond', date: '2026-10-17', text: 'kept on device' });
+  await h.api.syncGoogleDrive('reconnect'); await h.drain();
+  assert.equal(h.hooks.authCalls || 0, 0); assert.equal(h.uploads.length, 0);
+  assert.equal(h.local().calendarNotes[0].text, 'kept on device');
+  assert.equal(h.storage.get('fino-active-account'), undefined);
+  assert.equal((await h.api.getGoogleDriveStatus()).state, 'auth-required');
+});
+
 test('cached startup reads do not wait for unavailable Drive requests', async () => {
   const h = harness();
-  h.hooks.hangDrive = true;
+  h.hooks.hangDrive = true; h.hooks.hangAuth = true;
   const data = await h.api.getData({ sync: false });
   assert.equal(data.assets[0].id, 'bond');
   assert.equal(h.hooks.driveCalls || 0, 0);
+  assert.equal(h.hooks.authCalls || 0, 0);
   assert.equal(h.uploads.length, 0);
 });
 
@@ -501,6 +635,7 @@ test('an account switch after offline fallback aborts the same operation', async
   const h = harness(); let calls = 0;
   h.hooks.authFailure = () => ++calls === 1;
   h.hooks.authEmail = () => 'other@example.com';
+  await assert.rejects(h.api.syncGoogleDrive('upload'), { code: 'AUTHORIZATION_REQUIRED' });
   await assert.rejects(h.api.syncGoogleDrive('upload'), /account changed/i);
   assert.equal(h.uploads.length, 0);
   assert.equal(h.storage.get('fino-data-v1:other%40example.com'), undefined);

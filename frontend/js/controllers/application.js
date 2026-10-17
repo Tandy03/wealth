@@ -12,6 +12,7 @@ function renderApplication(snapshot = stateStore.getState()) {
   populateSellAssetSelect();
 }
 function renderMarketViews(snapshot = stateStore.getState()) {
+  window.ui.calculators.rebalance(snapshot);
   window.ui.dashboard.render(snapshot);
   window.ui.portfolio.render(snapshot);
   window.ui.transactions.render(snapshot);

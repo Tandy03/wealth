@@ -4,13 +4,14 @@ const os = require('node:os');
 const defaultDrive = require('../services/googleDrive/storage');
 const { createEmptyState, normalizeState, validateState } = require('../../frontend/js/state-model');
 const { describe } = require('../../frontend/js/sync-model');
-const { StorageError, ValidationError } = require('../../frontend/js/errors');
+const { StorageError, ValidationError, ConflictError } = require('../../frontend/js/errors');
 const { createJournal, digest } = require('./journal');
 const { atomicWrite } = require('./atomicFile');
 const { logEvent } = require('../utils/observability');
 function createRepository({ dataFile = path.join(__dirname, 'data.json'), drive = defaultDrive } = {}) {
   const journal = createJournal(dataFile + '.journal.ndjson');
   let initialization = null, mutationQueue = Promise.resolve(), current = null;
+  let remoteInitialization = null, remoteReady = false;
   function runMutation(operation) {
     const result = mutationQueue.then(operation, operation); mutationQueue = result.catch(() => {}); return result;
   }
@@ -45,7 +46,7 @@ function createRepository({ dataFile = path.join(__dirname, 'data.json'), drive 
       updatedAt: new Date().toISOString(), deviceId: process.env.GOOGLE_DRIVE_DEVICE_ID || os.hostname() };
     const result = await writeLocalData(snapshot);
     data.sync = snapshot.sync;
-    if (drive.isEnabled()) {
+    if (drive.isEnabled() && remoteReady) {
       try { drive.queueUpload(snapshot); }
       catch (error) { logEvent('sync.queue_failed', { code: error.code || 'REMOTE_UNAVAILABLE' }); }
     }
@@ -74,24 +75,35 @@ function createRepository({ dataFile = path.join(__dirname, 'data.json'), drive 
       } else {
         await saveData(createEmptyState()); local = current;
       }
-      if (!drive.isEnabled()) return;
-      try {
-        const initialized = await drive.initialize(local, { pending: !journal.confirmed(local), hasLocalHistory: Boolean(last || local.assets.length || local.transactions.length || local.wallet.expenses.length) });
-        let imported = normalizeState(initialized.data);
+      if (!drive.isEnabled()) { remoteReady = true; return; }
+      const baseline = digest(local);
+      const initial = structuredClone(local);
+      remoteInitialization = Promise.resolve().then(async () => {
+        const initialized = await drive.initialize(initial, { pending: !journal.confirmed(initial), hasLocalHistory: Boolean(last || initial.assets.length || initial.transactions.length || initial.wallet.expenses.length) });
+        const imported = normalizeState(initialized.data);
         const needsMetadata = !imported.sync;
         if (needsMetadata) imported.sync = { revision: 1, updatedAt: new Date().toISOString(), deviceId: process.env.GOOGLE_DRIVE_DEVICE_ID || os.hostname() };
-        if (digest(imported) !== digest(current)) await writeLocalData(imported);
-        if (initialized.source === 'google-drive') await drive.confirmDownload?.(needsMetadata ? initialized.data : imported);
-        if (needsMetadata) {
+        await runMutation(async () => {
+          const changed = digest(current) !== baseline;
+          if (changed && digest(initialized.data) !== baseline) throw new ConflictError({ message: 'Local changes were saved while Drive was initializing. Both versions were preserved.' });
+          if (!changed && digest(imported) !== digest(current)) await writeLocalData(imported);
+          if (initialized.source === 'google-drive') await drive.confirmDownload?.(needsMetadata ? initialized.data : imported);
+        });
+        remoteReady = true;
+        if (needsMetadata && digest(current) === digest(imported)) {
           try { await drive.uploadData(imported); if (!drive.subscribeConfirmation) await acknowledgeRemote(imported); }
           catch (error) { logEvent('sync.initial_upload_failed', { code: error.code || 'REMOTE_UNAVAILABLE' }); }
-        }
-      } catch (error) { logEvent('sync.initialization_pending', { code: error.code || 'REMOTE_UNAVAILABLE' }); }
+        } else if (!journal.confirmed(current) && (initialized.source !== 'local-pending' || digest(current) !== baseline)) drive.queueUpload(current);
+      }).catch(error => {
+        drive.recordFailure?.(error);
+        logEvent('sync.initialization_pending', { code: error.code || 'REMOTE_UNAVAILABLE' });
+      }).finally(() => { remoteReady = true; });
     })().catch(cause => { initialization = null; throw cause instanceof ValidationError ? cause : new StorageError({ cause }); });
     return initialization;
   }
   async function readData() { await initializeStorage(); return readLocalData(); }
+  async function waitForRemoteInitialization() { await initializeStorage(); await remoteInitialization; }
   return { readData, readLocalData, saveData, writeData: saveData, writeLocalData, initializeStorage, runMutation,
-    acknowledgeRemote, getSyncStatus, journalHistory: async () => { await journal.load(); return journal.history(); }, drive };
+    acknowledgeRemote, getSyncStatus, waitForRemoteInitialization, journalHistory: async () => { await journal.load(); return journal.history(); }, drive };
 }
 module.exports = { createRepository };

@@ -4,7 +4,7 @@
   else root.FinoMobileApi = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (marketModel) {
   function createService({ getAdapter, request }) {
-    const methods = ['getData', 'getMarketTimeSeries', 'getMarketCurrencies', 'getCurrencyHistory', 'getFrankfurterHistory', 'getIndexHistory', 'getMacroeconomics', 'getNbuPolicyRate', 'getGoogleDriveStatus', 'syncGoogleDrive', 'createAsset', 'updateAsset', 'mergeAssets', 'buyMoreAsset', 'deleteAsset', 'getSales', 'createSale', 'getTransactions', 'getPayments', 'markPaymentReceived', 'getCalendarNotes', 'createCalendarNote', 'saveWallet'];
+    const methods = ['getData', 'getMarketTimeSeries', 'getMarketCurrencies', 'getCurrencyHistory', 'getFrankfurterHistory', 'getIndexHistory', 'getMacroeconomics', 'getNbuPolicyRate', 'getGoogleDriveStatus', 'syncGoogleDrive', 'createAsset', 'updateAsset', 'mergeAssets', 'buyMoreAsset', 'deleteAsset', 'getSales', 'createSale', 'getTransactions', 'getPayments', 'markPaymentReceived', 'getCalendarNotes', 'createCalendarNote', 'saveWallet', 'saveRebalance'];
     const service = Object.fromEntries(methods.map(method => [method, (...args) => getAdapter()[method](...args)]));
     service.syncInzhurAssets = (...args) => getAdapter().syncApiAssets(...args);
     service.getInzhurAssets = async () => { throw new Error('Inzhur catalog sync requires the desktop backend.'); };

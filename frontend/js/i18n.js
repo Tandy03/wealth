@@ -1,6 +1,17 @@
 (function () {
   const languages = ["en", "de", "uk", "es", "pl", "it"];
   const rows = [
+    ["Hover or tap to view today’s USD equivalent.","Bewegen Sie den Zeiger darüber oder tippen Sie, um den heutigen USD-Gegenwert zu sehen.","Наведіть курсор або торкніться, щоб побачити еквівалент у USD на сьогодні.","Pasa el cursor o toca para ver el equivalente en USD de hoy.","Najedź kursorem lub dotknij, aby zobaczyć dzisiejszą równowartość w USD.","Passa il cursore o tocca per vedere l’equivalente in USD di oggi."],
+    ["NBU rate for {date}: 1 USD = {rate} UAH.","NBU-Kurs vom {date}: 1 USD = {rate} UAH.","Курс НБУ на {date}: 1 USD = {rate} UAH.","Tipo del NBU del {date}: 1 USD = {rate} UAH.","Kurs NBU na {date}: 1 USD = {rate} UAH.","Cambio NBU del {date}: 1 USD = {rate} UAH."],
+    ["Loading today’s USD rate…","Der heutige USD-Kurs wird geladen…","Завантаження курсу USD на сьогодні…","Cargando el tipo de cambio USD de hoy…","Ładowanie dzisiejszego kursu USD…","Caricamento del cambio USD di oggi…"],
+    ["Today’s USD rate is unavailable.","Der heutige USD-Kurs ist nicht verfügbar.","Курс USD на сьогодні недоступний.","El tipo de cambio USD de hoy no está disponible.","Dzisiejszy kurs USD jest niedostępny.","Il cambio USD di oggi non è disponibile."],
+    ["Saving rebalance plan…","Rebalancierungsplan wird gespeichert…","Збереження плану ребалансу…","Guardando el plan de rebalanceo…","Zapisywanie planu rebalansu…","Salvataggio del piano di ribilanciamento…"],
+    ["Rebalance plan saved locally. Drive sync has its own status.","Plan lokal gespeichert. Die Drive-Synchronisierung hat einen eigenen Status.","План збережено локально. Стан синхронізації Drive показано окремо.","Plan guardado localmente. La sincronización de Drive tiene su propio estado.","Plan zapisany lokalnie. Synchronizacja Drive ma osobny status.","Piano salvato localmente. La sincronizzazione Drive ha uno stato separato."],
+    ["Rebalance plan saved to Drive.","Plan in Drive gespeichert.","План ребалансу збережено на Drive.","Plan guardado en Drive.","Plan rebalansu zapisany na Drive.","Piano salvato su Drive."],
+    ["Could not save the rebalance plan. Try again.","Der Plan konnte nicht gespeichert werden. Erneut versuchen.","Не вдалося зберегти план ребалансу. Спробуйте ще раз.","No se pudo guardar el plan. Inténtalo de nuevo.","Nie udało się zapisać planu. Spróbuj ponownie.","Impossibile salvare il piano. Riprova."],
+    ["The rebalance plan changed. Reload before editing it again.","Der Plan wurde geändert. Vor dem Bearbeiten neu laden.","План ребалансу змінився. Завантажте збережений план перед редагуванням.","El plan ha cambiado. Recárgalo antes de editarlo.","Plan został zmieniony. Wczytaj go przed edycją.","Il piano è cambiato. Ricaricalo prima di modificarlo."],
+    ["Retry saving plan","Speichern erneut versuchen","Повторити збереження","Reintentar guardar","Ponów zapis","Riprova a salvare"],
+    ["Reload saved plan","Gespeicherten Plan laden","Завантажити збережений план","Recargar el plan guardado","Wczytaj zapisany plan","Ricarica il piano salvato"],
     ["Settings","Einstellungen","Налаштування","Ajustes","Ustawienia","Impostazioni"],
     ["Language","Sprache","Мова","Idioma","Język","Lingua"],
     ["Investment","Investitionen","Інвестиції","Inversión","Inwestycje","Investimenti"],
@@ -363,6 +374,37 @@ Notice modal|Mitteilungsdialog|Вікно повідомлення|Diálogo de a
 Modal backdrop|Dialoghintergrund|Тло вікна|Fondo del diálogo|Tło okna|Sfondo finestra
 Holding selection|Positionsauswahl|Вибір позиції|Selección de posición|Wybór pozycji|Selezione posizione
 Chart period|Diagrammzeitraum|Період відображення|Período del gráfico|Okres wykresu|Periodo del grafico
+Compare your allocation and plan your next investment.|Vergleichen Sie Ihre Aufteilung und planen Sie die nächste Investition.|Порівняйте розподіл активів і сплануйте наступну інвестицію.|Compara tu distribución y planifica la próxima inversión.|Porównaj alokację i zaplanuj kolejną inwestycję.|Confronta la tua allocazione e pianifica il prossimo investimento.
+This plan uses purchases only. Existing holdings are not sold.|Dieser Plan berücksichtigt nur Käufe. Bestehende Positionen werden nicht verkauft.|План передбачає лише докупівлі. Наявні активи не продаються.|Este plan solo contempla compras. Las posiciones actuales no se venden.|Plan obejmuje wyłącznie zakupy. Obecne aktywa nie są sprzedawane.|Il piano prevede solo acquisti. Le posizioni esistenti non vengono vendute.
+Assets in plan|Anlagen im Plan|Активи в плані|Activos del plan|Aktywa w planie|Attività nel piano
+Allocation comparison|Vergleich der Aufteilung|Порівняння розподілу|Comparación de distribución|Porównanie alokacji|Confronto delle allocazioni
+Charts are unavailable. You can still edit and calculate.|Diagramme sind nicht verfügbar. Bearbeiten und Berechnen ist weiterhin möglich.|Графіки недоступні. Редагування й розрахунок працюють.|Los gráficos no están disponibles. Puedes seguir editando y calculando.|Wykresy są niedostępne. Edycja i obliczenia nadal działają.|I grafici non sono disponibili. Puoi comunque modificare e calcolare.
+Current allocation|Aktuelle Aufteilung|Поточний розподіл|Distribución actual|Obecna alokacja|Allocazione attuale
+Target allocation|Zielaufteilung|Цільовий розподіл|Distribución objetivo|Docelowa alokacja|Allocazione obiettivo
+Adjust each share independently. Changes stay in this plan.|Passen Sie jeden Anteil einzeln an. Änderungen gelten nur für diesen Plan.|Змінюйте кожну частку окремо. Зміни стосуються лише цього плану.|Ajusta cada porcentaje por separado. Los cambios solo afectan a este plan.|Zmieniaj każdy udział osobno. Zmiany dotyczą tylko tego planu.|Modifica ogni quota separatamente. Le modifiche riguardano solo questo piano.
+Current %|Aktuell %|Поточна частка, %|Actual %|Obecnie %|Attuale %
+Target %|Ziel %|Цільова частка, %|Objetivo %|Cel %|Obiettivo %
+Total allocation|Gesamtaufteilung|Загальний розподіл|Distribución total|Łączna alokacja|Allocazione totale
+Normalize to 100%|Auf 100 % normieren|Нормалізувати до 100%|Normalizar al 100 %|Normalizuj do 100%|Normalizza al 100%
+Rebalance results|Ergebnis der Neugewichtung|Результати ребалансу|Resultados del reequilibrio|Wyniki rebalansu|Risultati del ribilanciamento
+Set your targets, then calculate the investment plan.|Legen Sie die Zielanteile fest und berechnen Sie den Investitionsplan.|Задайте цільові частки й розрахуйте інвестиційний план.|Define los objetivos y calcula el plan de inversión.|Ustaw docelowe udziały i oblicz plan inwestycji.|Imposta le quote obiettivo e calcola il piano di investimento.
+No current holdings to display.|Keine aktuellen Positionen vorhanden.|Немає поточних активів для відображення.|No hay posiciones actuales que mostrar.|Brak bieżących aktywów do wyświetlenia.|Nessuna posizione attuale da visualizzare.
+Set target shares to build your allocation.|Legen Sie Zielanteile für Ihre Aufteilung fest.|Задайте цільові частки для побудови розподілу.|Define los porcentajes objetivo para crear la distribución.|Ustaw docelowe udziały, aby zbudować alokację.|Imposta le quote obiettivo per definire l'allocazione.
+Adjust target share for {value}|Zielanteil für {value} anpassen|Змінити цільову частку для {value}|Ajustar el porcentaje objetivo de {value}|Zmień docelowy udział {value}|Modifica la quota obiettivo di {value}
+Target share for {value}|Zielanteil für {value}|Цільова частка для {value}|Porcentaje objetivo de {value}|Docelowy udział {value}|Quota obiettivo di {value}
+Remove {value}|{value} entfernen|Прибрати {value}|Quitar {value}|Usuń {value}|Rimuovi {value}
+Remove from this plan only|Nur aus diesem Plan entfernen|Прибрати лише з цього плану|Quitar solo de este plan|Usuń tylko z tego planu|Rimuovi solo da questo piano
+Enter target shares from 0 to 100 in steps of 0.1.|Geben Sie Zielanteile von 0 bis 100 in Schritten von 0,1 ein.|Введіть частки від 0 до 100 із кроком 0,1.|Introduce porcentajes de 0 a 100 en pasos de 0,1.|Wpisz udziały od 0 do 100 z krokiem 0,1.|Inserisci quote da 0 a 100 con incrementi di 0,1.
+Enter at least one positive target before normalizing.|Geben Sie vor dem Normieren mindestens einen positiven Zielanteil ein.|Перед нормалізацією задайте хоча б одну додатну частку.|Introduce al menos un objetivo positivo antes de normalizar.|Przed normalizacją ustaw co najmniej jeden dodatni udział.|Imposta almeno una quota positiva prima di normalizzare.
+Allocation is ready to calculate.|Die Aufteilung ist bereit zur Berechnung.|Розподіл готовий до розрахунку.|La distribución está lista para calcular.|Alokacja jest gotowa do obliczenia.|L'allocazione è pronta per il calcolo.
+{value} over the target allocation.|{value} über der Zielaufteilung.|Перевищення цільового розподілу: {value}.|La distribución supera el objetivo en {value}.|Docelowa alokacja przekroczona o {value}.|L'allocazione supera l'obiettivo di {value}.
+{value} remains unallocated.|{value} sind noch nicht zugeteilt.|Нерозподілена частка: {value}.|Queda un {value} sin asignar.|Pozostało {value} do przydzielenia.|Rimane da allocare il {value}.
+Unallocated|Nicht zugeteilt|Нерозподілено|Sin asignar|Nieprzydzielone|Non allocato
+Action|Aktion|Дія|Acción|Działanie|Azione
+Hold|Halten|Утримувати|Mantener|Trzymaj|Mantieni
+Holdings with a 0% target remain because this plan does not sell.|Positionen mit einem Ziel von 0 % bleiben bestehen, da dieser Plan keine Verkäufe vorsieht.|Активи з цільовою часткою 0% залишаються, оскільки цей план не передбачає продажів.|Las posiciones con un objetivo del 0 % se mantienen porque este plan no contempla ventas.|Aktywa z celem 0% pozostają w portfelu, ponieważ ten plan nie przewiduje sprzedaży.|Le posizioni con obiettivo 0% rimangono perché il piano non prevede vendite.
+The end date must be on or after the start date.|Das Enddatum darf nicht vor dem Startdatum liegen.|Кінцева дата не може бути раніше початкової.|La fecha final no puede ser anterior a la inicial.|Data końcowa nie może być wcześniejsza od początkowej.|La data finale non può precedere quella iniziale.
+{value}: no recorded prices in the selected period|{value}: keine aufgezeichneten Kurse im ausgewählten Zeitraum|{value}: немає записів ціни за вибраний період|{value}: no hay precios registrados en el período seleccionado|{value}: brak zapisanych cen w wybranym okresie|{value}: nessun prezzo registrato nel periodo selezionato
 Historical market price chart|Historischer Marktpreis|Історія ринкової ціни|Historial de precios de mercado|Historia cen rynkowych|Storico prezzi di mercato
 Portfolio sort|Portfoliosortierung|Сортування портфеля|Orden de cartera|Sortowanie portfela|Ordinamento portafoglio
 Profit calculator|Gewinnrechner|Калькулятор прибутку|Calculadora de beneficio|Kalkulator zysku|Calcolatore profitto
