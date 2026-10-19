@@ -51,19 +51,23 @@ function setupLoans() {
   document.querySelector("#cancel-loan")?.addEventListener("click", close);
   form?.addEventListener("submit", async (event) => {
     event.preventDefault();
+    const submitButton = form.querySelector('[type="submit"]');
+    if (submitButton?.disabled) return;
     const values = new FormData(form);
     const amount = normalizeNumber(values.get("amount"));
     const manualSchedule = String(values.get("manualSchedule") || "").split(/\r?\n/).map((line) => { const [date, value] = line.split(",").map((part) => part.trim()); return { id: `loan-payment-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, date, amount: normalizeNumber(value), paid: false }; }).filter((payment) => payment.date && payment.amount > 0);
     const previous = state.data.wallet.loans.find((loan) => loan.id === state.editingLoanId);
     const paidAmount = previous ? normalizeNumber(previous.amount) - normalizeNumber(previous.balance) : 0;
     const loan = { id: previous?.id || `loan-${Date.now()}`, createdAt: previous?.createdAt || new Date().toISOString(), name: String(values.get("name") || "").trim(), amount, balance: Math.max(0, amount - paidAmount), method: values.get("method"), institution: String(values.get("institution") || "").trim(), dueDate: values.get("dueDate"), monthlyPayment: normalizeNumber(values.get("monthlyPayment")), paymentDay: normalizeNumber(values.get("paymentDay")), lastPaymentDate: values.get("lastPaymentDate") || null, manualSchedule, comment: String(values.get("comment") || "").trim(), repayments: previous?.repayments || [], status: amount > paidAmount ? "active" : "paid" };
+    if (submitButton) submitButton.disabled = true;
     try {
       await walletActions.mutate(wallet => {
         const index = wallet.loans.findIndex(item => item.id === loan.id);
         if (index >= 0) wallet.loans[index] = loan;
         else wallet.loans.push(loan);
       });
-    } catch (error) { void showNotice(error.message || 'Failed to save wallet.'); return; }
+    } catch (error) { void showNotice(error || 'Failed to save wallet.'); return; }
+    finally { if (submitButton) submitButton.disabled = false; }
     close();
     renderLoans();
   });

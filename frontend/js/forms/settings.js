@@ -4,7 +4,7 @@ const state = stateStore.getState();
 let noticeResolver = null;
 
 function showNotice(message, title = "Message") {
-  message = window.FinoI18n?.t(message) || message;
+  message = message && typeof message === 'object' ? window.FinoErrors.displayMessage(message, window.FinoI18n) : window.FinoI18n?.t(message) || message;
   title = window.FinoI18n?.t(title) || title;
   const modal = document.querySelector("#notice-modal");
   if (!modal) return Promise.resolve(true);
@@ -53,6 +53,7 @@ function setupGoogleDriveSync() {
       document.querySelectorAll("[data-drive-action]").forEach((item) => { item.disabled = true; });
       document.querySelectorAll("[data-drive-state]").forEach((item) => { item.textContent = "Syncing"; });
       try {
+        if (action === 'reconnect') stateStore.invalidateContext();
         const result = await api.syncGoogleDrive(action);
         renderGoogleDriveStatus(result.status);
         if (action === "download" || action === "sync") await loadData();
@@ -63,7 +64,7 @@ function setupGoogleDriveSync() {
         else if (action === "backup") await showNotice("Google Drive backup created.");
       } catch (error) {
         await refreshGoogleDriveStatus();
-        await showNotice(error.message || "Google Drive operation failed.", "Google Drive");
+        await showNotice(error || "Google Drive operation failed.", "Google Drive");
       } finally {
         await refreshGoogleDriveStatus();
       }

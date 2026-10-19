@@ -14,6 +14,26 @@
   --shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
 }
 
+.nav-scroll-hint { display: none; }
+.dashboard-more-metrics { margin-bottom: 18px; }
+.dashboard-more-metrics > summary, .stat-explanation > summary { cursor: pointer; color: var(--muted); }
+.dashboard-more-metrics > summary { min-height: 44px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); font-size: 13px; }
+.dashboard-more-metrics[open] > summary { margin-bottom: 12px; }
+.stat-explanation > summary { padding-block: 8px; font-size: 11px; }
+@media (min-width: 701px) {
+  .dashboard-more-metrics > summary, .stat-explanation > summary { display: none; }
+}
+@media (max-width: 700px) {
+  #dashboard-key-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  #dashboard-section .stat-card { padding: 12px; }
+  #dashboard-section .stat-card strong { font-size: 16px; font-size: clamp(16px, 11cqi, 22px); }
+  #dashboard-key-metrics .stat-card strong { white-space: nowrap; overflow-x: auto; max-width: 100%; scrollbar-width: thin; }
+  #dashboard-section .reinvestment-stat-card { grid-column: 1 / -1; }
+  .dashboard-more-metrics .stats-grid { margin-top: 12px; }
+  #investments-app .nav-scroll-hint { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0 0; color: var(--muted); font-size: 11px; }
+  #investments-app .nav-scroll-hint span:last-child { font-size: 18px; color: var(--accent); }
+}
+
 :root[data-theme="monochromatic"] {
   --bg: #0c0c18;
   --surface: #141426;
@@ -107,6 +127,18 @@ button {
 .app-shell {
   display: flex;
   min-height: 100vh;
+}
+
+.command-recovery {
+  margin: 12px; padding: 14px 18px; border: 1px solid var(--border);
+  border-radius: 12px; background: var(--card-bg, #171923); color: var(--text, inherit);
+}
+.command-recovery[hidden] { display: none; }
+.command-recovery-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; }
+.command-recovery-row span { overflow-wrap: anywhere; }
+.command-recovery-row button { flex-shrink: 0; }
+@media (max-width: 600px) {
+  .command-recovery-row { align-items: stretch; flex-direction: column; }
 }
 
 .sidebar {
@@ -479,7 +511,7 @@ h3 {
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
   gap: 15px;
   margin-bottom: 18px;
 }
@@ -493,6 +525,8 @@ h3 {
 
 .stat-card {
   padding: 20px;
+  min-width: 0;
+  container-type: inline-size;
 }
 
 .currency-hover-card {
@@ -524,6 +558,10 @@ h3 {
   display: block;
   margin-top: 10px;
   font-size: 24px;
+  font-size: clamp(20px, 8cqi, 24px);
+  overflow-wrap: normal;
+  word-break: normal;
+  font-variant-numeric: tabular-nums;
 }
 
 .reinvestment-stat-card {
@@ -766,10 +804,6 @@ select:focus {
 @media (max-width: 1000px) {
   .sidebar {
     width: 210px;
-  }
-
-  .stats-grid {
-    grid-template-columns: repeat(2, 1fr);
   }
 
   .content-grid {
@@ -1818,10 +1852,11 @@ textarea:focus {
     gap: 8px;
     overflow-x: auto;
     padding-bottom: 4px;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent) var(--surface-2);
   }
-  .sidebar .nav::-webkit-scrollbar { display: none; }
+  .sidebar .nav::-webkit-scrollbar { display: block; height: 5px; }
+  .sidebar .nav::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 8px; }
   .sidebar .nav-item { flex: 0 0 auto; white-space: nowrap; }
   .sidebar-footer { display: none; }
   .main { width: 100%; padding: 14px; }
@@ -2206,16 +2241,25 @@ input[type="month"] { max-width: 100%; min-width: 0; }
   #wallet-month-title { font-size: clamp(20px, 7vw, 28px); line-height: 1.08; overflow-wrap: normal; word-break: normal; }
   #wallet-month-title span { margin-top: 3px; font-size: .72em; }
   #wallet-current > .panel { padding-inline: 12px; overflow: hidden; }
-  #wallet-current .table-wrap { width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; }
-  #wallet-current .wallet-table { width: 620px; min-width: 620px; table-layout: fixed; font-size: 10px; }
-  #wallet-current .wallet-table th, #wallet-current .wallet-table td { padding: 9px 6px; overflow-wrap: normal; word-break: normal; hyphens: none; }
-  #wallet-current .wallet-table th:nth-child(1), #wallet-current .wallet-table td:nth-child(1) { width: 132px; }
-  #wallet-current .wallet-table th:nth-child(2), #wallet-current .wallet-table td:nth-child(2) { width: 82px; }
-  #wallet-current .wallet-table th:nth-child(3), #wallet-current .wallet-table td:nth-child(3) { width: 86px; }
-  #wallet-current .wallet-table th:nth-child(4), #wallet-current .wallet-table td:nth-child(4) { width: 94px; }
-  #wallet-current .wallet-table th:nth-child(5), #wallet-current .wallet-table td:nth-child(5) { width: 88px; }
-  #wallet-current .wallet-table th:nth-child(6), #wallet-current .wallet-table td:nth-child(6) { width: 96px; }
-  #wallet-current .wallet-table th:nth-child(7), #wallet-current .wallet-table td:nth-child(7) { width: 42px; }
+  #wallet-current .table-wrap { width: 100%; overflow: visible; }
+  #wallet-current .wallet-table { display: block; width: 100%; min-width: 0; table-layout: auto; font-size: 14px; }
+  #wallet-current .wallet-table thead { display: none; }
+  #wallet-current-body { display: grid; gap: 12px; }
+  #wallet-current-body tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; position: relative; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); }
+  #wallet-current-body td { display: grid; gap: 6px; width: auto; min-width: 0; padding: 0; border: 0; text-align: start; word-break: normal; overflow-wrap: normal; font-variant-numeric: tabular-nums; }
+  #wallet-current-body td[data-label]::before { content: attr(data-label); color: var(--muted); font-size: 12px; font-weight: 400; }
+  #wallet-current-body td:first-child { grid-column: 1 / -1; font-weight: 650; padding-bottom: 4px; overflow-wrap: anywhere; }
+  #wallet-current-body td:first-child::before { display: none; }
+  #wallet-current-body td:nth-child(3), #wallet-current-body td:nth-child(6), #wallet-current-body .wallet-budget-total { display: none; }
+  #wallet-current-body .wallet-plan-cell { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  #wallet-current-body .wallet-plan-cell input { width: 60%; min-width: 0; min-height: 44px; margin: 0; font-size: 16px; }
+  #wallet-current-body .wallet-category-actions { position: absolute; inset-inline-end: 8px; top: 6px; }
+  #wallet-current-body .wallet-category-actions button { width: 36px; min-height: 36px; }
+  #wallet-current-body .has-remove-category .wallet-category-title { padding-inline-end: 38px; }
+  #wallet-current-body .wallet-category-actions:empty, #wallet-current-body .wallet-summary-row td:last-child:empty { display: none; }
+  #wallet-current-body .wallet-summary-row td:nth-child(5), #wallet-current-body .wallet-budget-spending td { grid-column: 1 / -1; }
+  #wallet-current-body .wallet-summary-row { border-color: var(--accent); }
+  #wallet-current-body .wallet-budget-spending td::before { display: none; }
   .wallet-nav { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
   .wallet-nav::-webkit-scrollbar { display: none; }
   .wallet-nav button { flex: 0 0 auto; white-space: nowrap; }

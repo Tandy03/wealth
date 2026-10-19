@@ -29,9 +29,12 @@ function setupWallet() {
     const text = input.value.trim();
     if (!text) return;
     const key = document.querySelector("#wallet-current-month")?.value || walletMonthKey();
+    if (input.disabled) return;
+    input.disabled = true;
     try { await walletActions.mutate(wallet => FinoWalletActions.month(wallet, key).notes.push({ id: `wallet-note-${Date.now()}`, text })); }
-    catch (error) { void showNotice(error.message || 'Failed to save wallet.'); return; }
-    input.value = "";
+    catch (error) { void showNotice(error || 'Failed to save wallet.'); return; }
+    finally { input.disabled = false; }
+    if (input.value.trim() === text) input.value = "";
     renderWalletNotes();
   });
 
@@ -69,15 +72,16 @@ function setupWallet() {
         }
         if (editingId) {
           const index = wallet.expenses.findIndex(item => item.id === editingId);
-          if (index >= 0) wallet.expenses[index] = { ...wallet.expenses[index], ...expense };
+          if (index < 0) throw new window.FinoErrors.ConflictError({ message: 'This expense changed. Reload before editing it again.' });
+          wallet.expenses[index] = { ...wallet.expenses[index], ...expense };
         } else wallet.expenses.push(expense);
-        createRenderServices({ ...stateStore.getState(), data: { ...stateStore.getData(), wallet } }).cleanupUnusedWalletCategories();
+        FinoWalletActions.cleanupCategories(wallet);
       });
       close();
       renderWallet();
     } catch (error) {
-      console.error("Failed to save expense:", error);
-      await showNotice(error?.message || "Failed to save wallet.");
+      console.error("Failed to save expense:", window.FinoErrors.diagnostics(error));
+      await showNotice(error || "Failed to save wallet.");
     } finally {
       if (submitButton) submitButton.disabled = false;
     }

@@ -1,6 +1,6 @@
 // Isolated browser smoke fixture. Never reads real JSON, credentials or Drive.
 const express = require('express');
-const model = require('../../frontend/js/state-model');
+const model = require('../../shared/state-model');
 const { createApp } = require('../app');
 const { normalizeData } = require('../domain/state');
 let data = normalizeData({ ...model.createEmptyState(), assets: [

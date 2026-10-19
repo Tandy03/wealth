@@ -142,6 +142,27 @@ function updateSalePreview() {
   }
 }
 
+function openSellAssetModal(assetId = null) {
+  populateSellAssetSelect();
+  const select = document.querySelector('#sell-asset'), modal = document.querySelector('#sell-modal');
+  if (!select || !modal) return;
+  if (assetId) {
+    const ids = Array.isArray(assetId) ? assetId : [assetId];
+    const assets = state.data.assets.filter(item => ids.includes(item.id) && getAvailableQuantity(item.id) > 0 && item.type !== 'novapay' && (item.type !== 'deposit' || item.earlyWithdrawal));
+    if (!assets.length) return;
+    // Existing sale commands require a single currency; let the existing select
+    // choose that currency when the displayed card spans several currencies.
+    const value = new Set(assets.map(asset => asset.currency || 'UAH')).size === 1 ? assets.map(asset => asset.id).join(',') : '';
+    let option = [...select.options].find(item => item.value === value);
+    if (!option) { option = document.createElement('option'); option.value = value; option.textContent = assets[0].name; option.setAttribute('translate', 'no'); select.append(option); }
+    select.value = value;
+  }
+  const date = document.querySelector('#sell-date'); if (date) date.value = getDateString(new Date());
+  const quantity = document.querySelector('#sell-quantity'); if (quantity) quantity.value = '';
+  const price = document.querySelector('#sell-price'); if (price) price.value = '';
+  const available = document.querySelector('#sell-available'); if (available) available.value = '0';
+  updateSalePreview(); modal.classList.add('open');
+}
 function setupSellModal() {
   const modal = document.querySelector("#sell-modal");
 
@@ -164,36 +185,7 @@ function setupSellModal() {
 
   openButtons.forEach((openButton) => openButton.addEventListener("click", (event) => {
     event.preventDefault();
-
-    populateSellAssetSelect();
-
-    const dateInput = document.querySelector("#sell-date");
-
-    if (dateInput) {
-      dateInput.value = getDateString(new Date());
-    }
-
-    const quantityInput = document.querySelector("#sell-quantity");
-
-    if (quantityInput) {
-      quantityInput.value = "";
-    }
-
-    const priceInput = document.querySelector("#sell-price");
-
-    if (priceInput) {
-      priceInput.value = "";
-    }
-
-    const availableInput = document.querySelector("#sell-available");
-
-    if (availableInput) {
-      availableInput.value = "0";
-    }
-
-    updateSalePreview();
-
-    modal.classList.add("open");
+    openSellAssetModal();
   }));
 
   const closeButton = document.querySelector("#close-sell-modal");
@@ -331,7 +323,7 @@ function setupSellModal() {
     }
 
     try {
-      await api.createSale({
+      await api.createSale(financialCommand(form, 'createSale', {
         assetId: asset.id,
         assetIds,
 
@@ -342,7 +334,7 @@ function setupSellModal() {
         sellDate,
 
         currency: asset.currency || "UAH",
-      });
+      }).body);
 
       close();
 
@@ -350,9 +342,9 @@ function setupSellModal() {
 
       showNotice("Sale successfully recorded.");
     } catch (error) {
-      console.error("SALE ERROR:", error);
+      console.error("SALE ERROR:", window.FinoErrors.diagnostics(error));
 
-      showNotice(error.message || "Failed to record sale.");
+      showNotice(error || "Failed to record sale.");
     } finally {
       if (submitButton) {
         submitButton.disabled = false;
@@ -363,5 +355,5 @@ function setupSellModal() {
     }
   });
 }
-Object.assign(window, { populateSellAssetSelect, getSelectedSellAssets, updateSalePreview, setupSellModal });
+Object.assign(window, { populateSellAssetSelect, getSelectedSellAssets, updateSalePreview, setupSellModal, openSellAssetModal });
 })();

@@ -1,27 +1,29 @@
-const rules = require('../../frontend/js/portfolio-rules');
+const rules = require('../../shared/portfolio-rules');
 const { BASE_CURRENCY, normalizeNumber, createId } = require('../utils/values');
 const { isValidDateString } = require('../validators');
 const { recordAssetPrice, getAvailableQuantity } = require('./portfolio');
 const { getTokenizedEquityPrice } = require('../services/market/binance');
+const { runMutation } = require('./mutation');
 const binanceCode = asset => {
   const name = String(asset.name || '').trim().toUpperCase();
   return /^[A-Z0-9.-]+B$/.test(name) ? name : String(asset.ticker || asset.symbol || name).trim().toUpperCase();
 };
 const isBinanceAsset = asset => ['stock', 'etf'].includes(asset.type) && (String(asset.instrumentName || '').trim().toLowerCase() === 'binance' || /^[A-Z0-9.-]+B$/.test(binanceCode(asset)));
-function createService(repository, market) {
+function createService(repository, market = {}) {
   const { saveData } = repository;
   const readData = require('./readState').createStateReader(repository);
   const { getInzhurCatalogAssets } = market;
+  const getEquityQuote = market.getTokenizedEquityPrice || getTokenizedEquityPrice;
 async function syncAssets() {
         const snapshot = await readData();
         const catalog = await getInzhurCatalogAssets();
         const quotes = new Map();
         for (const asset of snapshot.assets.filter(isBinanceAsset)) {
             const code = binanceCode(asset);
-            try { quotes.set(asset.id, { code, identity: rules.identity(asset), market: await getTokenizedEquityPrice(code) }); }
+            try { quotes.set(asset.id, { code, identity: rules.identity(asset), market: await getEquityQuote(code) }); }
             catch (error) { quotes.set(asset.id, { code, identity: rules.identity(asset), error }); if (error.code === 'BINANCE_NOT_CONFIGURED') break; }
         }
-        return repository.runMutation(async () => {
+        return runMutation(repository, async () => {
         const data = await readData();
         const fundSlugs = {
             inzhur_reit: "inzhur-reit",
@@ -139,7 +141,7 @@ async function syncAssets() {
                     name: asset.name,
                     symbol: assetCode,
                     error: error.code || "BINANCE_API_ERROR",
-                    message: error.message,
+                    message: require('../../shared/errors').publicError(error, { fallbackCategory: 'remote_unavailable' }).payload.error,
                 });
                 if (error.code === "BINANCE_NOT_CONFIGURED")
                     break;

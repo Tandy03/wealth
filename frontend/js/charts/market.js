@@ -139,7 +139,7 @@ function setupMarket() {
   api.getMarketCurrencies().then((result) => {
     (result.currencies || []).forEach((currency) => marketCurrencies.set(currency.code, currency.name));
     populateMarketSymbols();
-  }).catch((error) => console.warn("Could not load NBU currency list:", error.message));
+  }).catch((error) => console.warn("Could not load NBU currency list:", window.FinoErrors.diagnostics(error)));
   document.querySelector("#market-symbol-form")?.addEventListener("submit", (event) => {
     event.preventDefault();
     renderMarketChart();

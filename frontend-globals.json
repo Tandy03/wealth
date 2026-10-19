@@ -1,0 +1,723 @@
+{
+  "description": "Reviewed browser globals and classic lexical bindings by owner. Test/preflight input; never loaded at runtime. See FRONTEND-MODULES.md.",
+  "scripts": [
+    {
+      "src": "/vendor/chart.umd.js",
+      "globals": [
+        "Chart"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/mobile-config.generated.js",
+      "globals": [
+        "FINO_MOBILE_CONFIG"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/i18n.js",
+      "globals": [
+        "FinoI18n"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/shared/errors.js",
+      "globals": [
+        "FinoErrors"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/shared/operations.js",
+      "globals": [
+        "FinoOperations"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/shared/sync-model.js",
+      "globals": [
+        "FinoSyncModel"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/shared/state-contract.js",
+      "globals": [
+        "FinoStateContract"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/shared/state-model.js",
+      "globals": [
+        "FinoStateModel"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/shared/market-model.js",
+      "globals": [
+        "FinoMarketModel"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/controllers/wallet-actions.js",
+      "globals": [
+        "FinoWalletActions"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/state-store.js",
+      "globals": [
+        "FinoStateStore"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/shared/constants.js",
+      "globals": [
+        "FinoConstants"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/shared/validation.js",
+      "globals": [
+        "FinoValidation"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/shared/portfolio/validation.js",
+      "globals": [
+        "FinoOperationValidation"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/shared/portfolio/calculations.js",
+      "globals": [
+        "FinoPortfolioCalculations"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/shared/portfolio/normalization.js",
+      "globals": [
+        "FinoPortfolioNormalization"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/shared/portfolio/operations.js",
+      "globals": [
+        "FinoPortfolioOperations"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/shared/portfolio-rules.js",
+      "globals": [
+        "FinoPortfolioRules"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/shared/request.js",
+      "globals": [
+        "FinoRequest"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/mobile-api.js",
+      "globals": [
+        "mobileApi"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/api/fetchers.js",
+      "globals": [
+        "FinoFetchers"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/api/desktop.js",
+      "globals": [
+        "FinoDesktopApi"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/api/mobile.js",
+      "globals": [
+        "FinoMobileApi"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/api/outbox.js",
+      "globals": [
+        "FinoOutbox"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/api.js",
+      "globals": [
+        "financialCommand"
+      ],
+      "bindings": [
+        "api",
+        "apiFetchers",
+        "financialCommand",
+        "financialCommandDrafts",
+        "financialCommandForms",
+        "readApiJson"
+      ]
+    },
+    {
+      "src": "/js/portfolio-performance.js",
+      "globals": [
+        "PortfolioPerformance"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/analytics/values.js",
+      "globals": [
+        "FinoValues"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/state.js",
+      "globals": [],
+      "bindings": [
+        "EXCHANGE_RATES",
+        "HISTORICAL_RATE_FALLBACKS",
+        "WALLET_CATEGORIES",
+        "state",
+        "stateStore"
+      ]
+    },
+    {
+      "src": "/js/utils.js",
+      "globals": [
+        "escapeHtml",
+        "formatDate",
+        "formatMarketPrice",
+        "formatQuantity",
+        "formatWalletDate",
+        "groupHoldingsByInstrument",
+        "holdingGroupLabel",
+        "holdingOptionLabel",
+        "money",
+        "paymentTypeLabel",
+        "portfolioMoneyWithUahHover",
+        "usdMoney",
+        "walletMoney"
+      ],
+      "bindings": [
+        "DEFAULT_INSTRUMENTS",
+        "currencyFormatter",
+        "escapeHtml",
+        "formatDate",
+        "formatMarketPrice",
+        "formatQuantity",
+        "formatWalletDate",
+        "groupHoldingsByInstrument",
+        "holdingGroupLabel",
+        "holdingOptionLabel",
+        "money",
+        "monthNames",
+        "paymentTypeLabel",
+        "portfolioMoneyWithUahHover",
+        "quantityFormatter",
+        "typeLabels",
+        "usdMoney",
+        "walletCurrencyFormatter",
+        "walletMoney"
+      ]
+    },
+    {
+      "src": "/js/market-data.js",
+      "globals": [
+        "FinoMarketData"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/analytics/portfolio-finance.js",
+      "globals": [
+        "FinoPortfolioFinance"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/asset-detail/model.js",
+      "globals": [
+        "FinoAssetDetail"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/rebalance/model.js",
+      "globals": [
+        "FinoRebalanceModel"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/cashflow.js",
+      "globals": [
+        "FinoCashflow"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/wallet-analytics.js",
+      "globals": [
+        "FinoWalletAnalytics"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/analytics/dashboard.js",
+      "globals": [
+        "FinoDashboardAnalytics"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/views/wallet.js",
+      "globals": [
+        "FinoWalletView"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/models.js",
+      "globals": [
+        "createRenderServices"
+      ],
+      "bindings": [
+        "calculateInvested",
+        "calculateInvestedUsd",
+        "calculatePortfolioValue",
+        "calculatePortfolioXirr",
+        "calculateProfit",
+        "calculateRebalancePlan",
+        "calculateXirr",
+        "cashflow",
+        "convertCurrency",
+        "createRenderServices",
+        "currencyParamsForRange",
+        "dateDaysAgo",
+        "getAssetInvestedUah",
+        "getAssetInvestedUsd",
+        "getAssetPurchaseDate",
+        "getAssetPurchaseExchangeRate",
+        "getAvailableQuantity",
+        "getCalendarEvents",
+        "getCryptoEarnQuantity",
+        "getCurrentPrice",
+        "getDateString",
+        "getExchangeRateOnDate",
+        "getGroupedSaleCost",
+        "getLoanSchedule",
+        "getMaturityCostBasis",
+        "getRebalanceGroups",
+        "getSoldQuantity",
+        "getTransactionEffectiveDate",
+        "getUnrealizedPriceGrowth",
+        "groupPaymentEvents",
+        "isDateInRange",
+        "marketData",
+        "marketParamsForRange",
+        "normalizeNumber",
+        "paymentToCalendarEvent",
+        "portfolioFinance",
+        "resolveMarketSymbol",
+        "shiftWalletDate",
+        "summarizeProfit",
+        "toUAH",
+        "toUAHAtDate",
+        "toUAHPurchaseCost",
+        "valuesForDates",
+        "walletAnalytics",
+        "walletCategories",
+        "walletCategoryTotal",
+        "walletExpenseDateBounds",
+        "walletExpenses",
+        "walletMonth",
+        "walletMonthKey"
+      ]
+    },
+    {
+      "src": "/js/data-loader.js",
+      "globals": [
+        "loadPurchaseExchangeRates",
+        "refreshApplicationData",
+        "updateSp500Benchmark"
+      ],
+      "bindings": [
+        "loadPurchaseExchangeRates",
+        "refreshApplicationData",
+        "updateSp500Benchmark"
+      ]
+    },
+    {
+      "src": "/js/renderers/dashboard.js",
+      "globals": [
+        "renderDashboard",
+        "renderReinvestmentForecast",
+        "renderUpcomingPayments",
+        "setDashboardCurrencyHover",
+        "setReturnBenchmarkHover",
+        "setXirrValue"
+      ],
+      "bindings": [
+        "renderDashboard",
+        "renderReinvestmentForecast",
+        "renderUpcomingPayments",
+        "setDashboardCurrencyHover",
+        "setReturnBenchmarkHover",
+        "setXirrValue"
+      ]
+    },
+    {
+      "src": "/js/renderers/portfolio.js",
+      "globals": [
+        "renderAssetTransactionsModal",
+        "renderPortfolio",
+        "setupPortfolioCurrencyHover"
+      ],
+      "bindings": [
+        "renderAssetTransactionsModal",
+        "renderPortfolio",
+        "setupPortfolioCurrencyHover"
+      ]
+    },
+    {
+      "src": "/js/renderers/transactions.js",
+      "globals": [
+        "renderTransactions"
+      ],
+      "bindings": [
+        "renderTransactions"
+      ]
+    },
+    {
+      "src": "/js/renderers/calendar.js",
+      "globals": [
+        "renderCalendar",
+        "showCalendarEvent"
+      ],
+      "bindings": [
+        "renderCalendar",
+        "showCalendarEvent"
+      ]
+    },
+    {
+      "src": "/js/renderers/calculators.js",
+      "globals": [
+        "renderProfitCalculator",
+        "renderRebalanceCalculator"
+      ],
+      "bindings": [
+        "renderProfitCalculator",
+        "renderRebalanceCalculator"
+      ]
+    },
+    {
+      "src": "/js/rebalance/dashboard.js",
+      "globals": [
+        "FinoRebalanceDashboard"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/rebalance/currency-hover.js",
+      "globals": [
+        "FinoRebalanceCurrencyHover"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/renderers/sync.js",
+      "globals": [
+        "driveStatusLabel",
+        "renderGoogleDriveStatus"
+      ],
+      "bindings": [
+        "driveStatusLabel",
+        "renderGoogleDriveStatus"
+      ]
+    },
+    {
+      "src": "/js/renderers/wallet.js",
+      "globals": [
+        "renderBudgetProgress",
+        "renderLoans",
+        "renderWallet",
+        "renderWalletArchive",
+        "renderWalletCurrent",
+        "renderWalletExpenseList",
+        "renderWalletNotes"
+      ],
+      "bindings": [
+        "renderBudgetProgress",
+        "renderLoans",
+        "renderWallet",
+        "renderWalletArchive",
+        "renderWalletCurrent",
+        "renderWalletExpenseList",
+        "renderWalletNotes"
+      ]
+    },
+    {
+      "src": "/js/forms/assets.js",
+      "globals": [
+        "addCouponRow",
+        "collectCoupons",
+        "executeHoldingAction",
+        "openAssetTransactions",
+        "openEditAssetModal",
+        "openHoldingSelectionModal",
+        "populateInstrumentSelect",
+        "setDefaultDates",
+        "setupAssetTransactionsModal",
+        "setupDeleteHoldingModal",
+        "setupModal",
+        "updateAssetTypeFields",
+        "updateNewInstrumentFields"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/forms/buy.js",
+      "globals": [
+        "openBuyMoreModal",
+        "setupBuyMoreModal"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/forms/calendar.js",
+      "globals": [
+        "markPaymentAsReceived",
+        "openNoteModal",
+        "populateAssetSelect",
+        "setupCalendarNavigation",
+        "setupEventModal",
+        "setupNoteModal"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/forms/sales.js",
+      "globals": [
+        "getSelectedSellAssets",
+        "populateSellAssetSelect",
+        "setupSellModal",
+        "updateSalePreview",
+        "openSellAssetModal"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/forms/calculators.js",
+      "globals": [
+        "calculateRebalance",
+        "setupProfitCalculator",
+        "setupRebalanceCalculator",
+        "updateRebalanceTotal"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/forms/settings.js",
+      "globals": [
+        "setupGoogleDriveSync",
+        "setupModalBackdropClosing",
+        "setupNoticeModal",
+        "setupSettingsModal",
+        "setupThemeToggle",
+        "showConfirm",
+        "showNotice"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/forms/wallet.js",
+      "globals": [
+        "openExpenseModal",
+        "setupWallet"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/forms/loans.js",
+      "globals": [
+        "openLoanModal",
+        "setupLoans",
+        "updateLoanMethodFields"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/charts/market.js",
+      "globals": [
+        "populateMarketSymbols",
+        "renderMarketChart",
+        "setupMarket"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/charts/macroeconomics.js",
+      "globals": [
+        "macroLineChart",
+        "macroMultiChart",
+        "macroYearTick",
+        "renderMacroeconomics"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/charts/plugins.js",
+      "globals": [
+        "FinoChartPlugins"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/charts/portfolio.js",
+      "globals": [
+        "renderAssetAllocationChart",
+        "renderAssetPriceHistoryChart",
+        "renderPortfolioHistoryChart"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/charts/wallet.js",
+      "globals": [
+        "applyWalletPeriodPreset",
+        "renderWalletCategoryChart",
+        "renderWalletCharts",
+        "renderWalletDailyChart",
+        "renderWalletMonthlyChart",
+        "renderWalletPeriodChart",
+        "walletMonthAxisTicks"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/controllers/actions.js",
+      "globals": [
+        "runUiAction",
+        "walletActions"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/controllers/dashboard.js",
+      "globals": [
+        "bindDashboardHoldings",
+        "bindUpcomingPaymentActions"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/controllers/wallet.js",
+      "globals": [
+        "bindLoanActions",
+        "bindWalletExpenseActions",
+        "bindWalletNoteActions",
+        "bindWalletPlanActions",
+        "setupWalletNavigation"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/controllers/portfolio.js",
+      "globals": [
+        "bindHoldingDetailActions",
+        "bindPortfolioActions"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/controllers/calendar.js",
+      "globals": [
+        "bindCalendarDay",
+        "bindCalendarEventButton",
+        "bindCalendarPaymentAction"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/controllers/calculators.js",
+      "globals": [
+        "bindRebalanceActions"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/controllers/sync.js",
+      "globals": [
+        "refreshGoogleDriveStatus"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/controllers/application.js",
+      "globals": [
+        "applyResponsiveTableLabels",
+        "disableNumberInputWheelChanges",
+        "initializeUiController",
+        "renderApplication",
+        "renderMarketViews",
+        "setupGlobalErrorHandling",
+        "setupInzhurSync",
+        "setupNavigation",
+        "setupPortfolioSort",
+        "setupRenderSubscriptions",
+        "setupResponsiveTables",
+        "setupCommandRecovery"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/asset-detail/view.js",
+      "globals": [
+        "FinoAssetDetailView"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/ui.js",
+      "globals": [
+        "ui"
+      ],
+      "bindings": []
+    },
+    {
+      "src": "/js/app.js",
+      "globals": [
+        "init",
+        "loadData"
+      ],
+      "bindings": []
+    }
+  ]
+}

@@ -25,33 +25,32 @@ function createApp({ repository = createRepository() } = {}) {
     });
     app.use((req, res, next) => req.path.startsWith('/api/')
         ? require('./validators/requests').validateHttpRequest(req, res, next) : next());
+    // Only the neutral resource directory is public, never the project root.
+    app.use('/shared', express.static(path.join(__dirname, '..', 'shared'), { index: false }),
+        (_req, _res, next) => next(new (require('./utils/domainError').DomainError)({ error: 'Resource not found.', code: 'NOT_FOUND' }, 404)));
     app.use(express.static(frontendDir));
     const market = require("./domain/marketService").createService(repository);
     app.use(require("./routes/data").createRouter(require("./domain/dataService").createService(repository), repository));
     app.use(require("./routes/sync").createRouter(require("./services/syncService").createService(repository), repository));
     app.use(require("./routes/market").createRouter(market, repository));
-    const portfolio = require("./domain/portfolioService").createService(repository, market);
-    app.use(require("./routes/assets").createRouter(portfolio, repository));
+    app.use(require('./routes/assets').createRouter({
+        assets: require('./domain/assetService').createService(repository),
+        purchases: require('./domain/purchaseService').createService(repository),
+        merges: require('./domain/assetMergeService').createService(repository),
+        sync: require('./domain/assetSyncService').createService(repository, market),
+    }));
     app.use(require("./routes/transactions").createRouter(require("./domain/transactionsService").createService(repository), repository));
-    app.use(require("./routes/sales").createRouter(portfolio, repository));
+    app.use(require('./routes/sales').createRouter(require('./domain/saleService').createService(repository)));
     app.use(require("./routes/payments").createRouter(require("./domain/paymentService").createService(repository), repository));
     app.use(require("./routes/calendar").createRouter(require("./domain/calendarService").createService(repository), repository));
     app.use(require("./routes/wallet").createRouter(require("./domain/walletService").createService(repository), repository));
     app.use(require('./routes/rebalance').createRouter(require('./domain/rebalanceService').createService(repository)));
-    app.use('/api', (_req, res) => res.status(404).json({ error: 'API endpoint not found.' }));
+    app.use('/api', (_req, _res, next) => next(new (require('./utils/domainError').DomainError)({ error: 'API endpoint not found.', code: 'NOT_FOUND' }, 404)));
     app.get("*splat", (req, res) => {
         browserSession.issueDocument(req, res);
         res.sendFile(path.join(frontendDir, "index.html"));
     });
-    app.use((error, req, res, next) => {
-        require('./utils/observability').logEvent('request.exception', { code: error.code || error.type || 'INTERNAL_ERROR' });
-        if (res.headersSent)
-            return next(error);
-        if (error.type === 'entity.parse.failed') return res.status(400).json({ error: 'Request body must be valid JSON.' });
-        if (error.type === 'entity.too.large') return res.status(413).json({ error: 'Request body is too large.' });
-        if (error.status && error.payload) return res.status(error.status).json(error.payload);
-        res.status(500).json({ error: "Internal server error." });
-    });
+    app.use(require('./utils/apiError').errorHandler);
     return app;
 }
 module.exports = { createApp };

@@ -1,5 +1,5 @@
 (function (root, factory) {
-  const api = factory(typeof module === 'object' && module.exports ? require('./portfolio-rules') : root.FinoPortfolioRules);
+  const api = factory(typeof module === 'object' && module.exports ? require('../../shared/portfolio-rules') : root.FinoPortfolioRules);
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.PortfolioPerformance = api;
 })(typeof globalThis !== "undefined" ? globalThis : this, function (rules) {

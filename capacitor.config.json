@@ -1,7 +1,7 @@
 {
   "appId": "com.tandy03.fino",
   "appName": "fino",
-  "webDir": "frontend",
+  "webDir": ".tmp/mobile-web",
   "server": {
     "androidScheme": "https"
   },

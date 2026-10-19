@@ -7,6 +7,7 @@
   const rules = window.FinoPortfolioRules;
   const errors = window.FinoErrors;
   const syncModel = window.FinoSyncModel;
+  const operations = window.FinoOperations;
   const fetch = async (...args) => {
     const response = await window.FinoRequest.fetchWithTimeout(...args);
     if (response.status === 401) { try { await response.json(); } catch {} throw new errors.AuthRequiredError(); }
@@ -214,6 +215,7 @@
 
   async function saveLocal() {
     validateSnapshot(data);
+    operations.compact(data);
     data.sync = {
       revision: Number(data.sync?.revision || 0) + 1,
       updatedAt: new Date().toISOString(), deviceId: "android-phone",
@@ -558,18 +560,29 @@
       }
     } catch (error) {
       await queued(async () => { if (activeEmail === context.email) await recordSyncError(error); });
-      throw error;
+      const failure = errors.syncError(error);
+      failure.payload.status = statusSnapshot();
+      throw failure;
     }
     finally { syncing = false; }
     const status = statusSnapshot();
     return { success: true, action, savedLocally: status.savedLocally, savedRemotely: status.savedRemotely, backupSaved: Boolean(syncMeta?.lastBackupId && syncMeta.lastBackupId !== previousBackupId), status };
   }
-  async function mutate(operation) {
+  async function mutate(operation, command) {
+    const expectedAccount = activeEmail;
     return queued(async () => {
       await loadLocal();
+      if (expectedAccount && expectedAccount !== activeEmail) throw new errors.ConflictError({ code: 'OUTBOX_SCOPE_CHANGED', message: 'The active account changed. Return to the original account to recover this command.' });
+      const receipt = operations.begin(data, command);
+      if (receipt?.replayed || command?.kind === 'markPaymentReceived' && !command.operationId && data.payments.some(payment => payment.id === command.target && rules.received(payment))) {
+        const response = clone(receipt?.replayed ? receipt.result : data.payments.find(payment => payment.id === command.target));
+        Object.defineProperty(response, 'persistence', { value: statusSnapshot(), enumerable: false });
+        return response;
+      }
       const draft = clone(data);
       let result;
       try { result = operation(draft); } catch (cause) { throw cause.code ? cause : new errors.ValidationError({ message: cause.message, cause }); }
+      operations.remember(draft, receipt, result);
       const previous = data;
       const previousMeta = clone(syncMeta);
       data = draft;
@@ -582,6 +595,7 @@
   }
 
   async function proxy(action, parameters = {}) {
+    parameters = validation.queryParameters(parameters, action === 'twelve' ? '/api/market-data/time-series' : action === 'fred' ? '/api/market-data/index-history' : undefined);
     window.FinoStateModel.validateJson(parameters);
     for (const key of Object.keys(parameters)) if (!['symbol', 'interval', 'outputsize', 'startDate', 'endDate'].includes(key)) throw new errors.ValidationError({ message: 'Unsupported market parameter.' });
     for (const key of ['startDate', 'endDate']) if (parameters[key] && !window.FinoStateModel.isDate(parameters[key])) throw new errors.ValidationError({ message: 'A valid calendar date is required.' });
@@ -658,13 +672,13 @@
       const pick = (idValue, measure) => national.filter((row) => row.id_api === idValue && row.tzep === measure).map(point).filter(valid);
       result.inflation.annual = pick("prices_price_cpi_", "PCCM_");
       result.inflation.monthly = pick("prices_price_cpi_", "PCPM_");
-    } catch (error) { result.errors.nbu = error.message || "Could not load NBU data."; }
+    } catch (error) { result.errors.nbu = errors.publicError(error, { fallbackCategory: 'remote_unavailable' }).payload.error; }
 
     try {
       const response = await fetch(window.FinoMarketModel.gdpUrl, { headers: { Accept: "text/csv" } }, { timeoutMs: window.FinoMarketModel.macroTimeoutMs });
       if (!response.ok) throw new Error(`State Statistics Service returned ${response.status}.`);
       result.gdp = window.FinoMarketModel.gdp(await response.text());
-    } catch (error) { result.errors.gdp = error.message || "Could not load GDP data."; }
+    } catch (error) { result.errors.gdp = errors.publicError(error, { fallbackCategory: 'remote_unavailable' }).payload.error; }
 
     if (!result.exchangeRates.length && !Object.values(result.inflation).some((series) => series.length) && !result.gdp.nominal.length) {
       throw new Error("Official macroeconomic data is temporarily unavailable.");
@@ -692,7 +706,7 @@
     const start = new Date(now.getFullYear() - 3, 0, 1);
     const dateToken = (date) => `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
     const response = await fetch(`https://bank.gov.ua/NBUStatService/v1/statdirectory/key?period=d&start=${dateToken(start)}&end=${dateToken(now)}&json`, {}, { timeoutMs: window.FinoMarketModel.policyTimeoutMs });
-    if (!response.ok) throw new Error("NBU policy-rate data is temporarily unavailable.");
+    if (!response.ok) throw new errors.RemoteUnavailableError({ message: 'NBU policy-rate data is temporarily unavailable.' });
     const data = window.FinoMarketModel.policyRate(await response.json());
     policyRateCache = { data, updatedAt: Date.now() };
     return { policyRate: clone(data) };
@@ -711,11 +725,10 @@
   }
 
   async function mobileCurrencyHistory(parameters = {}) {
-    validation.validateQuery(Object.fromEntries(Object.entries(parameters).map(([key, value]) => [key, String(value)])));
+    parameters = validation.queryParameters(parameters, '/api/market-data/currency-history');
     const code = String(parameters.code || "").trim().toUpperCase();
-    const startDate = String(parameters.startDate || "").slice(0, 10);
-    const endDate = String(parameters.endDate || "").slice(0, 10);
-    if (!/^[A-Z]{3}$/.test(code) || !/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) throw new Error("A valid currency and date range are required.");
+    const { startDate, endDate } = validation.currencyHistoryRange(parameters);
+    if (!/^[A-Z]{3}$/.test(code) || code === 'UAH' || !window.FinoStateModel.isDate(startDate) || startDate > endDate) throw new errors.ValidationError({ message: 'A valid currency and date range are required.' });
     const compact = (value) => value.replaceAll("-", "");
     const query = new URLSearchParams({ start: compact(startDate), end: compact(endDate), valcode: code, sort: "exchangedate", order: "asc", json: "" });
     const response = await fetch(`https://bank.gov.ua/NBU_Exchange/exchange_site?${query}`);
@@ -731,11 +744,12 @@
   }
 
   async function mobileFrankfurterHistory(parameters = {}) {
-    validation.validateQuery(Object.fromEntries(Object.entries(parameters).map(([key, value]) => [key, String(value)])));
+    parameters = validation.queryParameters(parameters, '/api/market-data/frankfurter-history');
+    if (!window.FinoStateModel.isDate(parameters.startDate) || !window.FinoStateModel.isDate(parameters.endDate)) throw new errors.ValidationError({ message: 'A valid currency and date range are required.' });
     const ticker = String(parameters.ticker || "USEU").trim().toUpperCase();
     const pairs = { USEU: { base: "USD", quote: "EUR" }, EUUS: { base: "EUR", quote: "USD" } };
     const pair = pairs[ticker];
-    if (!pair) throw new Error("Unsupported Frankfurter market ticker.");
+    if (!pair) throw new errors.ValidationError({ message: 'Unsupported Frankfurter market ticker.' });
     const query = new URLSearchParams({ base: pair.base, quotes: pair.quote, from: parameters.startDate, to: parameters.endDate });
     const response = await fetch(`https://api.frankfurter.dev/v2/rates?${query}`, { headers: { Accept: "application/json" } });
     const payload = await response.json().catch(() => null);
@@ -747,6 +761,13 @@
 
   window.mobileApi = {
     isNative: true,
+    async getCommandContext() {
+      return queued(async () => { await loadLocal(); return { scope: 'android:' + activeEmail + ':' + storageKey, account: activeEmail }; });
+    },
+    commandStorage: {
+      async getItem(key) { return (await Preferences.get({ key })).value; },
+      async setItem(key, value) { await Preferences.set({ key, value }); },
+    },
     async waitForSync() {
       let local, remote;
       do {
@@ -755,11 +776,18 @@
       } while (local !== operationQueue || remote !== driveQueue || uploadScheduled);
       return statusSnapshot();
     },
-    async getData({ sync = true } = {}) {
+    async getData(options = {}) {
+      validation.validateReadOptions(options);
+      const account = activeEmail;
+      const { sync = true } = options;
       if (sync) try { await enqueueSync('sync'); } catch (_) { /* Local data and pending status remain available. */ }
       return queued(async () => {
         await loadLocal();
-        return clone(data);
+        const snapshot = clone(data);
+        // Provenance is needed when a read binds/switches accounts. The usual
+        // cached-read path already has an account and avoids changing its shape.
+        if (!account || account !== activeEmail) Object.defineProperty(snapshot, 'accountScope', { value: activeEmail });
+        return snapshot;
       });
     },
     async getGoogleDriveStatus() {
@@ -837,7 +865,7 @@
         }
       } catch (error) {
         stagedData.assets.filter((item) => ["ovdp", "inzhur_reit", "inzhur_miltech"].includes(item.type)).forEach((asset) => {
-          skipped.push({ id: asset.id, name: asset.name, error: "INZHUR_API_ERROR", message: error.message });
+          skipped.push({ id: asset.id, name: asset.name, error: "INZHUR_API_ERROR", message: errors.publicError(error, { fallbackCategory: 'remote_unavailable' }).payload.error });
         });
       }
 
@@ -861,7 +889,7 @@
           recordAssetPrice(stagedData, asset, "sync", asset.lastPriceUpdate);
           binanceSynced.push({ id: asset.id, name: asset.name, symbol: assetCode, underlyingSymbol, price: asset.currentPrice, currency: "USD" });
         } catch (error) {
-          binanceSkipped.push({ id: asset.id, name: asset.name, symbol: assetCode, error: "TWELVE_DATA_ERROR", message: error.message });
+          binanceSkipped.push({ id: asset.id, name: asset.name, symbol: assetCode, error: "TWELVE_DATA_ERROR", message: errors.publicError(error, { fallbackCategory: 'remote_unavailable' }).payload.error });
         }
       }
       if (!synced.length && !binanceSynced.length) return { synced, skipped, binanceSynced, binanceSkipped };
@@ -886,22 +914,33 @@
         return { synced: synced.filter(item => accepted.has(item.id)), skipped, binanceSynced: binanceSynced.filter(item => accepted.has(item.id)), binanceSkipped };
       });
     },
-    async createAsset(input) { return mutate(state => {
+    async createAsset(input) {
+      input = validation.assetInput(input);
+      return mutate(state => {
       const asset = { ...input, createdAt: new Date().toISOString(), id: id('asset'), dividendRecordRule: input.dividendRecordRule || 'previous_month_end' };
       if (asset.type === 'crypto_earn') asset.currentPrice = number(asset.currentPrice) || number(asset.purchasePrice);
       if (asset.type === 'novapay') asset.maturityAmountPerUnit = number(asset.maturityAmount) / number(asset.quantity);
       state.assets.push(asset);
+      if (input.isNewInstrument && input.instrumentName && !state.instruments.some(item => item.name.toLowerCase() === input.instrumentName.toLowerCase()))
+        state.instruments.push({ id: id('instrument'), name: input.instrumentName, type: input.instrumentType || 'Other' });
       state.transactions.push({ id: id('tx'), createdAt: asset.createdAt, assetId: asset.id, assetName: asset.name, type: 'BUY', quantity: number(asset.quantity), purchasePrice: number(asset.purchasePrice), amount: number(asset.quantity) * number(asset.purchasePrice), currency: asset.currency || 'UAH', date: asset.purchaseDate });
       rules.updateHolding(state, asset);
       rebuildPlannedPayments(state, asset);
       return asset;
-    }); },
-    async updateAsset(assetId, patch) { return mutate(state => {
+    }, operations.describe('createAsset', [input])); },
+    async updateAsset(assetId, patch) {
+      const input = validation.assetInput(patch);
+      delete input.operationId; // Creation identity is immutable when editing a holding.
+      if (patch.currency === undefined) delete input.currency;
+      patch = input;
+      return mutate(state => {
       const asset = state.assets.find(item => item.id === assetId);
-      if (!asset) throw new Error('Asset not found.');
+      if (!asset) throw new errors.ApplicationError('Asset not found.', { status: 404, code: 'DOMAIN_FAILURE', category: 'not_found' });
       validation.validateAssetInput({ ...asset, ...patch }, { partial: true });
       if (!rules.canEditPurchase(state, asset, patch)) throw new Error('Purchase history or currency cannot be rewritten after additional purchases or sales.');
       Object.assign(asset, patch, { id: assetId, updatedAt: new Date().toISOString() });
+      if (patch.isNewInstrument && patch.instrumentName && !state.instruments.some(item => item.name.toLowerCase() === patch.instrumentName.toLowerCase()))
+        state.instruments.push({ id: id('instrument'), name: patch.instrumentName, type: patch.instrumentType || 'Other' });
       if (asset.type === 'novapay' && patch.maturityAmount !== undefined) asset.maturityAmountPerUnit = number(asset.maturityAmount) / number(asset.quantity);
       for (const transaction of state.transactions || []) if (transaction.assetId === assetId) transaction.assetName = asset.name;
       rules.updateSinglePurchase(state, asset);
@@ -911,11 +950,11 @@
       rebuildPlannedPayments(state, asset);
       return asset;
     }); },
-    async mergeAssets(assetIds) { return mutate(state => {
+    async mergeAssets(assetIds, options = {}) { return mutate(state => {
       const ids = [...new Set(assetIds)];
       const assets = state.assets.filter(asset => ids.includes(asset.id));
+      if (assets.length !== ids.length) throw new errors.ApplicationError('Asset not found.', { status: 404, code: 'DOMAIN_FAILURE', category: 'not_found' });
       if (assets.length < 2) throw new Error('At least two holdings are required to merge.');
-      if (assets.length !== ids.length) throw new Error('Asset not found.');
       const primary = assets[0];
       if (!assets.every(asset => rules.identity(asset) === rules.identity(primary))) throw new Error('Only matching holdings can be merged.');
       if (assets.some(asset => asset.closedAt || state.payments.some(p => p.assetId === asset.id && p.type === 'MATURITY' && rules.received(p)))) throw new Error('Closed or redeemed holdings cannot be merged.');
@@ -929,10 +968,12 @@
       rules.updateHolding(state, primary);
       rebuildPlannedPayments(state, primary);
       return primary;
-    }); },
-    async buyMoreAsset(assetId, purchase) { return mutate((state) => {
+    }, operations.describe('mergeAssets', [assetIds, options])); },
+    async buyMoreAsset(assetId, purchase) {
+      purchase = validation.normalizePurchase(purchase);
+      const result = await mutate((state) => {
       const asset = state.assets.find((item) => item.id === assetId);
-      if (!asset) throw new Error("Asset not found.");
+      if (!asset) throw new errors.ApplicationError('Asset not found.', { status: 404, code: 'DOMAIN_FAILURE', category: 'not_found' });
       validation.validateQuantity(purchase.quantity, asset.type);
       validation.validateAssetCurrency(purchase, asset);
       const oldQty = number(asset.quantity), qty = number(purchase.quantity);
@@ -940,25 +981,31 @@
       const price = number(purchase.purchasePrice ?? purchase.price);
       const date = purchase.purchaseDate ?? purchase.date;
       asset.quantity = oldQty + qty;
-      state.transactions.push({ id: id("tx"), createdAt: new Date().toISOString(), assetId, assetName: asset.name, instrumentId: purchase.instrumentId || asset.instrumentId, type: "BUY", quantity: qty, purchasePrice: price, amount: qty * price, currency: purchase.currency || asset.currency || "UAH", date });
+      const transaction = { id: id("tx"), createdAt: new Date().toISOString(), assetId, assetName: asset.name, instrumentId: purchase.instrumentId || asset.instrumentId, type: "BUY", quantity: qty, purchasePrice: price, amount: qty * price, currency: purchase.currency || asset.currency || "UAH", date };
+      state.transactions.push(transaction);
       rules.updateHolding(state, asset);
       rebuildPlannedPayments(state, asset);
-      return asset;
-    }); },
+      return { asset, transaction };
+    }, operations.describe('buyMoreAsset', [assetId, purchase]));
+      // Non-serialized aliases preserve older native callers; the public JSON matches HTTP.
+      for (const key of Object.keys(result.asset)) if (!(key in result)) Object.defineProperty(result, key, { get: () => result.asset[key] });
+      return result;
+    },
     async deleteAsset(assetId) { return mutate((state) => {
-      if (!state.assets.some(item => item.id === assetId)) throw new Error("Asset not found.");
+      const asset = state.assets.find(item => item.id === assetId);
+      if (!asset) throw new errors.ApplicationError('Asset not found.', { status: 404, code: 'DOMAIN_FAILURE', category: 'not_found' });
       state.assets = state.assets.filter(item => item.id !== assetId);
       for (const collection of ['transactions', 'payments', 'sales', 'calendarNotes', 'priceHistory']) {
         state[collection] = (state[collection] || []).filter(item => item.assetId !== assetId);
       }
-      return { success: true };
+      return { success: true, asset };
     }); },
     async getSales() { return queued(async () => clone((await loadLocal()).sales || [])); },
     async createSale(sale) { return mutate((state) => {
       validation.validateRequest('sale', sale);
       const ids = [...new Set(Array.isArray(sale.assetIds) && sale.assetIds.length ? sale.assetIds : [sale.assetId])];
       const assets = state.assets.filter((item) => ids.includes(item.id)).sort((a, b) => String(a.purchaseDate || "").localeCompare(String(b.purchaseDate || "")));
-      if (!assets.length || assets.length !== ids.length) throw new Error("Asset not found.");
+      if (!assets.length || assets.length !== ids.length) throw new errors.ApplicationError('Asset not found.', { status: 404, code: 'DOMAIN_FAILURE', category: 'not_found' });
       if (assets.some((asset) => asset.type === 'novapay' || (asset.type === 'deposit' && !asset.earlyWithdrawal))) throw new Error('This asset cannot be withdrawn before maturity.');
       const reference = assets[0];
       validation.validateAssetCurrency(sale, reference);
@@ -969,7 +1016,7 @@
       let remaining = number(sale.quantity);
       const totalAvailable = assets.reduce((sum, asset) => sum + availableQuantity(state, asset, sale.sellDate), 0);
       if (remaining <= 0 || remaining > totalAvailable + QUANTITY_EPSILON) throw new Error("Not enough units available.");
-      const created = [];
+      const created = [], transactions = [];
       for (const asset of assets) {
         if (remaining <= QUANTITY_EPSILON) break;
         const quantity = Math.min(remaining, availableQuantity(state, asset, sale.sellDate));
@@ -982,19 +1029,29 @@
         const roi = costBasis > 0 ? profit / costBasis * 100 : 0;
         const record = { ...sale, createdAt: new Date().toISOString(), costBasisMethod: "moving_average", assetIds: undefined, assetId: asset.id, assetName: asset.name, type: asset.type, quantity, currency: asset.currency || sale.currency || "UAH", purchasePrice, costBasis, saleProceeds, profit, roi, id: id("sale") };
         state.sales.push(record);
-        state.transactions.push({ ...record, saleId: record.id, id: id("tx"), date: sale.sellDate, amount: saleProceeds, type: "SELL" });
+        const transaction = { ...record, saleId: record.id, id: id("tx"), date: sale.sellDate, amount: saleProceeds, type: "SELL" };
+        state.transactions.push(transaction); transactions.push(transaction);
         rules.updateHolding(state, asset);
         rules.refreshPayments(state, asset.id);
         created.push(record);
         remaining -= quantity;
       }
-      return { sales: created, remainingQuantity: totalAvailable - number(sale.quantity) };
-    }); },
+      const remainingQuantity = totalAvailable - number(sale.quantity);
+      return sale.assetIds?.length ? { sales: created, transactions, remainingQuantity } : { sale: created[0], transaction: transactions[0], remainingQuantity };
+    }, operations.describe('createSale', [sale])); },
     async getTransactions() { return queued(async () => clone((await loadLocal()).transactions || [])); },
+    async createTransaction(body) { return mutate(state => {
+      const transaction = window.FinoOperationValidation.createTransaction(state, body, id);
+      return rules.recordTransaction(state, state.assets.find(asset => asset.id === transaction.assetId), transaction, id);
+    }, operations.describe('createTransaction', [body])); },
     async getPayments() { return queued(async () => clone((await loadLocal()).payments || [])); },
-    async markPaymentReceived(paymentId) { return mutate((state) => {
+    async createPayment(body) { return mutate(state => {
+      const payment = window.FinoOperationValidation.createPayment(state, body, id);
+      state.payments.push(payment); return payment;
+    }, operations.describe('createPayment', [body])); },
+    async markPaymentReceived(paymentId, options = {}) { return mutate((state) => {
       const payment = state.payments.find((item) => item.id === paymentId);
-      if (!payment) throw new Error("Payment not found.");
+      if (!payment) throw new errors.ApplicationError('Payment not found.', { status: 404, code: 'DOMAIN_FAILURE', category: 'not_found' });
       if (payment.status === "received" || payment.status === "paid" || payment.received) return payment;
       const receivedNow = new Date();
       const receivedDate = `${receivedNow.getFullYear()}-${String(receivedNow.getMonth() + 1).padStart(2, "0")}-${String(receivedNow.getDate()).padStart(2, "0")}`;
@@ -1011,10 +1068,10 @@
         type: payment.type, quantity: null, amount: payment.amount, currency: payment.currency || "UAH",
       });
       return payment;
-    }); },
+    }, operations.describe('markPaymentReceived', [paymentId, options])); },
     async getCalendarNotes() { return queued(async () => clone((await loadLocal()).calendarNotes || [])); },
-    async createCalendarNote(note) { return mutate((state) => { const created = { ...note, id: id("note") }; state.calendarNotes.push(created); return created; }); },
-    async saveWallet(wallet) { return mutate((state) => { state.wallet = clone(wallet); return state.wallet; }); },
+    async createCalendarNote(note) { return mutate((state) => { const created = window.FinoOperationValidation.createNote(state, note, id); state.calendarNotes.push(created); return created; }, operations.describe('createCalendarNote', [note])); },
+    async saveWallet(wallet) { return mutate((state) => { state.wallet = clone(validation.normalizeWallet(wallet, id)); return state.wallet; }); },
     async saveRebalance(request) {
       const account = activeEmail;
       return mutate(state => {
@@ -1026,16 +1083,31 @@
   // Validate before entering the mutation queue; failed raw input never touches local state.
   // Synchronous identity for isolating UI recovery drafts; never exposes a token.
   Object.defineProperty(window.mobileApi, 'localAccountScope', { get: () => activeEmail });
+  Object.defineProperty(window.mobileApi, 'localCommandScope', { get: () => activeEmail ? 'android:' + activeEmail + ':' + storageKey : null });
   for (const [method, check] of Object.entries({
     createAsset: asset => validation.validateAssetInput(asset),
-    updateAsset: (_id, patch) => validation.validateRequest('patch', patch),
-    buyMoreAsset: (_id, purchase) => validation.validateRequest('buy', { ...purchase, purchasePrice: purchase.purchasePrice ?? purchase.price, purchaseDate: purchase.purchaseDate ?? purchase.date }),
+    updateAsset: (assetId, patch) => { validation.validateIdentifier(assetId); validation.validateAssetInput(patch); },
+    buyMoreAsset: (assetId, purchase) => { validation.validateIdentifier(assetId); validation.validateRequest('buy', validation.normalizePurchase(purchase)); },
+    deleteAsset: assetId => validation.validateIdentifier(assetId),
+    markPaymentReceived: paymentId => validation.validateIdentifier(paymentId),
+    createTransaction: body => validation.validateRequest('transaction', body),
+    createPayment: body => validation.validateRequest('payment', body),
+    createSale: body => validation.validateRequest('sale', body),
+    syncApiAssets: body => validation.validateRequest('syncAssets', body === undefined ? {} : body),
     createCalendarNote: note => validation.validateRequest('note', note),
     saveWallet: wallet => validation.validateWallet(wallet),
     syncGoogleDrive: (action = 'sync') => validation.validateSyncAction(action),
     mergeAssets: assetIds => validation.validateRequest('merge', { assetIds }),
   })) {
     const operation = window.mobileApi[method];
-    window.mobileApi[method] = async function (...args) { check(...args); return operation.apply(this, args); };
+    window.mobileApi[method] = async function (...args) { for (const value of args) if (value !== undefined) window.FinoStateModel.validateJson(value); check(...args); return operation.apply(this, args); };
+  }
+  // Normalize only at the API boundary, after local rollback/sync recovery has completed.
+  for (const [method, operation] of Object.entries(window.mobileApi)) {
+    if (typeof operation !== 'function') continue;
+    window.mobileApi[method] = async function (...args) {
+      try { return await operation.apply(this, args); }
+      catch (error) { throw errors.clientError(error, { fallbackCategory: /Market|Currency|Exchange|Index|Macroeconomics|PolicyRate|syncApi/.test(method) ? 'remote_unavailable' : 'internal_error' }); }
+    };
   }
 })();

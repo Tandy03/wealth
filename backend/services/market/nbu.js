@@ -6,7 +6,7 @@ function createSource({ fetchImpl = (...args) => fetch(...args), now = () => Dat
   let cache = { updatedAt: 0, exchangeDate: null, rates: null };
   async function readRates() {
     const payload = await requestJson(URL, { headers: { Accept: 'application/json', 'User-Agent': 'Wealth-Dashboard/1.0' } }, { fetchImpl, timeoutMs });
-    return require('../../../frontend/js/market-model').nbuRates(payload);
+    return require('../../../shared/market-model').nbuRates(payload);
   }
   async function getExchangeRates() {
     const fresh = cache.rates && now() - cache.updatedAt < 60 * 60 * 1000;

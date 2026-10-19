@@ -3,6 +3,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
+const { verifyAssets } = require('./mobileAssets');
+const { validateFrontend } = require('./frontendContract');
 require('../config/loadEnv');
 
 const root = path.resolve(__dirname, '../..');
@@ -15,20 +17,28 @@ function files(directory) {
 async function main() {
   const config = JSON.parse(fs.readFileSync(path.join(root, 'capacitor.config.json'), 'utf8'));
   assert.equal(config.appId, 'com.tandy03.fino', 'Unexpected Android application ID.');
-  assert.equal(config.webDir, 'frontend', 'Unexpected web asset directory.');
+  assert.equal(config.webDir, '.tmp/mobile-web', 'Unexpected web asset directory.');
   assert.equal(config.server.androidScheme, 'https', 'WebCrypto requires the HTTPS native origin.');
   assert.ok(!config.server.url, 'Native build must load its bundled assets.');
   assert.equal(config.android.allowMixedContent, false);
-  const frontend = path.join(root, config.webDir);
+  const frontend = path.join(root, 'frontend');
+  const bundle = path.join(root, config.webDir);
+  const entries = verifyAssets(root, bundle);
+  const sharedEntries = entries.filter(entry => entry.relative.startsWith('shared/'));
+  assert.ok(sharedEntries.length >= 13, 'Shared resources are missing from the Android web bundle.');
+  const scriptsConfig = require('../../package.json').scripts;
+  assert.ok(scriptsConfig['mobile:sync'].includes('mobile:prepare'), 'Android sync must prepare local resources.');
+  assert.equal(scriptsConfig['capacitor:copy:before'], 'npm run mobile:prepare', 'Capacitor copy must refresh local resources.');
   const html = fs.readFileSync(path.join(frontend, 'index.html'), 'utf8');
+  validateFrontend(html);
   let references = 0;
   for (const match of html.matchAll(/(?:src|href)="(\/[^"?#]*)(?:[?#][^"]*)?"/g)) {
-    const target = path.resolve(frontend, '.' + match[1]);
-    assert.ok(target.startsWith(frontend + path.sep), 'Asset path escapes the frontend.');
+    const target = path.resolve(bundle, '.' + match[1]);
+    assert.ok(target.startsWith(bundle + path.sep), 'Asset path escapes the Android web bundle.');
     assert.ok(fs.statSync(target).isFile(), 'A referenced frontend asset is missing.');
     references++;
   }
-  const scripts = [...files(path.join(root, 'backend')), ...files(frontend)].filter(file => file.endsWith('.js'));
+  const scripts = [...files(path.join(root, 'backend')), ...files(frontend), ...files(path.join(root, 'shared'))].filter(file => file.endsWith('.js'));
   for (const file of [...scripts, path.join(root, 'apps-script/Code.gs')]) {
     new vm.Script(fs.readFileSync(file, 'utf8'), { filename: path.relative(root, file) });
   }
@@ -44,8 +54,9 @@ async function main() {
   }
   console.log(`Mobile preflight passed: ${references} asset references, ${scripts.length + 1} JavaScript sources, native configuration and plugin registration.`);
   console.log('Generated proxy configuration matches the build environment. Secret values were not printed.');
+  console.log(`Android web bundle includes ${sharedEntries.length} shared modules matching source SHA-256 hashes. Existing APK was not changed or verified against these new sources.`);
   if (process.argv.includes('--live-proxy')) {
-    const { fetchWithTimeout } = require('../../frontend/js/request');
+    const { fetchWithTimeout } = require('../../shared/request');
     const response = await fetchWithTimeout(proxy.proxyUrl, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token: proxy.proxyToken, action: 'health' }),

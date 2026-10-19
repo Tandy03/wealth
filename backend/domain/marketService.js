@@ -25,7 +25,7 @@ function createService(sources = {}) {
         }
         inzhurAssetsCache = {
             updatedAt: Date.now(),
-            assets: require('../../frontend/js/market-model').inzhurCatalog(payload),
+            assets: require('../../shared/market-model').inzhurCatalog(payload),
         };
         return inzhurAssetsCache.assets;
     }
@@ -68,7 +68,7 @@ function createService(sources = {}) {
             }
             inzhurAssetsCache = {
                 updatedAt: Date.now(),
-                assets: require('../../frontend/js/market-model').inzhurCatalog(payload),
+                assets: require('../../shared/market-model').inzhurCatalog(payload),
             };
         }
         return {

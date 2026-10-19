@@ -1,5 +1,5 @@
 const { DAYS_PER_YEAR, MILLISECONDS_PER_DAY } = require('../config/constants');
-const { maturityPayout } = require('../../frontend/js/portfolio-rules');
+const { maturityPayout } = require('../../shared/portfolio-rules');
 function saleFinancials(quantity, sellPrice, purchasePrice) {
   const costBasis = quantity * purchasePrice;
   const saleProceeds = quantity * sellPrice;

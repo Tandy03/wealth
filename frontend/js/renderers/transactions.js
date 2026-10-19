@@ -2,6 +2,9 @@
 function renderTransactions(state = stateStore.getState()) {
   const { getMaturityCostBasis, getTransactionEffectiveDate } = createRenderServices(state);
   const tbody = document.querySelector("#transactions-table");
+  const assetsById = new Map((state.data.assets || []).map(asset => [asset.id, asset]));
+  const paymentsById = new Map((state.data.payments || []).map(payment => [payment.id, payment]));
+  const name = value => typeof value === 'string' ? value.trim() : '';
 
   if (!tbody) {
     return;
@@ -56,6 +59,9 @@ function renderTransactions(state = stateStore.getState()) {
 
   tbody.innerHTML = transactions
     .map((tx) => {
+      const payment = paymentsById.get(tx.paymentId);
+      const asset = assetsById.get(tx.assetId) || assetsById.get(payment?.assetId);
+      const assetName = name(tx.assetName) || name(asset?.name) || name(payment?.assetName) || window.FinoI18n.t('Asset unavailable');
       const isSale = tx.type === "SELL";
       const isPayment = tx.isPayment || ["DIVIDEND", "COUPON", "MATURITY"].includes(tx.type);
 
@@ -81,7 +87,7 @@ function renderTransactions(state = stateStore.getState()) {
 
                         <td>
                             <strong>
-                                <span translate="no">${escapeHtml(tx.assetName || "-")}</span>
+                                <span translate="no">${escapeHtml(assetName)}</span>
                             </strong>
                         </td>
 

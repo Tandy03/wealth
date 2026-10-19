@@ -1,34 +1,13 @@
 const { Router } = require("express");
-const { DomainError } = require("../utils/domainError");
-function createRouter(service, repository) {
+function createRouter(service) {
     const router = Router();
     router.get("/api/sales", async (req, res) => {
-        try {
-            const result = await service.getSales();
-            res.status(200).json(result);
-        }
-        catch (error) {
-            if (error instanceof DomainError || (error.status && error.payload))
-                return res.status(error.status).json(error.payload);
-            require('../utils/observability').logEvent('request.failed', { code: error.code || 'INTERNAL_ERROR' });
-            res.status(500).json({
-                error: "Failed to read sales.",
-            });
-        }
+        const result = await service.getSales();
+        res.status(200).json(result);
     });
     router.post("/api/sales", async (req, res) => {
-        try {
-            const result = await service.sellAsset(req.body);
-            res.status(201).json(result);
-        }
-        catch (error) {
-            if (error instanceof DomainError || (error.status && error.payload))
-                return res.status(error.status).json(error.payload);
-            require('../utils/observability').logEvent('request.failed', { code: error.code || 'INTERNAL_ERROR' });
-            res.status(500).json({
-                error: "Failed to create sale.",
-            });
-        }
+        const result = await service.sellAsset(req.body);
+        res.status(201).json(result);
     });
     return router;
 }

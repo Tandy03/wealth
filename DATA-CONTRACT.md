@@ -1,8 +1,10 @@
 # Data, persistence and synchronization contract
 
-`state-contract.js`, `state-model.js`, `sync-model.js` and `errors.js` are shared by HTTP, browser and native code. The JSON schema stays at version 1: sparse legacy documents and unknown safe fields are preserved. Future schema versions, duplicate IDs, unsupported types, invalid calendar dates, nonfinite or negative monetary inputs, invalid wallet schedules and prototype properties are rejected before application. Numeric strings from forms remain supported.
+`shared/state-contract.js`, `shared/state-model.js`, `shared/sync-model.js` and `shared/errors.js` are shared by HTTP, browser and native code. Dependencies point from frontend/backend into shared, never back; see [SHARED.md](SHARED.md) for the module inventory, compatibility exports and Android resources. The JSON schema stays at version 1: sparse legacy documents and unknown safe fields are preserved. Future schema versions, duplicate IDs, unsupported types, invalid calendar dates, nonfinite or negative monetary inputs, invalid wallet schedules and prototype properties are rejected before application. Numeric strings from forms remain supported.
 
 ## Financial invariants
+
+Backend portfolio use cases are separated into `assetService`, `purchaseService`, `saleService` and `assetMergeService`; shared rules remain the single source of financial calculations. The application-level queue entry is `backend/domain/mutation.js`; routers never acquire it, and a queued command must not call another queued command. Initial asset creation includes its initial BUY and schedule in the same commit. External sync data is fetched before the short queued application. See [PORTFOLIO-SERVICES.md](PORTFOLIO-SERVICES.md) for inputs, outcomes, errors and dependencies.
 
 - `asset.quantity` is historical acquired quantity. `remainingQuantity` is the balance on the requested date. Sales never reduce historical acquired quantity.
 - Remaining cost is the cost of eligible purchases minus the recorded cost basis of eligible sales. Remaining average price is remaining cost divided by remaining quantity; an empty or redeemed position has zero remaining cost.
@@ -13,9 +15,13 @@
 - Dividend entitlement uses explicit `recordDate`, otherwise `dividendRecordRule` (`previous_month_end` by default, or `payment_date`). Coupons and redemption use holdings on the payment date.
 - Received payments and earlier sale results remain historical records. Future schedules can be rebuilt; planned duplicates are coalesced. Merge identity includes instrument identity and payout terms.
 
-Financial calculations live in `portfolio/calculations.js`; compatibility repairs and cached holdings in `portfolio/normalization.js`; edits, schedules and operations in `portfolio/operations.js`. `portfolio-rules.js` is a compatibility facade. Formatting stays in UI utilities/renderers.
+Financial calculations live in `shared/portfolio/calculations.js`; compatibility repairs and cached holdings in `shared/portfolio/normalization.js`; edits, schedules and operations in `shared/portfolio/operations.js`. `shared/portfolio-rules.js` is an aggregate facade. Old frontend paths remain compatibility exports without implementations. Formatting stays in UI utilities/renderers.
 
 ## What success means
+
+Optional `operationId` metadata and the document's `operations` receipt collection protect new financial commands across retries, restart and Drive transfer. The canonical command and original JSON result commit atomically with the fact. A matching replay performs no save/revision change; conflicting reuse returns `OPERATION_ID_CONFLICT` (409). Receipts survive asset deletion. Native and backend share `shared/operations.js`; old documents without IDs remain valid. Payment receipt transitions also stay naturally idempotent by paymentId. See [IDEMPOTENCY.md](IDEMPOTENCY.md).
+
+Frontend financial publication belongs to `state-store.js`: borrowed data is read-only for UI consumers, and command drafts are private. `saveWallet`/`saveRebalance` publish once after successful persistence and return explicit save metadata. Failed writes preserve UI drafts; obsolete reads are ignored, and obsolete save acknowledgements reject with `STALE_STATE` without overwriting the current snapshot/account. Document normalization happens before publication, not in analytics. See [FRONTEND-STATE.md](FRONTEND-STATE.md) for the command inventory and concurrency rules.
 
 The optional `rebalance` field persists UI choices in the same document/journal/Drive lifecycle: `targets` maps group IDs to finite numeric shares 0–100 in steps of 0.1, `plannedAssets` contains unique `planned-*` IDs and labels, and `excluded` contains unique group IDs. Incomplete totals are valid drafts; calculation still requires 100%. Results and valuations are not persisted. Legacy documents without this field remain valid. Shared validation covers HTTP, native operations, local recovery and downloaded JSON.
 
@@ -58,3 +64,41 @@ Market requests have bounded concurrency, per-origin budgets and header/body dea
 Typed errors have stable `code`, `category`, HTTP status and safe public payloads. Logs allow only diagnostic fields and centrally redact secrets/records. OAuth refresh tokens can come from environment or private local files; token writes are atomic and restrict new Windows token-file permissions. `.env`, credentials, tokens, journals, API notes and keystores are ignored by Git. The existing Windows files still have inherited permissions: applying `backend/scripts/protectSecrets.ps1` was not authorized during this review.
 
 The market proxy token is embedded in a client APK and is extractable; it is a quota gate, not a private user credential. Provider keys stay in Apps Script Properties. The owner explicitly requested publication of the verified, already tracked debug APK together with source to mobile-app after the embedded-token disclosure. Other APK artifacts, signing keys, OAuth credentials/tokens, private financial data and generated source configuration remain ignored. Older commits can also contain APKs and embedded configuration. The approved build passed asset/native-class/signature verification, as recorded in MOBILE-READINESS.md. Apps Script deployment remains a separate operation.
+
+## Public API errors
+
+The operation inventory and request/domain/document responsibility map are maintained in [API-CONTRACT.md](API-CONTRACT.md). Historical document validation remains independent of required fields for new operations.
+
+`backend/utils/apiError.js` is the HTTP error boundary. Express forwards rejected async handlers to it; ordinary routers do not catch, serialize or log exceptions. Market routes and asset sync retain only provider-specific translation, preserving existing provider statuses/codes with a safe endpoint message. Unknown API paths also reach this boundary.
+
+Every HTTP failure returns `{ error: string, code: string, category: string }`. The actual HTTP response carries the status; `X-Request-Id` carries the server-generated correlation ID, and `X-Error-Category` matches the body category. Incoming request IDs are not trusted. A sync failure may additionally contain `status`, restricted to a known lifecycle state and boolean save/connection flags; raw sync metadata, account identity and arbitrary nested details are omitted.
+
+| Case | HTTP status | Preserved/default code | Category |
+| --- | --- | --- | --- |
+| Domain validation | 400 / 422 | `VALIDATION_FAILURE` | `validation` |
+| Invalid JSON | 400 | `INVALID_JSON` | `validation` |
+| Oversized body | 413 | `REQUEST_TOO_LARGE` | `validation` |
+| Unsupported body content type | 415 | `VALIDATION_FAILURE` | `validation` |
+| Google authorization | 401 | `AUTHORIZATION_REQUIRED` / `GOOGLE_AUTH_REQUIRED` | `auth_required` |
+| Local API access/session | 403 | `DOMAIN_FAILURE` / `BROWSER_SESSION_REQUIRED` | `access_denied` |
+| Unknown API path / missing domain record | 404 | `NOT_FOUND` / `DOMAIN_FAILURE` | `not_found` |
+| Conflicting edits | 409 | `SYNC_CONFLICT` | `conflict` |
+| Local storage | 503 | `STORAGE_FAILURE` | `storage_failure` |
+| External provider | Provider-specific status, normally 502 / 429 / 504 | Existing provider code, `REMOTE_UNAVAILABLE` or `EXTERNAL_API_TIMEOUT` | `remote_unavailable` |
+| Unexpected internal exception | 500 | `INTERNAL_ERROR` | `internal_error` |
+
+Only typed application errors supply public messages; an arbitrary exception's `status`, `payload`, message, stack and cause are not forwarded. Public messages are additionally checked for accidental paths, URLs, credentials and diagnostic bodies. Partial market/macro responses retain their existing successful data shape but use safe failure messages. When headers have already been sent, middleware calls `next` with a sanitized exception so Express aborts normally without a second JSON response or leaking the original exception through its default logger.
+
+The observer emits one HTTP failure event on completion, with request ID, route template, method, status, category, code and duration. Routers and the HTTP error handler do not log it again. Background storage/sync operational events remain distinct and allowlisted. Browser logs use diagnostic metadata instead of whole exceptions or messages.
+
+`shared/errors.js` defines the shared public normalization. Desktop reads the body category/code and the request ID header, including IDs from malformed/non-JSON responses. Legacy category headers remain supported. Native errors have the same `message`, `status`, `code`, `category`, `payload` and `requestId` fields; a locally generated ID identifies a native/transport failure and is not a backend trace. Notice dialogs and rebalance save failures show the ID as text, with localized labels. No global mapping of messages to IDs is used. Session renewal still retries only a rejected `BROWSER_SESSION_REQUIRED` request, once; financial, storage and provider failures gain no retries.
+
+The normalization runs on failures. Successful responses keep their existing payloads, and API facade dispatch stays unchanged. There are no additional network requests, storage writes, timers or financial recalculations from this contract change.
+
+## Asset detail read model
+
+`frontend/js/asset-detail/model.js` retains a per-position projection and builds the displayed card from all positions with the same type and normalized name, matching Portfolio/Dashboard. Closed positions contribute their historical results without adding current holdings. It delegates current/historical quantities and remaining cost to `shared/portfolio-rules.js`, then sums the per-position results without merging or changing persisted records. Stored sale profit/cost remain historical facts; each linked sale contributes once. Received payments are counted from the payment records once, not again from their companion transactions. Maturity proceeds include returned principal: only proceeds minus recorded cost basis contribute to realized income. Unlinked legacy income transactions remain visible as records with a warning rather than being guessed into duplicate payout totals.
+
+The dashboard shows realized sales plus received income separately from open quoted positions' unrealized price change. Missing quotes/cost/history remain unavailable, never fabricated zeros. Asset amounts retain the asset currency; dashboard UAH/USD conversion uses the existing NBU rates, with USD 45 / EUR 51 as offline fallbacks. Historical group value sums each position at its end-of-day quantity and latest recorded quote on or before that date. Missing prices remain gaps; incomplete acquisition history does not produce a valuation chart. Same-date/type/currency/entitlement payments are combined for display, retaining all original payment IDs for the existing receipt command. Mixed-currency totals use the same explicit converter as Portfolio; each operation and payment retains its own currency. A local read does not assert Drive confirmation: the view requires an explicit remotely saved status matching the current revision. Existing form/API/outbox/store commands perform every mutation; opening or navigating this page sends no additional provider requests.
+
+Dividend receipts settle units at the recorded receipt rate. Refreshing an estimate at a later rate must not create a residual forecast for already paid units. Unpaid units after a merge still have a forecast; legacy receipts without a unit rate retain the cash-offset fallback. Received amounts are never rewritten by this calculation. Settled zero-amount automatic placeholders are omitted from asset-page planned payouts; genuinely small unpaid amounts remain visible.

@@ -17,7 +17,7 @@ async function requestJson(url, options = {}, { fetchImpl = (...args) => fetch(.
       const response = await fetchImpl(url, { ...options, signal: controller.signal });
       if (!response.ok) { const error = new Error(`External provider returned HTTP ${response.status}.`); error.status = 502; throw error; }
       const payload = await response.json();
-      require('../../../frontend/js/state-model').validateJson(payload);
+      require('../../../shared/state-model').validateJson(payload);
       if (JSON.stringify(payload).length > 5 * 1024 * 1024) throw new Error('External provider response is too large.');
       return payload;
     })()]);

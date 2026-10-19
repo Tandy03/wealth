@@ -4,7 +4,7 @@ const { once } = require('node:events');
 const model = require('../../frontend/js/state-model');
 const rules = require('../../frontend/js/portfolio-rules');
 const finance = require('../../frontend/js/analytics/portfolio-finance');
-const { createService } = require('../domain/portfolioService');
+const { createServices: createService } = require('./helpers/portfolioServices');
 const { createApp } = require('../app');
 const { requestJson } = require('../services/market/request');
 const { normalizeData } = require('../domain/state');
@@ -96,6 +96,25 @@ test('a received dividend from one merged holding leaves only the unpaid portion
   const period = h.snapshot().payments.filter(p => p.date === '2026-11-10');
   assert.equal(period.filter(rules.received).reduce((sum, p) => sum + p.amount, 0), 100);
   assert.equal(period.filter(p => !rules.received(p)).reduce((sum, p) => sum + p.amount, 0), 100);
+});
+
+test('a revised dividend rate cannot create a residual payout for units already paid at their original rate', () => {
+  const data = model.createEmptyState();
+  data.assets.push(stock({ id: 'a', type: 'inzhur_reit', quantity: 10, dividendPerUnit: 10.01 }));
+  data.transactions.push({ id: 'buy', assetId: 'a', type: 'BUY', date: '2026-01-01', quantity: 10, amount: 1000 });
+  const receipt = { id: 'paid', assetId: 'a', type: 'DIVIDEND', date: '2026-02-10', status: 'received', amountPerUnit: 10, amount: 100, currency: 'USD' };
+  data.payments.push(receipt, { id: 'forecast', assetId: 'a', type: 'DIVIDEND', date: '2026-02-10', amountPerUnit: 10.01, currency: 'USD', status: 'planned' });
+  const original = structuredClone(receipt);
+  rules.refreshPayments(data);
+  assert.equal(data.payments[1].amount, 0);
+  assert.deepEqual(receipt, original, 'Received facts must not change with the estimate.');
+  data.assets[0].quantity = 20;
+  data.transactions.push({ id: 'other-buy', assetId: 'a', type: 'BUY', date: '2026-01-02', quantity: 10, amount: 1000 });
+  rules.refreshPayments(data);
+  assert.equal(data.payments[1].amount, 100.1, 'Unpaid units from another holding still retain their own payout.');
+  receipt.amountPerUnit = undefined;
+  rules.refreshPayments(data);
+  assert.ok(Math.abs(data.payments[1].amount - 100.2) < 1e-8, 'Legacy receipts without a unit rate retain cash-offset compatibility.');
 });
 
 test('sales reduce future coupons and redemption, with quantities resolved on the event date', async () => {

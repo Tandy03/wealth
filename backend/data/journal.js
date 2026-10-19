@@ -2,8 +2,8 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { createHash, randomUUID } = require('node:crypto');
 const { atomicWrite } = require('./atomicFile');
-const { signature } = require('../../frontend/js/sync-model');
-const { validateState } = require('../../frontend/js/state-model');
+const { signature } = require('../../shared/sync-model');
+const { validateState } = require('../../shared/state-model');
 const digest = snapshot => createHash('sha256').update(signature(snapshot)).digest('hex');
 function createJournal(file) {
   let entries = [], loaded = false;

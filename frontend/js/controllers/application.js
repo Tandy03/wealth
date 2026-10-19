@@ -10,8 +10,10 @@ function renderApplication(snapshot = stateStore.getState()) {
   window.ui.calculators.render(snapshot);
   window.ui.wallet.render(snapshot);
   populateSellAssetSelect();
+  window.ui.asset.render(snapshot);
 }
 function renderMarketViews(snapshot = stateStore.getState()) {
+  window.ui.asset.render(snapshot);
   window.ui.calculators.rebalance(snapshot);
   window.ui.dashboard.render(snapshot);
   window.ui.portfolio.render(snapshot);
@@ -20,6 +22,60 @@ function renderMarketViews(snapshot = stateStore.getState()) {
   window.ui.wallet.render(snapshot);
 }
 let stopRenderSubscription = null;
+function setupCommandRecovery() {
+  const panel = document.querySelector('#command-recovery');
+  if (!panel || !api.outbox) return;
+  let sequence = 0;
+  const labels = { createAsset: 'Create asset', buyMoreAsset: 'Buy asset', createSale: 'Sell asset', createTransaction: 'Transaction',
+    createPayment: 'Payment', markPaymentReceived: 'Receive payment', createCalendarNote: 'Calendar note', mergeAssets: 'Merge assets' };
+  const states = { queued: 'Saved locally; not sent', 'in-flight': 'Waiting for confirmation',
+    'outcome-unknown': 'Result unknown; recover the original request', confirmed: 'Confirmed; saved response retained locally',
+    rejected: 'Rejected; review the request', conflict: 'Conflict; review before continuing' };
+  async function refresh() {
+    const current = ++sequence;
+    try {
+      const result = await api.outbox.list();
+      if (current !== sequence) return;
+      if (!result.corrupt && !result.entries.length && panel.hidden) return;
+      panel.replaceChildren(); panel.hidden = !result.corrupt && !result.entries.length;
+      if (panel.hidden) return;
+      const title = document.createElement('strong'); title.textContent = 'Command recovery'; panel.append(title);
+      if (result.corrupt) {
+        const notice = document.createElement('p');
+        notice.textContent = 'Local recovery data is damaged and has been preserved. No commands will be sent. Code: ' + result.code;
+        panel.append(notice); return;
+      }
+      for (const entry of result.entries) {
+        const row = document.createElement('div'); row.className = 'command-recovery-row';
+        const message = document.createElement('span');
+        const expired = entry.lastErrorCode === 'OPERATION_RESULT_EXPIRED';
+        message.textContent = `${labels[entry.method]} — ${expired ? 'Already recorded; replay result expired. Reload the portfolio to review it.' : states[entry.state]}${entry.lastErrorCode ? ' (' + entry.lastErrorCode + ')' : ''}`;
+        row.append(message);
+        const retryable = ['queued', 'outcome-unknown'].includes(entry.state);
+        if (entry.state !== 'in-flight') {
+          const button = document.createElement('button'); button.type = 'button'; button.className = 'secondary-btn';
+          button.textContent = retryable ? 'Retry original command' : expired ? 'Reload portfolio' : 'Dismiss';
+          button.addEventListener('click', async () => {
+            button.disabled = true;
+            try {
+              if (retryable) { await api.outbox.retry(entry.operationId, result.scope); await loadData(); }
+              else { if (entry.lastErrorCode === 'OPERATION_RESULT_EXPIRED') await loadData(); await api.outbox.dismiss(entry.operationId, result.scope); }
+            } catch (error) { void showNotice(error); }
+            finally { await refresh(); }
+          });
+          row.append(button);
+        }
+        panel.append(row);
+      }
+    } catch (error) {
+      if (current !== sequence) return;
+      panel.hidden = false; panel.textContent = window.FinoErrors.displayMessage(error);
+    }
+  }
+  document.addEventListener('fino:outbox-changed', () => { void refresh(); });
+  stateStore.subscribe(({ type }) => { if (type === 'data:changed') void refresh(); });
+  void refresh();
+}
 const initializedUiControllers = new WeakSet();
 function initializeUiController(setup) {
   if (initializedUiControllers.has(setup)) return;
@@ -30,6 +86,7 @@ function setupRenderSubscriptions() {
   if (stopRenderSubscription) return;
   stopRenderSubscription = stateStore.subscribe(({ type, keys, state }) => {
     if (type === 'ui:changed' && keys.includes('marketRevision')) renderMarketViews(state);
+    if (type === 'ui:changed' && keys.includes('sp500BenchmarkStatus')) setReturnBenchmarkHover(document.querySelector('#stat-roi'), undefined, state);
   });
 }
 function setupPortfolioSort() {
@@ -84,8 +141,8 @@ function setupInzhurSync() {
         : "";
       showNotice(`Synchronized ${result.synced.length} Inzhur asset(s) and ${binanceSynced} Binance holding(s).${skipped}${binanceSkipped}`);
     } catch (error) {
-      console.error(error);
-      showNotice(error.message || "Could not synchronize assets.");
+      console.error(window.FinoErrors.diagnostics(error));
+      showNotice(error || "Could not synchronize assets.");
     } finally {
       button.disabled = false;
       button.textContent = defaultLabel;
@@ -95,6 +152,10 @@ function setupInzhurSync() {
 
 
 function setupNavigation() {
+  const compact = window.matchMedia('(max-width: 700px)');
+  const arrangeMetrics = () => document.querySelectorAll('#dashboard-section .dashboard-more-metrics, #dashboard-section .stat-explanation').forEach(details => { details.open = !compact.matches; });
+  arrangeMetrics();
+  compact.addEventListener?.('change', arrangeMetrics);
   const titleMap = {
     dashboard: "Dashboard",
 
@@ -156,11 +217,11 @@ function setupNavigation() {
 
 function setupGlobalErrorHandling() {
   window.addEventListener("error", (event) => {
-    console.error("JavaScript error:", event.error || event.message);
+    console.error("JavaScript error:", window.FinoErrors.diagnostics(event.error));
   });
 
   window.addEventListener("unhandledrejection", (event) => {
-    console.error("Unhandled promise rejection:", event.reason);
+    console.error("Unhandled promise rejection:", window.FinoErrors.diagnostics(event.reason));
   });
 }
 
@@ -204,5 +265,5 @@ function setupResponsiveTables() {
   applyResponsiveTableLabels();
   new MutationObserver(refresh).observe(document.body, { childList: true, subtree: true });
 }
-Object.assign(window, { renderApplication, renderMarketViews, initializeUiController, setupRenderSubscriptions, setupPortfolioSort, setupInzhurSync, setupNavigation, setupGlobalErrorHandling, disableNumberInputWheelChanges, applyResponsiveTableLabels, setupResponsiveTables });
+Object.assign(window, { renderApplication, renderMarketViews, initializeUiController, setupRenderSubscriptions, setupPortfolioSort, setupInzhurSync, setupNavigation, setupGlobalErrorHandling, disableNumberInputWheelChanges, applyResponsiveTableLabels, setupResponsiveTables, setupCommandRecovery });
 })();

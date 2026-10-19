@@ -1,8 +1,8 @@
+const { runMutation } = require('../domain/mutation');
 const { DomainError } = require("../utils/domainError");
 const { validateSyncAction } = require('../validators/requests');
-const { logEvent } = require('../utils/observability');
 const { digest } = require('../data/journal');
-const { ConflictError, syncError } = require('../../frontend/js/errors');
+const { ConflictError, syncError } = require('../../shared/errors');
 function createService(repository) {
     const { writeLocalData, readLocalData, initializeStorage } = repository;
     const googleDriveStorage = repository.drive;
@@ -24,7 +24,7 @@ function createService(repository) {
                 if (!remoteData)
                     throw new DomainError({ error: "fino-data.json was not found on Google Drive." }, 404);
                 await (googleDriveStorage.createAutomaticBackup || googleDriveStorage.createManualBackup)(localData);
-                await repository.runMutation(async () => {
+                await runMutation(repository, async () => {
                     if (digest(await readLocalData()) !== digest(localData)) throw new ConflictError({ message: 'Local changes were saved while downloading. Retry without discarding them.' });
                     await writeLocalData(remoteData);
                     await googleDriveStorage.confirmDownload?.(remoteData);
@@ -49,7 +49,6 @@ function createService(repository) {
             return { success: true, action, savedLocally: Boolean(status.savedLocally), savedRemotely: Boolean(status.savedRemotely),
                 backupSaved: action === 'backup' || action === 'download' ? true : Boolean(status.lastBackupId && status.lastBackupId !== previousBackupId), status };
         } catch (error) {
-            logEvent('sync.failed', { action, code: error.code || error.category || 'EXTERNAL_API_FAILURE' });
             if (error instanceof DomainError) throw error;
             const failure = syncError(error);
             googleDriveStorage.recordFailure?.(failure);

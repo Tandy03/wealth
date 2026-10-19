@@ -10,36 +10,6 @@ function walletMonthKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function normalizeWalletCategoryNames() {
-  const replacements = {
-    "Groceries + household goods": "Groceries + household",
-    "Other expenses": "Other",
-    Savings: "Save+invest",
-  };
-  const wallet = state.data.wallet;
-  (wallet.expenses || []).forEach((expense) => { expense.category = replacements[expense.category] || expense.category; });
-  Object.values(wallet.months || {}).forEach((month) => {
-    Object.entries(replacements).forEach(([oldName, newName]) => {
-      if (month.plans?.[oldName] != null) {
-        month.plans[newName] = month.plans[oldName];
-        delete month.plans[oldName];
-      }
-    });
-    month.customCategories = (month.customCategories || []).map((name) => replacements[name] || name);
-  });
-}
-
-function walletMonth(key) {
-  const wallet = state.data.wallet;
-  wallet.expenses ||= [];
-  wallet.months ||= {};
-  wallet.months[key] ||= { plans: {}, customCategories: [], notes: [] };
-  wallet.months[key].plans ||= {};
-  wallet.months[key].customCategories ||= [];
-  wallet.months[key].notes ||= [];
-  return wallet.months[key];
-}
-
 function walletCategories(key) {
   return [...new Set([...WALLET_CATEGORIES, ...walletMonthView(key).customCategories])];
 }
@@ -56,16 +26,6 @@ function walletCategoryTotal(key, category) {
   return walletExpenses(key)
     .filter((expense) => expense.category === category)
     .reduce((sum, expense) => sum + normalizeNumber(expense.amount), 0);
-}
-
-function cleanupUnusedWalletCategories() {
-  Object.entries(state.data.wallet.months || {}).forEach(([key, month]) => {
-    month.customCategories = (month.customCategories || []).filter((category) => {
-      const stillUsed = walletExpenses(key).some((expense) => expense.category === category);
-      if (!stillUsed && month.plans) delete month.plans[category];
-      return stillUsed;
-    });
-  });
 }
 
 function walletExpenseDateBounds() {
@@ -101,7 +61,7 @@ function getLoanSchedule(loan) {
   }
   return result;
 }
-    return { walletMonthKey, normalizeWalletCategoryNames, walletMonth, walletMonthView, walletCategories, walletExpenses, walletCategoryTotal, cleanupUnusedWalletCategories, walletExpenseDateBounds, shiftWalletDate, getLoanSchedule };
+    return { walletMonthKey, walletMonth: walletMonthView, walletMonthView, walletCategories, walletExpenses, walletCategoryTotal, walletExpenseDateBounds, shiftWalletDate, getLoanSchedule };
   }
   return { createService };
 });

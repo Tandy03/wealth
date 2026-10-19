@@ -1,4 +1,4 @@
-const { RemoteUnavailableError } = require('../../../frontend/js/errors');
+const { RemoteUnavailableError } = require('../../../shared/errors');
 function createRequestPolicy({ limit = 120, intervalMs = 60000, concurrency = 6, now = () => Date.now() } = {}) {
   const origins = new Map();
   function enter(url) {

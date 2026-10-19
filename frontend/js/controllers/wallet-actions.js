@@ -12,22 +12,32 @@
     return result;
   }
   function createService({ store, api }) {
-    let queue = Promise.resolve();
-    function mutate(change) {
-      const operation = queue.then(async () => {
-        const snapshot = store.getData();
-        const draft = JSON.parse(JSON.stringify(snapshot.wallet));
-        change(draft);
-        const saved = await api.saveWallet(draft);
-        // A reload/account switch while awaiting storage owns the newer state.
-        if (store.getData() !== snapshot) return false;
-        store.updateData(data => { data.wallet = saved || draft; });
-        return true;
-      });
-      queue = operation.catch(() => {});
-      return operation;
-    }
-    return { mutate };
+    return {
+      mutate: change => store.saveWallet(change, wallet => api.saveWallet(wallet)),
+      planDraftKey: (key, category) => JSON.stringify([store.capture().scope, key, category]),
+    };
   }
-  return { createService, month };
+  // These helpers may mutate only private command drafts, never published values.
+  function normalizeCategories(wallet) {
+    const replacements = { 'Groceries + household goods': 'Groceries + household', 'Other expenses': 'Other', Savings: 'Save+invest' };
+    for (const expense of wallet.expenses || []) expense.category = replacements[expense.category] || expense.category;
+    for (const entry of Object.values(wallet.months || {})) {
+      for (const [oldName, newName] of Object.entries(replacements)) if (entry.plans?.[oldName] != null) {
+        entry.plans[newName] = entry.plans[oldName]; delete entry.plans[oldName];
+      }
+      entry.customCategories = (entry.customCategories || []).map(name => replacements[name] || name);
+    }
+    return wallet;
+  }
+  function cleanupCategories(wallet) {
+    for (const [key, entry] of Object.entries(wallet.months || {})) {
+      const used = new Set((wallet.expenses || []).filter(expense => String(expense.date).slice(0, 7) === key).map(expense => expense.category));
+      entry.customCategories = (entry.customCategories || []).filter(category => {
+        if (used.has(category)) return true;
+        if (entry.plans) delete entry.plans[category];
+        return false;
+      });
+    }
+  }
+  return { createService, month, normalizeCategories, cleanupCategories };
 });

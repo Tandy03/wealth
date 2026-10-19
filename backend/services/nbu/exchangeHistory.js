@@ -10,14 +10,6 @@ class NbuExchangeError extends Error {
   }
 }
 
-function isoDate(value, fallback) {
-  const date = String(value || fallback || "").slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`))) {
-    throw new NbuExchangeError("A valid date is required.", 400);
-  }
-  return date;
-}
-
 function compactDate(value) {
   return value.replaceAll("-", "");
 }
@@ -30,9 +22,7 @@ function nbuDateToIso(value) {
 async function getNbuCurrencyHistory({ code, startDate, endDate }) {
   const currency = String(code || "").trim().toUpperCase();
   if (!/^[A-Z]{3}$/.test(currency) || currency === "UAH") throw new NbuExchangeError("A valid foreign currency code is required.", 400);
-  const today = new Date().toISOString().slice(0, 10);
-  const end = isoDate(endDate, today);
-  const start = isoDate(startDate, `${Number(end.slice(0, 4)) - 1}${end.slice(4)}`);
+  const { startDate: start, endDate: end } = require('../../validators/requests').currencyHistoryRange({ startDate, endDate });
   if (start > end) throw new NbuExchangeError("startDate cannot be later than endDate.", 400);
 
   const cacheKey = `${currency}:${start}:${end}`;

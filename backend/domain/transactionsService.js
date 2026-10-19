@@ -1,7 +1,7 @@
+const { mutationCommands, commandStorage } = require('./mutation');
 const { createTransaction: validateTransaction } = require("../validators/operations");
 function createService(repository) {
-    const { saveData } = repository;
-    const readData = require('./readState').createStateReader(repository);
+    const { readData, saveData } = commandStorage(repository);
     async function getTransactions() {
         const data = await readData();
         return data.transactions;
@@ -9,11 +9,11 @@ function createService(repository) {
     async function createTransaction(body) {
         const data = await readData();
         const transaction = validateTransaction(data, body);
-        const rules = require('../../frontend/js/portfolio-rules');
+        const rules = require('../../shared/portfolio-rules');
         rules.recordTransaction(data, data.assets.find(asset => asset.id === transaction.assetId), transaction, require('../utils/values').createId);
         await saveData(data);
         return transaction;
     }
-    return { getTransactions, createTransaction: (...args) => repository.runMutation(() => createTransaction(...args)) };
+    return { getTransactions, ...mutationCommands(repository, { createTransaction }) };
 }
 module.exports = { createService };

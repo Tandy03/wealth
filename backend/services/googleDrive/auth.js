@@ -3,7 +3,7 @@ const path = require("node:path");
 const { google } = require("googleapis");
 const { authenticate } = require("@google-cloud/local-auth");
 const { atomicWrite } = require('../../data/atomicFile');
-const { AuthRequiredError } = require('../../../frontend/js/errors');
+const { AuthRequiredError } = require('../../../shared/errors');
 const { logEvent } = require('../../utils/observability');
 
 const projectRoot = path.resolve(__dirname, "..", "..", "..");

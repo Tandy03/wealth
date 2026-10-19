@@ -57,9 +57,9 @@ async function markPaymentAsReceived(paymentIds, button = null) {
     renderCalendar();
     renderProfitCalculator();
   } catch (error) {
-    console.error("MARK PAYMENT RECEIVED ERROR:", error);
+    console.error("MARK PAYMENT RECEIVED ERROR:", window.FinoErrors.diagnostics(error));
 
-    showNotice(error.message || "Failed to mark payment as received.");
+    showNotice(error || "Failed to mark payment as received.");
 
     if (button) {
       button.disabled = false;
@@ -253,15 +253,15 @@ function setupNoteModal() {
     }
 
     try {
-      await api.createCalendarNote(note);
+      await api.createCalendarNote(financialCommand(form, 'createCalendarNote', note).body);
 
       close();
 
       await loadData();
     } catch (error) {
-      console.error(error);
+      console.error(window.FinoErrors.diagnostics(error));
 
-      showNotice(error.message || "Failed to save note.");
+      showNotice(error || "Failed to save note.");
     }
   });
 }

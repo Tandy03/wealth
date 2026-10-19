@@ -1,9 +1,9 @@
+const { mutationCommands, commandStorage } = require('./mutation');
 const { BASE_CURRENCY, normalizeCurrency, normalizeNumber, createId } = require("../utils/values");
 const { createPayment: validatePayment } = require("../validators/operations");
 const { DomainError } = require("../utils/domainError");
 function createService(repository) {
-    const { saveData } = repository;
-    const readData = require('./readState').createStateReader(repository);
+    const { readData, saveData } = commandStorage(repository);
     async function getPayments() {
         const data = await readData();
         return data.payments;
@@ -33,7 +33,7 @@ function createService(repository) {
         /*
          * Mark payment as received.
          */
-        if (payment.type === 'MATURITY') payment.costBasis = require('../../frontend/js/portfolio-rules').holdingsAtDate(data, payment.assetId, new Date().toISOString().slice(0, 10)).remainingCost;
+        if (payment.type === 'MATURITY') payment.costBasis = require('../../shared/portfolio-rules').holdingsAtDate(data, payment.assetId, new Date().toISOString().slice(0, 10)).remainingCost;
         payment.status = "received";
         const receivedNow = new Date();
         payment.receivedAt = receivedNow.toISOString();
@@ -63,6 +63,6 @@ function createService(repository) {
          */
         return payment;
     }
-    return { getPayments, createPayment: (...args) => repository.runMutation(() => createPayment(...args)), markPaymentReceived: (...args) => repository.runMutation(() => markPaymentReceived(...args)) };
+    return { getPayments, ...mutationCommands(repository, { createPayment, markPaymentReceived }) };
 }
 module.exports = { createService };

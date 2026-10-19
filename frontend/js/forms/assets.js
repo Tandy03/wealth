@@ -58,8 +58,8 @@ async function executeHoldingAction(assetIds, action) {
     for (const asset of assets) await api.deleteAsset(asset.id);
     await loadData();
   } catch (error) {
-    console.error(error);
-    showNotice(error.message || "Failed to delete holding.");
+    console.error(window.FinoErrors.diagnostics(error));
+    showNotice(error || "Failed to delete holding.");
   }
 }
 
@@ -842,7 +842,8 @@ function setupModal() {
          */
 
         if (state.editingAssetIds.length > 1) {
-          const merged = await api.mergeAssets(state.editingAssetIds);
+          const command = financialCommand(form, 'mergeAssets', { assetIds: state.editingAssetIds });
+          const merged = await api.mergeAssets(command.body.assetIds, { operationId: command.body.operationId });
           state.editingAssetId = merged.id;
         }
         await api.updateAsset(state.editingAssetId, asset);
@@ -858,17 +859,18 @@ function setupModal() {
           item.currency || "UAH",
         ].map((value) => String(value).trim().toLocaleLowerCase()).join("::");
         const existingAsset = state.data.assets.find((item) => identity(item) === identity(asset));
-        if (existingAsset) {
-          await api.buyMoreAsset(existingAsset.id, {
+        const body = existingAsset ? {
             quantity: asset.quantity,
             purchasePrice: asset.purchasePrice,
             purchaseDate: asset.purchaseDate,
             currency: asset.currency,
             instrumentId: existingAsset.instrumentId,
-          });
-        } else {
-          await api.createAsset(asset);
-        }
+          } : asset;
+        const intent = window.FinoOperations.describe('createAsset', [{ ...asset, operationId: 'preview' }]).command;
+        const command = financialCommand(form, existingAsset ? 'buyMoreAsset' : 'createAsset', body, existingAsset?.id || null,
+          { slot: 'asset-acquisition', identity: intent });
+        if (command.method === 'buyMoreAsset') await api.buyMoreAsset(command.target, command.body);
+        else await api.createAsset(command.body);
       }
 
       /*
@@ -896,9 +898,9 @@ function setupModal() {
 
       await loadData();
     } catch (error) {
-      console.error("SAVE ASSET ERROR:", error);
+      console.error("SAVE ASSET ERROR:", window.FinoErrors.diagnostics(error));
 
-      showNotice(error.message || "Failed to save asset.");
+      showNotice(error || "Failed to save asset.");
     } finally {
       if (submitButton) {
         submitButton.disabled = false;

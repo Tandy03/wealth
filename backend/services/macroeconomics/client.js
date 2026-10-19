@@ -1,6 +1,6 @@
 const { providerFetch } = require('../market/fetch');
 const { inflateRawSync } = require("node:zlib");
-const macroModel = require('../../../frontend/js/market-model');
+const macroModel = require('../../../shared/market-model');
 
 const USER_AGENT = "Wealth-Dashboard/1.0";
 const NBU_BASE = "https://bank.gov.ua/NBUStatService/v1/statdirectory";
@@ -173,7 +173,7 @@ async function getDebt() {
 }
 
 async function settle(name, promise) {
-  try { return { name, data: await promise }; } catch (error) { return { name, error: error.message || `Could not load ${name}` }; }
+  try { return { name, data: await promise }; } catch (error) { return { name, error: require('../../../shared/errors').publicError(error, { fallbackCategory: 'remote_unavailable' }).payload.error }; }
 }
 
 async function getMacroeconomics() {

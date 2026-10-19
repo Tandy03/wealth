@@ -15,7 +15,9 @@
     "smoke:serve": "node backend/scripts/uiSmokeServer.js",
     "mobile:config": "node backend/scripts/generateMobileConfig.js",
     "mobile:check": "node backend/scripts/checkMobileReadiness.js",
-    "mobile:sync": "npm run mobile:config && npx cap sync android",
+    "mobile:prepare": "node backend/scripts/prepareMobileAssets.js",
+    "capacitor:copy:before": "npm run mobile:prepare",
+    "mobile:sync": "npm run mobile:config && npm run mobile:prepare && npx cap sync android",
     "mobile:open": "npx cap open android",
     "mobile:build": "npm run mobile:sync && cd android && gradlew.bat assembleDebug",
     "mobile:apk": "npm run mobile:build"

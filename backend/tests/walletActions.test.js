@@ -23,7 +23,7 @@ test('a stale save cannot overwrite a reloaded portfolio or another account', as
   await new Promise(setImmediate);
   store.replaceData({ assets: [{ id: 'other-account' }] });
   finish();
-  assert.equal(await write, false);
+  await assert.rejects(write, error => error.code === 'STALE_STATE' && error.persistence.savedLocally === true && error.applied === false);
   assert.equal(store.getData().assets[0].id, 'other-account');
   assert.deepEqual(store.getData().wallet.months, {});
 });

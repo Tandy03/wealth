@@ -1,1 +1,1 @@
-﻿module.exports = require('../../frontend/js/constants');
+﻿module.exports = require('../../shared/constants');

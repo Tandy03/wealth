@@ -1,4 +1,4 @@
-The shared browser/Node model is `frontend/js/state-model.js`. It describes
+The shared browser/Node model is `shared/state-model.js` (`frontend/js/state-model.js` remains a compatibility export). It describes
 Asset, Transaction, Sale, Payment, CalendarNote, Wallet and Instrument. Missing
 legacy fields and unknown extension fields are preserved. Known numeric fields
 accept finite legacy numeric strings, converted on read/write. Dates use strict

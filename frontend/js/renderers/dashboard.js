@@ -24,18 +24,20 @@ function setReturnBenchmarkHover(element, portfolioReturn, state = stateStore.ge
   if (!element) return;
   const card = element.closest(".stat-card") || element;
   const label = document.querySelector("#stat-roi-label");
-  element.dataset.portfolioReturn = portfolioReturn == null ? "Unavailable" : `${portfolioReturn.toFixed(2)}%`;
-  element.textContent = element.dataset.portfolioReturn;
+  if (portfolioReturn !== undefined) element.dataset.portfolioReturn = portfolioReturn == null ? "Unavailable" : `${portfolioReturn.toFixed(2)}%`;
+  element.dataset.benchmarkReturn = state.sp500Benchmark == null ? window.FinoI18n.t(state.sp500BenchmarkStatus === 'loading' ? 'Loading…' : 'Unavailable') : `${state.sp500Benchmark >= 0 ? "+" : ""}${state.sp500Benchmark.toFixed(2)}%`;
   card.classList.add("currency-hover-card");
-  card.title = "Compare with S&P 500";
+  card.title = state.sp500BenchmarkStart && state.sp500BenchmarkEnd ? `S&P 500 · ${state.sp500BenchmarkStart} — ${state.sp500BenchmarkEnd}` : "Compare with S&P 500";
   card.tabIndex = 0;
   if (!card.dataset.benchmarkHoverBound) {
     card.dataset.benchmarkHoverBound = "true";
     const showBenchmark = () => {
+      card.dataset.benchmarkView = 'benchmark';
       if (label) label.textContent = "S&P 500";
-      element.textContent = state.sp500Benchmark == null ? "Unavailable" : `${state.sp500Benchmark >= 0 ? "+" : ""}${state.sp500Benchmark.toFixed(2)}%`;
+      element.textContent = element.dataset.benchmarkReturn;
     };
     const showPortfolioReturn = () => {
+      card.dataset.benchmarkView = 'portfolio';
       if (label) label.textContent = "Return";
       element.textContent = element.dataset.portfolioReturn;
     };
@@ -44,6 +46,8 @@ function setReturnBenchmarkHover(element, portfolioReturn, state = stateStore.ge
     card.addEventListener("focus", showBenchmark);
     card.addEventListener("blur", showPortfolioReturn);
   }
+  if (label) label.textContent = card.dataset.benchmarkView === 'benchmark' ? 'S&P 500' : 'Return';
+  element.textContent = card.dataset.benchmarkView === 'benchmark' ? element.dataset.benchmarkReturn : element.dataset.portfolioReturn;
 }
 
 function setXirrValue(element, xirr) {
@@ -110,10 +114,17 @@ function renderDashboard(state = stateStore.getState()) {
     0,
   );
 
-  const priceGrowthProfit = state.data.assets.reduce(
-    (sum, asset) => sum + toUAH(getUnrealizedPriceGrowth(asset), asset.currency),
-    0,
-  );
+  let quotedUnrealized = 0, pricedOpen = 0, unquotedOpen = 0;
+  const priceGrowthProfit = state.data.assets.reduce((sum, asset) => {
+    const growth = toUAH(getUnrealizedPriceGrowth(asset), asset.currency);
+    if (!['savings', 'deposit', 'novapay'].includes(asset.type)) {
+      if (getAvailableQuantity(asset.id) > 0) {
+        if (Number(asset.currentPrice) > 0) { quotedUnrealized += growth; pricedOpen++; }
+        else unquotedOpen++;
+      }
+    }
+    return sum + growth;
+  }, 0);
 
   /*
    * Received payments
@@ -121,7 +132,7 @@ function renderDashboard(state = stateStore.getState()) {
 
   const receivedPayments = (state.data.payments || [])
     .filter(
-      (payment) => payment.status === "received" || payment.status === "paid",
+      (payment) => window.FinoPortfolioRules.received(payment),
     )
     .reduce(
       (sum, payment) =>
@@ -132,6 +143,31 @@ function renderDashboard(state = stateStore.getState()) {
     );
 
   const totalProfit = salesProfit + priceGrowthProfit + receivedPayments;
+  const unrealizedElement = document.querySelector('#stat-unrealized');
+  const realizedElement = document.querySelector('#stat-realized');
+  const showResult = (element, amount) => {
+    setDashboardCurrencyHover(element, amount);
+    if (amount > 0) {
+      element.dataset.valueUah = '+' + element.dataset.valueUah; element.dataset.valueUsd = '+' + element.dataset.valueUsd;
+      element.textContent = element.dataset.valueUah;
+    }
+    element.classList.toggle('result-positive', amount > 0); element.classList.toggle('result-negative', amount < 0);
+  };
+  if (unrealizedElement) {
+    if (unquotedOpen && !pricedOpen) {
+      const unavailable = window.FinoI18n.t('No quote available');
+      unrealizedElement.textContent = unavailable; unrealizedElement.dataset.valueUah = unavailable; unrealizedElement.dataset.valueUsd = unavailable;
+    } else showResult(unrealizedElement, quotedUnrealized);
+    unrealizedElement.classList.toggle('result-positive', quotedUnrealized > 0);
+    unrealizedElement.classList.toggle('result-negative', quotedUnrealized < 0);
+  }
+  if (realizedElement) {
+    const realized = salesProfit + receivedPayments;
+    showResult(realizedElement, realized);
+  }
+  const unrealizedNote = document.querySelector('#stat-unrealized-note');
+  if (unrealizedNote) unrealizedNote.textContent = window.FinoI18n.t('Open quoted positions only; received income is excluded.')
+    + (unquotedOpen ? ` ${unquotedOpen} ${window.FinoI18n.t('unquoted positions are excluded.')}` : '');
 
   if (profitElement) {
     setDashboardCurrencyHover(profitElement, totalProfit);

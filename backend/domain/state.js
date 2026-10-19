@@ -1,4 +1,4 @@
-const model = require('../../frontend/js/state-model');
+const model = require('../../shared/state-model');
 const { normalizeCurrency } = require('../utils/values');
 const { normalizeAssetNames, initializeAssetPriceHistory, repairLegacyPurchaseHistory, updatePlannedPaymentsForAsset } = require('./portfolio');
 function updatePlannedPayments(data, assetId) {
@@ -10,7 +10,7 @@ function recalculatePortfolio(data) {
   normalizeAssetNames(data);
   initializeAssetPriceHistory(data);
   repairLegacyPurchaseHistory(data);
-  data.assets.forEach(asset => require('../../frontend/js/portfolio-rules').updateHolding(data, asset));
+  data.assets.forEach(asset => require('../../shared/portfolio-rules').updateHolding(data, asset));
   updatePlannedPayments(data);
   const assetIds = new Set(data.assets.map(asset => asset.id));
   data.payments = data.payments.filter(payment => assetIds.has(payment.assetId) || payment.status === 'received' || payment.status === 'paid');

@@ -11,6 +11,7 @@ function driveStatusLabel(status) {
 }
 
 function renderGoogleDriveStatus(status) {
+  window.ui?.asset?.setSyncStatus(status);
   const label = driveStatusLabel(status);
   document.querySelectorAll(".drive-sync-panel").forEach((panel) => {
     panel.classList.toggle("is-offline", !status.connected && !status.authorizationRequired && !status.conflict);

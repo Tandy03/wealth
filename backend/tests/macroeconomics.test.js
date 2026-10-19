@@ -67,12 +67,16 @@ test('a stalled policy provider remains bounded and an empty response is never c
 test('partial macro failures expire quickly and concurrent refreshes share one request set', async () => {
   let clock = Date.parse('2026-10-13T12:00:00Z'), gdpCalls = 0, available = false;
   const client = createClient({ now: () => clock, fetchImpl: async url => {
-    if (new URL(url).hostname === 'stat.gov.ua') { gdpCalls++; return new Response(available ? csv : 'upstream unavailable'); }
+    if (new URL(url).hostname === 'stat.gov.ua') {
+      gdpCalls++; if (!available) throw new Error('Bearer macro-private-sentinel https://provider.test/private');
+      return new Response(csv);
+    }
     const payload = new URL(url).hostname === 'data.gov.ua' ? { result: { resources: [] } } : [];
     return new Response(JSON.stringify(payload), { headers: { 'Content-Type': 'application/json' } });
   } });
   const [first, concurrent] = await Promise.all([client.getMacroeconomics(), client.getMacroeconomics()]);
   assert.ok(first.errors.gdp); assert.equal(concurrent, first); assert.equal(gdpCalls, 1);
+  assert.ok(!JSON.stringify(first).includes('macro-private-sentinel'));
   available = true; clock += 31000;
   const recovered = await client.getMacroeconomics();
   assert.equal(recovered.errors.gdp, undefined); assert.equal(recovered.gdp.nominal.length, 2); assert.equal(gdpCalls, 2);

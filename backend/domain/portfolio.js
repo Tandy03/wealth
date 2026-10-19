@@ -1,4 +1,4 @@
-const rules = require('../../frontend/js/portfolio-rules');
+const rules = require('../../shared/portfolio-rules');
 const { BASE_CURRENCY, normalizeNumber, createId } = require("../utils/values");
 const { DAYS_PER_YEAR, MILLISECONDS_PER_DAY } = require('../config/constants');
 function normalizeAssetNames(data) {

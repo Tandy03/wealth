@@ -2,9 +2,9 @@ const path = require('node:path');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const defaultDrive = require('../services/googleDrive/storage');
-const { createEmptyState, normalizeState, validateState } = require('../../frontend/js/state-model');
-const { describe } = require('../../frontend/js/sync-model');
-const { StorageError, ValidationError, ConflictError } = require('../../frontend/js/errors');
+const { createEmptyState, normalizeState, validateState } = require('../../shared/state-model');
+const { describe } = require('../../shared/sync-model');
+const { StorageError, ValidationError, ConflictError } = require('../../shared/errors');
 const { createJournal, digest } = require('./journal');
 const { atomicWrite } = require('./atomicFile');
 const { logEvent } = require('../utils/observability');
@@ -42,6 +42,7 @@ function createRepository({ dataFile = path.join(__dirname, 'data.json'), drive 
   async function saveData(data) {
     try { validateState(data); } catch (cause) { throw new ValidationError({ message: cause.message, cause }); }
     const snapshot = normalizeState(data);
+    require('../../shared/operations').compact(snapshot);
     snapshot.sync = { ...snapshot.sync, revision: Math.max(Number(current?.sync?.revision || 0), Number(data.sync?.revision || 0)) + 1,
       updatedAt: new Date().toISOString(), deviceId: process.env.GOOGLE_DRIVE_DEVICE_ID || os.hostname() };
     const result = await writeLocalData(snapshot);

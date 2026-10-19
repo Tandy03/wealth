@@ -66,16 +66,20 @@
     setText('rebalance-save-status', t(saveError ? conflict ? 'The rebalance plan changed. Reload before editing it again.' : 'Could not save the rebalance plan. Try again.'
       : pending ? 'Saving rebalance plan…' : lastPersistence?.savedRemotely ? 'Rebalance plan saved to Drive.' : 'Rebalance plan saved locally. Drive sync has its own status.'));
     const status = element('rebalance-save-status');
+    const requestId = window.FinoErrors.safeRequestId(saveError?.requestId);
+    if (status && requestId) status.textContent += ' ' + format('Request ID: {value}', requestId);
     if (status) { status.hidden = !pending && !lastPersistence && !expected; status.dataset.state = saveError ? 'error' : pending ? 'pending' : 'saved'; }
     const retry = element('rebalance-save-retry');
     if (retry) { retry.hidden = !saveError || conflict; retry.onclick = () => { saveError = null; void flush(); }; }
     const reload = element('rebalance-save-reload');
     if (reload) { reload.hidden = !conflict; reload.onclick = async () => {
       try {
-        const data = await api.getData();
+        const result = await stateStore.loadData(() => api.getData());
+        if (!result.applied) return;
+        const data = stateStore.getData();
         pending = false; saveError = null; lastPersistence = null;
         clearDraft();
-        stateStore.replaceData(data); snapshot = stateStore.getState(); hydrate(data.rebalance); update(false); renderPersistence();
+        snapshot = stateStore.getState(); hydrate(data.rebalance); update(false); renderPersistence();
       } catch (error) { saveError = error; renderPersistence(); }
     }; }
   }
@@ -98,13 +102,9 @@
         if (signature(plan) === signature(expected)) { pending = false; clearDraft(); break; }
         try {
           inflight = copy(plan); cacheDraft();
-          const saved = await api.saveRebalance({ plan, expected: copy(expected) });
+          const saved = await stateStore.saveRebalance({ plan, expected: copy(expected) }, request => api.saveRebalance(request));
           if (writeGeneration !== generation || renderedAccount !== account()) return;
-          const cached = stateStore.getData().rebalance;
-          if (signature(cached) !== signature(expected) && signature(cached) !== signature(plan))
-            throw new window.FinoErrors.ConflictError({ message: 'The rebalance plan changed. Reload before editing it again.' });
-          expected = copy(plan); lastPersistence = saved.persistence || { savedLocally: true, savedRemotely: false };
-          stateStore.updateData(data => { data.rebalance = copy(plan); });
+          expected = copy(saved.value); lastPersistence = saved.persistence;
           pending = signature(draft()) !== signature(plan);
           inflight = null;
           if (pending) cacheDraft(); else clearDraft();

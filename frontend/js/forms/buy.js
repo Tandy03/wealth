@@ -202,7 +202,7 @@ function setupBuyMoreModal() {
        * ==================================================
        */
 
-      await api.buyMoreAsset(assetId, purchase);
+      await api.buyMoreAsset(assetId, financialCommand(form, 'buyMoreAsset', purchase, assetId).body);
 
       /*
        * Close modal
@@ -216,9 +216,9 @@ function setupBuyMoreModal() {
 
       await loadData();
     } catch (error) {
-      console.error("BUY MORE ASSET ERROR:", error);
+      console.error("BUY MORE ASSET ERROR:", window.FinoErrors.diagnostics(error));
 
-      showNotice(error.message || "Failed to buy more asset.");
+      showNotice(error || "Failed to buy more asset.");
     } finally {
       if (submitButton) {
         submitButton.disabled = false;

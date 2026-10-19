@@ -4,11 +4,21 @@ const state = stateStore.getState();
 function bindWalletPlanActions(body, key) {
   body.querySelectorAll('[data-wallet-plan]').forEach(input => {
     input.addEventListener('change', () => runUiAction(async () => {
+      const category = input.dataset.walletPlan, value = input.value;
+      const id = walletActions.planDraftKey(key, category), draft = { value, status: 'pending' };
+      stateStore.setUI({ walletPlanDrafts: { ...state.walletPlanDrafts, [id]: draft } });
       input.disabled = true;
       try {
-        await walletActions.mutate(wallet => { FinoWalletActions.month(wallet, key).plans[input.dataset.walletPlan] = normalizeNumber(input.value); });
-      } finally {
+        await walletActions.mutate(wallet => { FinoWalletActions.month(wallet, key).plans[category] = normalizeNumber(value); });
+        if (state.walletPlanDrafts?.[id] === draft) {
+          const drafts = { ...state.walletPlanDrafts }; delete drafts[id];
+          stateStore.setUI({ walletPlanDrafts: drafts });
+        }
         renderWalletCurrent();
+      } catch (error) {
+        if (state.walletPlanDrafts?.[id] === draft) stateStore.setUI({ walletPlanDrafts: { ...state.walletPlanDrafts, [id]: { value, status: 'error' } } });
+        renderWalletCurrent();
+        throw error;
       }
     }));
     input.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); input.blur(); } });
@@ -28,7 +38,7 @@ function bindWalletExpenseActions(body) {
     if (!(await showConfirm('Delete this expense?'))) return;
     await walletActions.mutate(wallet => {
       wallet.expenses = wallet.expenses.filter(expense => expense.id !== button.dataset.deleteExpense);
-      createRenderServices({ ...stateStore.getState(), data: { ...stateStore.getData(), wallet } }).cleanupUnusedWalletCategories();
+      FinoWalletActions.cleanupCategories(wallet);
     });
     renderWallet();
   })));

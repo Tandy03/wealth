@@ -18,13 +18,16 @@ function renderWalletCurrent(state = stateStore.getState()) {
   const row = category => FinoWalletView.budgetRow({
     category, plan: normalizeNumber(month.plans[category]), actual: walletCategoryTotal(key, category), totalPlan, totalActual,
     removable: month.customCategories.includes(category) && walletCategoryTotal(key, category) === 0,
-  }, { money: walletMoney, escapeHtml });
+    draft: state.walletPlanDrafts?.[walletActions.planDraftKey(key, category)],
+  }, { money: walletMoney, escapeHtml, translate: window.FinoI18n.t });
 
   const remainder = totalPlan - totalActual;
   body.innerHTML = `<tr class="wallet-summary-row"><td>Budget<br>${escapeHtml(monthName)}</td><td>${walletMoney(totalPlan)}</td><td>100%</td><td>${walletMoney(totalActual)}</td><td class="wallet-balance ${remainder < 0 ? "negative-balance" : remainder > 0 ? "positive-balance" : ""}">${walletMoney(remainder)}</td><td>${totalPlan > 0 ? (totalActual / totalPlan * 100).toFixed(1) : "0.0"}%</td><td></td></tr>`
     + expenseCategories.map(row).join("")
-    + `<tr class="wallet-summary-row"><td>Total</td><td>${walletMoney(totalPlan)}</td><td>100%</td><td>${walletMoney(totalActual)}</td><td class="wallet-balance ${remainder < 0 ? "negative-balance" : remainder > 0 ? "positive-balance" : ""}">${walletMoney(remainder)}</td><td>${totalPlan > 0 ? (totalActual / totalPlan * 100).toFixed(1) : "0.0"}%</td><td></td></tr>`
-    + `<tr class="wallet-summary-row"><td>Expenses for ${escapeHtml(monthName)}</td><td colspan="5">${walletMoney(spendingActual)}</td><td></td></tr>`;
+    + `<tr class="wallet-summary-row wallet-budget-total"><td>Total</td><td>${walletMoney(totalPlan)}</td><td>100%</td><td>${walletMoney(totalActual)}</td><td class="wallet-balance ${remainder < 0 ? "negative-balance" : remainder > 0 ? "positive-balance" : ""}">${walletMoney(remainder)}</td><td>${totalPlan > 0 ? (totalActual / totalPlan * 100).toFixed(1) : "0.0"}%</td><td></td></tr>`
+    + `<tr class="wallet-summary-row wallet-budget-spending"><td>Expenses for ${escapeHtml(monthName)}</td><td colspan="5">${walletMoney(spendingActual)}</td><td></td></tr>`;
+  const labels = ['Expense category', 'Plan', 'Percentage', 'Actual amount', 'Balance', 'Actual percentage', 'Actions'];
+  body.querySelectorAll('.wallet-summary-row').forEach(row => [...row.children].forEach((cell, index) => { cell.dataset.label = window.FinoI18n.t(labels[index]); }));
 
   renderBudgetProgress(totalActual, totalPlan);
 

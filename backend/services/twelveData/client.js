@@ -85,7 +85,7 @@ async function getTimeSeries(options = {}) {
       cached: false,
       fetchedAt: new Date().toISOString(),
     };
-    const validated = require('../../../frontend/js/market-model').history(data);
+    const validated = require('../../../shared/market-model').history(data);
     data.values = validated.values;
     cache.set(cacheKey, { updatedAt: Date.now(), data });
     return data;

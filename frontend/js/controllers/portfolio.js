@@ -23,8 +23,15 @@ function bindPortfolioActions(tbody) {
 
   tbody.querySelectorAll("[data-asset-group]").forEach((row) => row.addEventListener("click", (event) => {
     if (event.target.closest("button")) return;
-    openAssetTransactions(row.dataset.assetGroup.split(","));
+    window.ui.asset.open(row.dataset.assetGroup.split(','), { from: 'portfolio' });
   }));
+  tbody.querySelectorAll('[data-asset-group]').forEach(row => {
+    row.tabIndex = 0; row.setAttribute('role', 'button');
+    row.addEventListener('keydown', event => {
+      if (event.target !== row || !['Enter', ' '].includes(event.key)) return;
+      event.preventDefault(); window.ui.asset.open(row.dataset.assetGroup.split(','), { from: 'portfolio' });
+    });
+  });
 }
 
 function bindHoldingDetailActions(body) {

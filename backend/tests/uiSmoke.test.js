@@ -4,12 +4,15 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { JSDOM, VirtualConsole } = require('jsdom');
+const { guardFinancialReads } = require('./helpers/readonlyStore');
+const { manifest, scriptSources, sourcePath, validateFrontend, assertReviewedGlobals } = require('../scripts/frontendContract');
 const model = require('../../frontend/js/state-model');
 const frontend = path.join(__dirname, '../../frontend');
 const html = fs.readFileSync(path.join(frontend, 'index.html'), 'utf8');
+validateFrontend(html);
 const fixture = () => ({ ...model.createEmptyState(), assets: [{ id: 'stock', name: 'Smoke Stock', type: 'stock', quantity: 2, purchasePrice: 100, currentPrice: 120, purchaseDate: '2026-01-01', currency: 'USD' }], transactions: [{ id: 'buy', assetId: 'stock', type: 'BUY', quantity: 2, amount: 200, date: '2026-01-01', currency: 'USD' }] });
 const flush = async () => { for (let i = 0; i < 8; i++) await new Promise(setImmediate); };
-async function harness(t, { initial = fixture(), blockMarkets = false, locale = 'en', charts = false, failWallet = false, failRebalance = false, sessionDraft, native = false, nativeStorage: restoredStorage, macroFailureOnce = false, styles = false } = {}) {
+async function harness(t, { initial = fixture(), blockMarkets = false, locale = 'en', charts = false, failWallet = false, failRebalance = false, failPayments = false, sessionDraft, native = false, nativeStorage: restoredStorage, macroFailureOnce = false, styles = false, compact = false, bootFromEvent = false, browserStorage } = {}) {
   const errors = [];
   const console = new VirtualConsole();
   console.on('jsdomError', error => errors.push(error.message));
@@ -17,10 +20,11 @@ async function harness(t, { initial = fixture(), blockMarkets = false, locale = 
   const { window } = dom;
   if (styles) {
     const style = window.document.createElement('style');
-    style.textContent = ['style.css', 'rebalance.css'].map(file => fs.readFileSync(path.join(frontend, 'css', file), 'utf8')).join('\n');
+    style.textContent = ['style.css', 'rebalance.css', 'asset-detail.css'].map(file => fs.readFileSync(path.join(frontend, 'css', file), 'utf8')).join('\n');
     window.document.head.append(style);
   }
   window.localStorage.setItem('fino-language', locale);
+  for (const [key, value] of browserStorage || []) window.localStorage.setItem(key, value);
   if (sessionDraft) window.sessionStorage.setItem('fino-rebalance-draft-v1', sessionDraft);
   const observers = [];
   const NativeObserver = window.MutationObserver;
@@ -35,7 +39,8 @@ async function harness(t, { initial = fixture(), blockMarkets = false, locale = 
   });
   if (window.document.readyState === 'loading') await new Promise(resolve => window.document.addEventListener('DOMContentLoaded', resolve, { once: true }));
   window.console = { log() {}, info() {}, warn() {}, error: (...args) => errors.push(args.map(String).join(' ')) };
-  window.matchMedia = () => ({ matches: false, addEventListener() {} });
+  window.matchMedia = query => ({ matches: compact && query === '(max-width: 700px)', addEventListener() {} });
+  window.scrollTo = () => {}; // jsdom has no layout or scrolling implementation.
   window.setInterval = () => 0;
   const chartCalls = [];
   if (charts === 'real') {
@@ -85,11 +90,13 @@ async function harness(t, { initial = fixture(), blockMarkets = false, locale = 
     saveData: async data => { stored = model.normalizeState(data); },
     runMutation(operation) { const result = queue.then(operation); queue = result.catch(() => {}); return result; },
   };
-  const portfolio = require('../domain/portfolioService').createService(repository);
+  const assets = require('../domain/assetService').createService(repository);
+  const purchases = require('../domain/purchaseService').createService(repository);
+  const payments = require('../domain/paymentService').createService(repository);
   const wallet = require('../domain/walletService').createService(repository);
   const rebalance = require('../domain/rebalanceService').createService(repository);
   const requests = [];
-  let rebalanceFailure = failRebalance;
+  let rebalanceFailure = failRebalance, walletFailure = failWallet;
   let macroCalls = 0, policyCalls = 0;
   let sessionValid = true;
   window.fetch = async (url, options = {}) => {
@@ -120,10 +127,14 @@ async function harness(t, { initial = fixture(), blockMarkets = false, locale = 
       if (macroFailureOnce && ++policyCalls === 1) return new Response(JSON.stringify({ error: 'Temporary policy failure' }), { status: 502, headers: { 'Content-Type': 'application/json' } });
       data = { policyRate: [{ date: '2026-01-01', value: 15 }, { date: '2026-02-01', value: 15.5 }] };
     }
-    else if (route === '/api/assets' && method === 'POST') data = await portfolio.createAsset(body);
-    else if (/\/api\/assets\/.+\/buy$/.test(route)) data = await portfolio.buyMoreAsset(route.split('/')[3], body);
+    else if (route === '/api/assets' && method === 'POST') data = await assets.createAsset(body);
+    else if (/\/api\/assets\/.+\/buy$/.test(route)) data = await purchases.buyMoreAsset(route.split('/')[3], body);
+    else if (/\/api\/payments\/.+\/received$/.test(route)) {
+      if (failPayments) return new Response(JSON.stringify({ error: 'Storage unavailable.', code: 'STORAGE_FAILURE', category: 'storage' }), { status: 503, headers: { 'Content-Type': 'application/json', 'X-Request-Id': 'payment-test-id' } });
+      data = await payments.markPaymentReceived(route.split('/')[3]);
+    }
     else if (route === '/api/wallet' && method === 'PUT') {
-      if (failWallet) return new Response(JSON.stringify({ error: 'Storage unavailable.' }), { status: 503, headers: { 'Content-Type': 'application/json' } });
+      if (walletFailure) return new Response(JSON.stringify({ error: 'Storage unavailable.' }), { status: 503, headers: { 'Content-Type': 'application/json', 'X-Request-Id': 'wallet-request-id' } });
       data = await wallet.saveWallet(body);
     }
     else if (route === '/api/rebalance' && method === 'PUT') {
@@ -134,17 +145,254 @@ async function harness(t, { initial = fixture(), blockMarkets = false, locale = 
     else throw new Error('Unexpected UI request: ' + route);
     return new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } });
   };
-  for (const match of html.matchAll(/<script src="(\/js\/[^"?]+)(?:\?[^"\s]*)?"/g)) {
-    if (match[1].endsWith('mobile-config.generated.js')) continue;
-    vm.runInContext(fs.readFileSync(path.join(frontend, match[1]), 'utf8'), dom.getInternalVMContext(), { filename: match[1] });
-    if (locale !== 'en' && match[1].endsWith('/i18n.js')) window.document.dispatchEvent(new window.Event('DOMContentLoaded'));
+  for (const src of scriptSources(html)) {
+    // Chart is loaded above when requested; generated credentials are replaced
+    // with the synthetic native fixture rather than read into UI test reports.
+    if (src.startsWith('/vendor/') || src.endsWith('mobile-config.generated.js')) continue;
+    const before = Object.getOwnPropertyDescriptors(window);
+    vm.runInContext(fs.readFileSync(sourcePath(src), 'utf8'), dom.getInternalVMContext(), { filename: src });
+    assertReviewedGlobals(manifest.scripts.find(script => script.src === src), before, Object.getOwnPropertyDescriptors(window));
+    if (src.endsWith('/state-store.js')) {
+      const createStore = window.FinoStateStore.createStore;
+      window.FinoStateStore.createStore = options => guardFinancialReads(createStore(options));
+    }
+    if (locale !== 'en' && src.endsWith('/i18n.js')) window.document.dispatchEvent(new window.Event('DOMContentLoaded'));
   }
-  await window.init();
+  if (bootFromEvent) {
+    window.document.dispatchEvent(new window.Event('DOMContentLoaded'));
+    await flush();
+  } else await window.init();
   if (native) await window.mobileApi.waitForSync();
   await flush();
-  return { window, document: window.document, errors, requests, chartCalls, nativeStorage, expireSession: () => { sessionValid = false; },
-    failRebalance: value => { rebalanceFailure = value; }, replaceStored: next => { stored = model.normalizeState(next); },
+  return { window, document: window.document, errors, requests, chartCalls, nativeStorage,
+    browserStorage: () => new Map(Array.from({ length: window.localStorage.length }, (_, index) => {
+      const key = window.localStorage.key(index); return [key, window.localStorage.getItem(key)];
+    })), expireSession: () => { sessionValid = false; },
+    failRebalance: value => { rebalanceFailure = value; }, failWallet: value => { walletFailure = value; }, replaceStored: next => { stored = model.normalizeState(next); },
     stored: () => structuredClone(stored), eval: expression => vm.runInContext(expression, dom.getInternalVMContext()) };
+}
+
+for (const native of [false, true]) {
+  test(`compact ${native ? 'native' : 'web'} budget retains one editable input and Dashboard reveals secondary metrics on demand`, async t => {
+    const initial = fixture();
+    initial.wallet.months['2026-10'] = { plans: { Health: 500 }, customCategories: [], notes: [] };
+    initial.wallet.expenses = [{ id: 'health', category: 'Health', date: '2026-10-01', amount: 100 }];
+    const h = await harness(t, { initial, native, compact: true });
+    const input = h.document.querySelector('[data-wallet-plan="Health"]');
+    const row = input.closest('tr');
+    assert.equal(h.document.querySelectorAll('[data-wallet-plan="Health"]').length, 1);
+    assert.equal(row.children[1].dataset.label, 'Plan');
+    assert.equal(row.children[3].dataset.label, 'Actual amount');
+    assert.match(row.children[3].textContent, /100/);
+    assert.equal(row.children[4].dataset.label, 'Balance');
+    assert.match(row.children[4].textContent, /400/);
+    input.value = '600'; input.dispatchEvent(new h.window.Event('change')); await flush();
+    assert.equal(h.eval('stateStore.getData().wallet.months["2026-10"].plans.Health'), 600);
+    const more = h.document.querySelector('#dashboard-more-metrics');
+    assert.equal(more.open, false);
+    assert.equal(h.document.querySelectorAll('#dashboard-key-metrics > .stat-card').length, 4);
+    assert.equal(h.document.querySelector('#stat-unrealized-note').closest('details').open, false);
+    more.querySelector('summary').click();
+    assert.equal(more.open, true); assert.ok(more.querySelector('#stat-roi'));
+    h.document.querySelector('#open-investments').click();
+    assert.match(h.document.querySelector('#investments-app .nav-scroll-hint').textContent, /Swipe/);
+    h.document.querySelector('[data-section="macroeconomics"]').click(); await flush();
+    assert.equal(h.document.querySelector('#macroeconomics-section').classList.contains('active'), true);
+    assert.deepEqual(h.errors, []);
+  });
+  test(`transactions in ${native ? 'native' : 'web'} resolve missing names by asset/payment links and escape fallback text`, async t => {
+    const initial = fixture();
+    initial.transactions.push({ ...initial.transactions[0], id: 'named', assetName: 'Historical name' },
+      { ...initial.transactions[0], id: 'missing', assetId: 'removed', date: '2025-01-01' },
+      { id: 'payment-tx', type: 'COUPON', assetId: 'stale', paymentId: 'coupon', date: '2026-01-02', amount: 10, currency: 'USD' });
+    initial.payments.push({ id: 'coupon', assetId: 'stock', type: 'COUPON', date: '2026-01-02', amount: 10, status: 'received', currency: 'USD' });
+    const h = await harness(t, { initial, native });
+    const cells = () => [...h.document.querySelectorAll('#transactions-table tr')].map(row => row.children[1].textContent.trim());
+    assert.ok(cells().includes('Smoke Stock')); assert.ok(cells().includes('Historical name')); assert.ok(cells().includes('Asset unavailable'));
+    assert.equal(cells().filter(value => value === 'Smoke Stock').length, 2);
+    const next = h.stored(); next.assets[0].name = '<img src=x onerror=alert(1)>';
+    h.eval('stateStore').replaceData(next); h.window.renderTransactions();
+    assert.equal(h.document.querySelector('#transactions-table img'), null);
+    assert.ok(cells().includes(next.assets[0].name));
+    assert.deepEqual(h.errors, []);
+  });
+  test(`asset page stacks grouped holdings in ${native ? 'native offline' : 'desktop'} UI without fetching or mutating data`, async t => {
+    const initial = fixture();
+    initial.assets[0].purchasePrice = 79996.57 / 5;
+    initial.assets[0].currentPrice = 80939.04 / 5;
+    initial.transactions[0].amount = 2 * initial.assets[0].purchasePrice;
+    initial.assets.push({ ...initial.assets[0], id: 'stock-2', quantity: 3 });
+    initial.transactions.push({ ...initial.transactions[0], id: 'buy-2', assetId: 'stock-2', quantity: 3, amount: 3 * initial.assets[0].purchasePrice });
+    initial.priceHistory = ['2026-01-10', '2026-02-10'].map((date, index) => ({ id: 'p' + index, assetId: 'stock', date, price: 100 + index * 20, currency: 'USD' }));
+    const h = await harness(t, { initial, native, charts: 'real' });
+    const before = h.stored(), calls = h.requests.length;
+    h.document.querySelector('#dashboard-assets [data-asset-group]').click();
+    const section = h.document.querySelector('#asset-detail-section');
+    assert.equal(section.classList.contains('active'), true);
+    assert.equal(h.document.querySelector('#investments-app').hidden, false);
+    assert.equal(h.document.querySelector('#wallet-app').hidden, true);
+    assert.equal(section.querySelectorAll('.asset-detail-tabs button').length, 5);
+    assert.match(section.textContent, /All purchases of this asset are combined/);
+    assert.equal(section.querySelector('[data-asset-holding]'), null);
+    assert.equal(section.querySelector('.asset-detail-stats strong').textContent, '5');
+    const metrics = section.querySelectorAll('.asset-detail-stats strong');
+    assert.match(metrics[1].textContent, /79,996\.57/);
+    assert.match(metrics[2].textContent, /80,939\.04/);
+    assert.equal(section.querySelector('.asset-detail-stats .stat-card:last-child small').textContent, '1.18%');
+    section.querySelector('[data-asset-action="sell"]').click();
+    assert.equal(h.document.querySelector('#sell-asset').value, 'stock,stock-2', 'Sell must include both open positions in the card.');
+    h.document.querySelector('#close-sell-modal').click();
+    for (const tab of ['operations', 'payments', 'price', 'details', 'overview']) section.querySelector(`[data-asset-tab="${tab}"]`).click();
+    assert.equal(h.requests.length, calls, 'Opening and navigating the detail page uses the loaded document.');
+    assert.deepEqual(h.stored(), before);
+    await new Promise(resolve => { h.window.addEventListener('popstate', resolve, { once: true }); section.querySelector('[data-asset-back]').click(); }); await flush();
+    assert.equal(h.document.querySelector('#dashboard-section').classList.contains('active'), true);
+    h.document.querySelector('[data-section="portfolio"]').click();
+    h.document.querySelector('#portfolio-table [data-asset-group]').dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    assert.equal(section.classList.contains('active'), true);
+    await new Promise(resolve => { h.window.addEventListener('popstate', resolve, { once: true }); section.querySelector('[data-asset-back]').click(); }); await flush();
+    assert.equal(h.document.querySelector('#portfolio-section').classList.contains('active'), true);
+    assert.deepEqual(h.errors, []);
+  });
+}
+
+test('asset page escapes text, filters recorded history and uses historical quantities in its chart', async t => {
+  const initial = fixture();
+  initial.assets[0].name = '<img src=x onerror=alert(1)>';
+  initial.transactions.push({ id: 'buy-2', assetId: 'stock', type: 'BUY', quantity: 1, amount: 150, date: '2026-02-01', currency: 'USD' });
+  initial.assets[0].quantity = 3;
+  initial.priceHistory = [{ id: 'p1', assetId: 'stock', date: '2026-01-10', price: 100 }, { id: 'p2', assetId: 'stock', date: '2026-02-10', price: 120 }];
+  const h = await harness(t, { initial, charts: true });
+  h.window.ui.asset.open(['stock']);
+  const section = h.document.querySelector('#asset-detail-section');
+  assert.equal(section.querySelector('[data-asset-heading]').textContent, initial.assets[0].name);
+  assert.equal(section.querySelector('img'), null);
+  section.querySelector('[data-asset-tab="price"]').click();
+  let mode = section.querySelector('[data-asset-chart-mode]'); mode.value = 'value'; mode.dispatchEvent(new h.window.Event('change', { bubbles: true }));
+  const config = h.chartCalls.filter(call => call.canvas.id === 'asset-detail-chart').at(-1).config;
+  assert.deepEqual(Array.from(config.data.datasets[0].data), [200, 360]);
+  const from = section.querySelector('[data-asset-chart-from]'); from.value = '2027-01-01'; from.dispatchEvent(new h.window.Event('change', { bubbles: true }));
+  assert.match(section.querySelector('[data-asset-chart-message]').textContent, /At least two/);
+  section.querySelector('[data-asset-tab="operations"]').click();
+  const filter = section.querySelector('[data-asset-operation-filter]'); filter.value = 'sell'; filter.dispatchEvent(new h.window.Event('change', { bubbles: true }));
+  assert.match(section.textContent, /No matching operations/);
+  h.window.ui.asset.open(['missing']); assert.match(section.textContent, /Asset not found/);
+  assert.deepEqual(h.errors, []);
+});
+
+test('asset page distinguishes initial loading, read failure, retry and missing data, and leaves cleanly for Wallet', async t => {
+  const h = await harness(t);
+  const store = h.eval('stateStore');
+  store.setUI({ portfolioLoaded: false, portfolioLoadError: null });
+  h.window.ui.asset.open(['stock']);
+  const section = h.document.querySelector('#asset-detail-section');
+  assert.match(section.textContent, /Loading asset details/);
+  store.setUI({ portfolioLoadState: 'error', portfolioLoadError: { message: 'Read failed.' } });
+  assert.match(section.textContent, /Could not load asset details/);
+  section.querySelector('[data-asset-retry]').click(); await flush();
+  assert.equal(store.getState().portfolioLoaded, true);
+  assert.match(section.textContent, /Smoke Stock/);
+  h.document.querySelector('#open-wallet').click();
+  assert.equal(store.getState().assetPage.active, false);
+  assert.equal(h.document.querySelector('#wallet-app').hidden, false);
+  assert.equal(h.window.location.hash, '');
+  assert.deepEqual(h.errors, []);
+});
+
+for (const native of [false, true]) {
+  test(`asset payment action publishes only after persistence in ${native ? 'native' : 'desktop'} UI`, async t => {
+    const initial = fixture();
+    initial.payments = [{ id: 'div', assetId: 'stock', assetName: 'Smoke Stock', type: 'DIVIDEND', amount: 10, currency: 'USD', date: '2026-01-10', status: 'planned' }];
+    initial.assets.push({ ...initial.assets[0], id: 'stock-2' });
+    initial.transactions.push({ ...initial.transactions[0], id: 'buy-2', assetId: 'stock-2' });
+    initial.payments.push({ ...initial.payments[0], id: 'div-2', assetId: 'stock-2' });
+    const h = await harness(t, { initial, native });
+    h.window.ui.asset.open(['stock']);
+    const section = h.document.querySelector('#asset-detail-section');
+    section.querySelector('[data-asset-tab="payments"]').click();
+    section.querySelector('[data-asset-receive]').click(); await flush();
+    assert.equal(h.eval('stateStore.getData().payments[0].status'), 'received');
+    assert.equal(section.querySelector('[data-asset-receive]'), null);
+    assert.match(section.textContent, /Received payments/);
+    assert.equal(h.eval('stateStore.getData().transactions.filter(tx => tx.paymentId === "div").length'), 1);
+    assert.equal(h.eval('stateStore.getData().payments[1].status'), 'received');
+    assert.equal(h.eval('stateStore.getData().transactions.filter(tx => tx.paymentId === "div-2").length'), 1);
+    assert.deepEqual(h.errors, []);
+  });
+}
+
+test('failed payment persistence retains the detail page, unchanged data and a usable retry button', async t => {
+  const initial = fixture();
+  initial.payments = [{ id: 'div', assetId: 'stock', type: 'DIVIDEND', amount: 10, currency: 'USD', date: '2026-01-10', status: 'planned' }];
+  const h = await harness(t, { initial, failPayments: true });
+  h.window.ui.asset.open(['stock']);
+  const section = h.document.querySelector('#asset-detail-section'); section.querySelector('[data-asset-tab="payments"]').click();
+  const before = h.stored(); section.querySelector('[data-asset-receive]').click(); await flush();
+  assert.equal(section.classList.contains('active'), true);
+  assert.equal(section.querySelector('[data-asset-receive]').disabled, false);
+  assert.equal(h.eval('stateStore.getData().payments[0].status'), 'planned');
+  assert.deepEqual(h.stored(), before);
+  assert.match(h.document.querySelector('#notice-modal').textContent, /payment-test-id/);
+  assert.ok(h.errors.every(error => error.startsWith('MARK PAYMENT RECEIVED ERROR:')));
+});
+
+test('dashboard separates unrealized and realized results without counting pending payments or returned principal', async t => {
+  const initial = fixture();
+  initial.sales = [{ id: 'sale', assetId: 'stock', profit: 5, costBasis: 0, quantity: 0, sellPrice: 0, currency: 'USD', sellDate: '2026-01-02' }];
+  initial.payments = [{ id: 'div', assetId: 'stock', type: 'DIVIDEND', amount: 10, currency: 'USD', date: '2026-01-03', status: 'received' },
+    { id: 'pending', assetId: 'stock', type: 'DIVIDEND', amount: 9999, currency: 'USD', date: '2027-01-03', status: 'planned' }];
+  initial.assets.push({ id: 'redeemed', name: 'Redeemed deposit', type: 'deposit', quantity: 1000, purchasePrice: 1, currentPrice: 1, purchaseDate: '2026-01-01', currency: 'USD', closedAt: '2026-02-01T12:00:00Z' });
+  initial.transactions.push({ id: 'deposit-buy', assetId: 'redeemed', type: 'BUY', quantity: 1000, amount: 1000, date: '2026-01-01', currency: 'USD' });
+  initial.payments.push({ id: 'maturity', assetId: 'redeemed', type: 'MATURITY', amount: 1050, costBasis: 1000, currency: 'USD', date: '2026-02-01', status: 'received' });
+  const h = await harness(t, { initial });
+  assert.match(h.document.querySelector('#stat-unrealized').dataset.valueUsd, /40/);
+  assert.match(h.document.querySelector('#stat-realized').dataset.valueUsd, /65/);
+  assert.equal(h.document.querySelector('#dashboard-result-rates'), null);
+  const next = h.stored(); next.assets[0].currentPrice = null;
+  h.eval('stateStore').replaceData(next); h.window.renderDashboard();
+  assert.equal(h.document.querySelector('#stat-unrealized').textContent, 'No quote available');
+  h.document.querySelector('#stat-unrealized').closest('.stat-card').dispatchEvent(new h.window.Event('mouseenter'));
+  assert.equal(h.document.querySelector('#stat-unrealized').textContent, 'No quote available');
+  assert.deepEqual(h.errors, []);
+});
+
+for (const native of [false, true]) {
+  test(`Return hover updates immediately when S&P 500 loads and after snapshots change in ${native ? 'native' : 'desktop'} UI`, async t => {
+    const h = await harness(t, { native });
+    let resolveIndex;
+    const facade = h.eval('api');
+    facade.getIndexHistory = async parameters => {
+      assert.equal(parameters.symbol, '.INX'); assert.equal(parameters.startDate, '2026-01-01');
+      return new Promise(resolve => { resolveIndex = resolve; });
+    };
+    const request = h.window.updateSp500Benchmark();
+    const value = h.document.querySelector('#stat-roi'), card = value.closest('.stat-card');
+    const portfolioReturn = value.dataset.portfolioReturn;
+    card.dispatchEvent(new h.window.Event('mouseenter'));
+    assert.equal(value.textContent, 'Loading…');
+    resolveIndex({ values: [{ datetime: '2026-02-01', close: 110 }, { datetime: '2026-01-02', close: 100 }, { datetime: '2025-01-01', close: 1 }, { datetime: '2026-01-01', close: 'invalid' }] });
+    await request; await flush();
+    assert.equal(value.textContent, '+10.00%', 'Already hovered card must update without moving the pointer.');
+    assert.equal(h.document.querySelector('#stat-roi-label').textContent, 'S&P 500');
+    h.window.renderDashboard({ ...h.eval('stateStore.getState()'), sp500Benchmark: 20 });
+    assert.equal(value.textContent, '+20.00%', 'Handlers must not retain the first render snapshot.');
+    card.dispatchEvent(new h.window.Event('mouseleave'));
+    assert.equal(value.textContent, portfolioReturn);
+    assert.equal(h.document.querySelector('#stat-roi-label').textContent, 'Return');
+    card.dispatchEvent(new h.window.Event('focus')); assert.equal(value.textContent, '+20.00%');
+    card.dispatchEvent(new h.window.Event('blur')); assert.equal(value.textContent, portfolioReturn);
+    assert.deepEqual(h.errors, []);
+  });
+  test(`real HTML DOMContentLoaded starts ${native ? 'native offline' : 'desktop'} UI with local scripts and reviewed globals`, async t => {
+    const h = await harness(t, { native, bootFromEvent: true, charts: 'real', blockMarkets: true });
+    assert.equal(h.window.init, h.window.ui.application.init);
+    assert.equal(h.window.loadData, h.window.ui.application.loadData);
+    assert.ok(h.document.querySelector('#portfolio-table').textContent.includes('Smoke Stock'));
+    h.document.querySelector('#open-wallet').click();
+    assert.equal(h.document.querySelector('#wallet-app').hidden, false);
+    assert.ok(h.document.querySelector('#wallet-current').classList.contains('active'));
+    assert.deepEqual(h.errors, []);
+  });
 }
 
 test('web wallet renews an expired browser session and saves the input without showing an error', async t => {
@@ -573,7 +821,7 @@ test('rebalance keeps forty assets usable, invalidates outdated market results a
   assert.equal(h.window.Chart.getChart('rebalance-current-chart'), current);
   h.document.querySelector('#calculate-rebalance').click();
   assert.equal(h.document.querySelectorAll('#rebalance-results tbody tr').length, 40);
-  h.eval('stateStore.getData().assets[0].currentPrice = 200'); h.window.renderRebalanceCalculator();
+  h.eval('stateStore.updateData(data => { data.assets[0].currentPrice = 200; })'); h.window.renderRebalanceCalculator();
   assert.equal(h.document.querySelectorAll('#rebalance-results tbody tr').length, 0);
   assert.equal(h.document.querySelector('[data-rebalance-group]').value, '2.5');
   assert.deepEqual(h.errors, []);
@@ -643,6 +891,83 @@ test('UI smoke: extracted buy form submits once and refreshes the portfolio', as
   assert.deepEqual(h.errors, []);
 });
 
+test('web and native buy forms reuse operationId after a committed purchase loses its response', async t => {
+  for (const native of [false, true]) await t.test(native ? 'native' : 'web', async t => {
+    const h = await harness(t, { native });
+    h.eval(`(() => {
+      const purchase = api.buyMoreAsset;
+      window.lostBuyCommands = [];
+      let drop = true;
+      api.buyMoreAsset = async (id, body) => {
+        window.lostBuyCommands.push(body.operationId);
+        const result = await purchase(id, body);
+        if (drop) { drop = false; throw new window.FinoErrors.RemoteUnavailableError({ message: 'The response did not arrive. Retry the same command.' }); }
+        return result;
+      };
+    })()`);
+    h.window.ui.forms.buy.open('stock');
+    const form = h.document.querySelector('#buy-more-form');
+    form.elements.quantity.value = '1'; form.elements.purchasePrice.value = '150'; form.elements.purchaseDate.value = '2026-02-01';
+    const submit = () => form.dispatchEvent(new h.window.Event('submit', { bubbles: true, cancelable: true }));
+    submit(); await flush();
+    assert.equal(h.document.querySelector('#buy-more-modal').classList.contains('open'), true);
+    assert.equal(form.elements.quantity.value, '1');
+    assert.equal(h.eval('stateStore.getData().assets[0].quantity'), 2, 'Unacknowledged state must not pretend to be published.');
+    h.document.querySelector('#notice-ok').click();
+    submit(); await flush();
+    assert.equal(h.window.lostBuyCommands.length, 2); assert.equal(h.window.lostBuyCommands[0], h.window.lostBuyCommands[1]);
+    assert.equal(h.eval('stateStore.getData().assets[0].quantity'), 3);
+    assert.equal(h.eval('stateStore.getData().transactions.filter(tx => tx.type === "BUY").length'), 2);
+    assert.equal(h.eval('stateStore.getData().operations.length'), 1);
+    assert.equal(h.document.querySelector('#buy-more-modal').classList.contains('open'), false);
+    assert.ok(h.errors.every(error => !error.includes('Uncaught') && !error.includes('store command')));
+  });
+});
+
+test('real web/native HTML recovers the original purchase after client restart and never substitutes edited form data', async t => {
+  for (const native of [false, true]) await t.test(native ? 'native restart' : 'browser restart', async t => {
+    const h = await harness(t, { native });
+    if (native) h.eval(`(() => {
+      const original = window.mobileApi.buyMoreAsset; let lose = true;
+      window.mobileApi.buyMoreAsset = async (...args) => {
+        const result = await original(...args);
+        if (lose) { lose = false; throw new window.FinoErrors.RemoteUnavailableError(); } return result;
+      };
+    })()`);
+    else h.eval(`(() => {
+      const original = window.fetch; let lose = true;
+      window.fetch = async (url, options) => {
+        const response = await original(url, options);
+        if (lose && url === '/api/assets/stock/buy') { lose = false; await response.text(); throw new TypeError('Acknowledgement lost'); }
+        return response;
+      };
+    })()`);
+    h.window.ui.forms.buy.open('stock');
+    const form = h.document.querySelector('#buy-more-form');
+    form.elements.quantity.value = '1'; form.elements.purchasePrice.value = '150'; form.elements.purchaseDate.value = '2026-02-01';
+    form.dispatchEvent(new h.window.Event('submit', { bubbles: true, cancelable: true })); await flush();
+    const record = (await h.eval('api.outbox.list()')).entries[0]; assert.equal(record.state, 'outcome-unknown');
+    assert.equal(record.body.quantity, 1);
+    form.elements.quantity.value = '2'; h.document.querySelector('#notice-ok').click();
+    form.dispatchEvent(new h.window.Event('submit', { bubbles: true, cancelable: true })); await flush();
+    assert.match(h.document.querySelector('#notice-modal').textContent, /unfinished command/);
+    assert.equal(form.elements.quantity.value, '2');
+    const committed = await h.eval('api.getData({sync:false})');
+    const restarted = await harness(t, { native, initial: committed, nativeStorage: h.nativeStorage, browserStorage: h.browserStorage(), bootFromEvent: true });
+    assert.equal(restarted.document.querySelector('#command-recovery').hidden, false);
+    assert.equal(restarted.document.querySelector('#buy-more-modal').classList.contains('open'), false);
+    const recovered = (await restarted.eval('api.outbox.list()')).entries[0];
+    assert.equal(recovered.operationId, record.operationId); assert.equal(recovered.body.quantity, 1);
+    restarted.document.querySelector('#command-recovery button').click(); await flush();
+    const after = await restarted.eval('api.getData({sync:false})');
+    assert.equal(after.assets[0].quantity, 3);
+    assert.equal(after.transactions.filter(tx => tx.operationId === record.operationId).length, 1);
+    assert.equal((await restarted.eval('api.outbox.list()')).entries.length, 0);
+    assert.equal(restarted.document.querySelector('#command-recovery').hidden, true);
+    assert.deepEqual(restarted.errors, []);
+  });
+});
+
 test('UI smoke: month, date and detail filters retain their event behavior', async t => {
   const h = await harness(t);
   for (const selector of ['#wallet-archive-month', '#wallet-expenses-month', '#wallet-chart-month', '#wallet-monthly-category', '#wallet-period-mode', '#profit-from', '#profit-to', '#portfolio-history-mode', '#asset-allocation-mode', '#asset-price-history-select', '#asset-hide-sales', '#asset-only-current']) {
@@ -692,21 +1017,44 @@ test('UI smoke: wallet plan and expense form persist through the action layer', 
   assert.deepEqual(h.errors, []);
 });
 
-test('UI smoke: a failed wallet plan save restores its input and preserves browser and server state', async t => {
+test('UI smoke: a failed wallet plan save retains its draft and preserves browser and server financial state', async t => {
   const h = await harness(t, { failWallet: true });
   const browserBefore = JSON.stringify(h.eval('stateStore.getData()'));
   const serverBefore = h.stored();
   const plan = h.document.querySelector('[data-wallet-plan="Health"]');
-  const previous = plan.value;
   plan.value = '50';
   plan.dispatchEvent(new h.window.Event('change', { bubbles: true }));
   await flush();
-  assert.equal(h.document.querySelector('[data-wallet-plan="Health"]').value, previous);
+  assert.equal(h.document.querySelector('[data-wallet-plan="Health"]').value, '50');
+  h.window.renderWalletCurrent();
+  assert.equal(h.document.querySelector('[data-wallet-plan="Health"]').value, '50', 'The failed draft must survive a rerender.');
   assert.equal(h.document.querySelector('[data-wallet-plan="Health"]').disabled, false);
   assert.equal(JSON.stringify(h.eval('stateStore.getData()')), browserBefore);
   assert.deepEqual(h.stored(), serverBefore);
-  assert.ok(h.errors.some(error => error.includes('Storage unavailable')));
+  assert.ok(h.errors.some(error => error.includes('UI action failed:')));
+  assert.ok(h.errors.every(error => !error.includes('Storage unavailable')));
+  assert.match(h.document.querySelector('#notice-message').textContent, /Storage unavailable\./);
+  assert.match(h.document.querySelector('#notice-message').textContent, /Request ID: wallet-request-id/);
   assert.ok(h.errors.every(error => !error.includes('Uncaught')));
+});
+
+test('error notices show a localized request ID for web and native failures without changing financial state', async t => {
+  for (const native of [false, true]) await t.test(native ? 'native' : 'web', async t => {
+    const h = await harness(t, { native, failWallet: true, locale: 'uk' });
+    const before = JSON.stringify(h.eval('stateStore.getData()'));
+    let failure;
+    try {
+      if (native) await h.eval('api').createAsset({});
+      else await h.eval('api').saveWallet(h.eval('stateStore.getData().wallet'));
+    } catch (error) { failure = error; }
+    assert.ok(failure.requestId); assert.ok(failure.code); assert.ok(failure.category);
+    void h.window.showNotice(failure);
+    const notice = h.document.querySelector('#notice-message');
+    assert.ok(notice.textContent.includes('ID запиту: ' + failure.requestId));
+    assert.equal(notice.children.length, 0);
+    assert.equal(JSON.stringify(h.eval('stateStore.getData()')), before);
+    h.document.querySelector('#notice-ok').click(); assert.deepEqual(h.errors, []);
+  });
 });
 
 test('UI smoke: failed expense submission retains the draft for retry without committing it', async t => {
@@ -726,13 +1074,44 @@ test('UI smoke: failed expense submission retains the draft for retry without co
   assert.ok(h.errors.every(error => !error.includes('Uncaught')));
 });
 
+test('wallet draft retries publish one confirmed change and keep failed notes and loan input', async t => {
+  const h = await harness(t, { failWallet: true });
+  h.eval('window.walletDataEvents = []; stateStore.subscribe(event => { if (event.type === "data:changed") window.walletDataEvents.push(event.command); });');
+  const plan = h.document.querySelector('[data-wallet-plan="Health"]');
+  plan.value = '75'; plan.dispatchEvent(new h.window.Event('change', { bubbles: true }));
+  await flush();
+  assert.equal(h.window.walletDataEvents.length, 0);
+  h.document.querySelector('#notice-ok').click();
+  h.failWallet(false);
+  const retry = h.document.querySelector('[data-wallet-plan="Health"]');
+  retry.dispatchEvent(new h.window.Event('change', { bubbles: true })); await flush();
+  assert.deepEqual(Array.from(h.window.walletDataEvents), ['saveWallet']);
+  assert.equal(h.eval('Object.keys(stateStore.getState().walletPlanDrafts).length'), 0);
+  assert.equal(h.stored().wallet.months[h.document.querySelector('#wallet-current-month').value].plans.Health, 75);
+  h.failWallet(true);
+  const note = h.document.querySelector('#wallet-note-text'); note.value = 'Keep this unsaved note';
+  h.document.querySelector('#wallet-note-form').dispatchEvent(new h.window.Event('submit', { bubbles: true, cancelable: true })); await flush();
+  assert.equal(note.value, 'Keep this unsaved note'); assert.equal(note.disabled, false);
+  h.document.querySelector('#notice-ok').click();
+  h.document.querySelector('#add-loan-btn').click();
+  const form = h.document.querySelector('#loan-form');
+  form.elements.name.value = 'Loan draft'; form.elements.amount.value = '1200'; form.elements.dueDate.value = '2026-12-01';
+  form.dispatchEvent(new h.window.Event('submit', { bubbles: true, cancelable: true })); await flush();
+  assert.equal(h.document.querySelector('#loan-modal').classList.contains('open'), true);
+  assert.equal(form.elements.name.value, 'Loan draft'); assert.equal(form.elements.amount.value, '1200');
+  assert.equal(form.querySelector('[type="submit"]').disabled, false);
+  assert.equal(h.stored().wallet.loans.length, 0);
+  assert.deepEqual(Array.from(h.window.walletDataEvents), ['saveWallet']);
+  assert.ok(h.errors.every(error => !error.includes('Uncaught') && !error.includes('store command')));
+});
+
 test('UI smoke: unknown legacy payment types are displayed as text in history and calendar details', async t => {
   const initial = fixture();
   const type = '<img src=x onerror=alert(1)>';
   initial.payments.push({ id: 'legacy', assetId: 'stock', assetName: 'Legacy payment', type: 'DIVIDEND', status: 'received', date: '2026-01-02', amount: 1, currency: 'USD' });
   const h = await harness(t, { initial });
   // The state contract rejects unknown remote types; renderers still escape old cached or manually injected values.
-  h.eval('stateStore.getData().payments[0].type = ' + JSON.stringify(type) + '; renderTransactions();');
+  h.eval('(() => { const data = JSON.parse(JSON.stringify(stateStore.getData())); data.payments[0].type = ' + JSON.stringify(type) + '; renderTransactions({ ...stateStore.getState(), data }); })();');
   assert.equal(h.document.querySelector('#transactions-table img'), null);
   assert.ok(h.document.querySelector('#transactions-table').textContent.includes(type));
   h.window.ui.calendar.showEvent({ id: 'legacy', source: 'payment', title: 'Legacy payment', type, status: 'received', date: '2026-01-02', amount: 1, currency: 'USD' });
@@ -787,6 +1166,7 @@ test('rebalance save failure keeps the editable draft, shows retry and never pre
   assert.equal(h.eval('stateStore.getData().rebalance'), undefined);
   assert.equal(input.value, '100');
   assert.equal(h.document.querySelector('#rebalance-save-status').dataset.state, 'error');
+  assert.match(h.document.querySelector('#rebalance-save-status').textContent, /Request ID:/);
   assert.equal(h.document.querySelector('#rebalance-save-retry').hidden, false);
   h.failRebalance(false); h.document.querySelector('#rebalance-save-retry').click();
   await h.window.FinoRebalanceDashboard.flush();

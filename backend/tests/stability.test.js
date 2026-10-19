@@ -6,7 +6,7 @@ const path = require('node:path');
 const { once } = require('node:events');
 const { createEmptyState, normalizeState } = require('../../frontend/js/state-model');
 const { createRepository } = require('../data/repository');
-const { createService } = require('../domain/portfolioService');
+const { createServices: createService } = require('./helpers/portfolioServices');
 const { validateRequest, validateWallet, validateQuery } = require('../validators/requests');
 const holding = () => ({ name: 'Test', type: 'stock', currency: 'USD', quantity: 10, purchasePrice: 100, purchaseDate: '2026-01-01' });
 function memoryRepository() {

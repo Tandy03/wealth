@@ -1,5 +1,8 @@
 // state.js
-const stateStore = FinoStateStore.createStore({ model: FinoStateModel, initialState: {
+const stateStore = FinoStateStore.createStore({ model: FinoStateModel,
+  guard: document.documentElement.dataset?.stateGuard === 'development' ? 'development' : false,
+  onViolation: diagnostic => console.error('Financial state mutation:', diagnostic),
+  getScope: () => window.mobileApi ? window.mobileApi.localAccountScope || null : 'desktop', initialState: {
   data: FinoStateModel.createEmptyState(),
 
   calendarDate: new Date(),
@@ -15,6 +18,7 @@ const stateStore = FinoStateStore.createStore({ model: FinoStateModel, initialSt
   editingLoanId: null,
   editingExpenseId: null,
   holdingSelectionAction: "delete",
+  portfolioLoaded: false,
   purchaseExchangeRates: {},
 } });
 // Compatibility alias for existing forms and DOM-free services during incremental extraction.

@@ -4,7 +4,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 const { createRepository } = require('../data/repository');
-const { createService } = require('../domain/portfolioService');
+const { createService } = require('../domain/assetService');
 
 test('local reads, status and edits remain available while Drive initialization is stalled', async t => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fino-local-first-'));

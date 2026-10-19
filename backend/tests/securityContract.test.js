@@ -126,7 +126,7 @@ test('native request slots spanning a minute are released after their response b
   let time = 0;
   const context = { URL, AbortController, setTimeout, clearTimeout, fetch: async () => new Response('{}'), Date: class extends Date { static now() { return time; } } };
   vm.createContext(context);
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '../../frontend/js/request.js'), 'utf8'), context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../../shared/request.js'), 'utf8'), context);
   const first = await context.FinoRequest.fetchWithTimeout('https://provider.test');
   time = 60001;
   const second = await context.FinoRequest.fetchWithTimeout('https://provider.test');

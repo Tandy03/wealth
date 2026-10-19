@@ -3,6 +3,46 @@ const assert = require('node:assert/strict');
 const fetchers = require('../../frontend/js/api/fetchers');
 const desktopApi = require('../../frontend/js/api/desktop');
 const mobileApi = require('../../frontend/js/api/mobile');
+const errors = require('../../frontend/js/errors');
+
+test('desktop and native failures expose the same metadata and diagnostic display', async () => {
+  for (const failure of [new errors.ValidationError(), new errors.AuthRequiredError(), new errors.ConflictError(), new errors.StorageError(), new errors.RemoteUnavailableError({ status: 504, code: 'EXTERNAL_API_TIMEOUT' })]) {
+    const { payload } = errors.publicError(failure);
+    const response = new Response(JSON.stringify(payload), { status: failure.status,
+      headers: { 'Content-Type': 'application/json', 'X-Request-Id': 'server-request-id' } });
+    let desktop;
+    try { await fetchers.readJson(response, 'Fallback'); } catch (error) { desktop = error; }
+    const native = errors.clientError(failure);
+    for (const field of ['message', 'status', 'code', 'category']) assert.equal(desktop[field], native[field]);
+    assert.equal(desktop.requestId, 'server-request-id'); assert.ok(native.requestId);
+    assert.deepEqual(Object.keys(desktop.payload).sort(), ['category', 'code', 'error']);
+    assert.match(errors.displayMessage(desktop), /Request ID: server-request-id/);
+    assert.ok(!Object.hasOwn(desktop, 'cause'));
+  }
+});
+
+test('transport failures and broken JSON preserve diagnostics without exposing external bodies or retrying writes', async () => {
+  const secret = 'private-provider-sentinel';
+  for (const response of [new Response('<html>' + secret, { status: 502, headers: { 'X-Request-Id': 'html-response' } }),
+    new Response('{broken ' + secret, { status: 503, headers: { 'Content-Type': 'application/json', 'X-Request-Id': 'json-response' } })]) {
+    await assert.rejects(fetchers.readJson(response, 'Could not load data.'), error =>
+      error.code === 'REMOTE_UNAVAILABLE' && Boolean(error.requestId) && !error.message.includes(secret));
+  }
+  const service = fetchers.createService({ fetch: async () => new Response(JSON.stringify({ error: 'Bearer ' + secret, access_token: secret }),
+    { status: 401, headers: { 'Content-Type': 'application/json' } }) });
+  await assert.rejects(service.request('https://provider.test', { message: 'Provider is unavailable.' }), error =>
+    error.category === 'remote_unavailable' && error.message === 'Provider is unavailable.' && !JSON.stringify(error).includes(secret));
+  let count = 0;
+  const writes = fetchers.createService({ fetch: async () => { count++; throw new Error('C:\\private\\data.json Bearer ' + secret); } });
+  await assert.rejects(writes.request('/api/wallet', { method: 'PUT', body: {} }), error =>
+    error.code === 'REMOTE_UNAVAILABLE' && Boolean(error.requestId) && !JSON.stringify(error).includes(secret));
+  assert.equal(count, 1);
+  let renewCalls = 0;
+  const renewal = fetchers.createService({ recoverSession: true, fetch: async url => {
+    renewCalls++; if (url === '/api/session') throw new Error(secret); return sessionDenied();
+  } });
+  await assert.rejects(renewal.request('/api/data'), { code: 'REMOTE_UNAVAILABLE' }); assert.equal(renewCalls, 2);
+});
 test('transport preserves request payloads and structured error metadata', async () => {
   let sent;
   const { request } = fetchers.createService({ fetch: async (url, options) => {
@@ -13,7 +53,9 @@ test('transport preserves request payloads and structured error metadata', async
   await assert.rejects(desktop.createAsset({ name: 'Test' }), error => error.status === 409 && error.category === 'conflict' && error.requestId === 'request');
   assert.equal(sent.url, '/api/assets');
   assert.equal(sent.options.method, 'POST');
-  assert.deepEqual(JSON.parse(sent.options.body), { name: 'Test' });
+  const payload = JSON.parse(sent.options.body);
+  assert.match(payload.operationId, /^[a-f0-9-]{36}$/);
+  assert.deepEqual({ ...payload, operationId: undefined }, { name: 'Test', operationId: undefined });
   await assert.rejects(fetchers.readJson({ headers: { get: () => 'text/html' } }, 'fallback'), /older version/);
 });
 test('facade chooses desktop or native at call time without changing the caller contract', async () => {
@@ -25,6 +67,7 @@ test('facade chooses desktop or native at call time without changing the caller 
   const api = mobileApi.createFacade({ desktop, mobile, isNative: () => native });
   assert.equal(await api.getData(), 'desktop');
   native = true;
+  assert.deepEqual(await api.getData(), { native: false });
   assert.deepEqual(await api.getData({ sync: false }), { native: false });
   assert.equal(await api.syncInzhurAssets(), 'native-sync');
   assert.equal((await api.getExchangeRates()).rates.USD, 40);

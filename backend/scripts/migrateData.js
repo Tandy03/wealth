@@ -1,7 +1,7 @@
 // Usage: node backend/scripts/migrateData.js old.json migrated.json
 // Never overwrite the source or an existing destination.
 const fs = require('node:fs/promises');
-const model = require('../../frontend/js/state-model');
+const model = require('../../shared/state-model');
 async function main() {
   const [input, output] = process.argv.slice(2);
   if (!input || !output) throw new Error('Provide input and a new output JSON path.');

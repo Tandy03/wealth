@@ -5,9 +5,9 @@ const { createHash, randomUUID } = require('node:crypto');
 const { google } = require('googleapis');
 const { createAuthorizedClient, disconnect } = require('./auth');
 const { atomicWrite } = require('../../data/atomicFile');
-const { normalizeState } = require('../../../frontend/js/state-model');
-const { describe, signature } = require('../../../frontend/js/sync-model');
-const { ConflictError, AuthRequiredError, ValidationError, RemoteUnavailableError, StorageError, syncError } = require('../../../frontend/js/errors');
+const { normalizeState } = require('../../../shared/state-model');
+const { describe, signature } = require('../../../shared/sync-model');
+const { ConflictError, AuthRequiredError, ValidationError, RemoteUnavailableError, StorageError, syncError } = require('../../../shared/errors');
 const { logEvent } = require('../../utils/observability');
 const serializeData = data => JSON.stringify(data, null, 2);
 const dataChecksum = data => createHash('md5').update(serializeData(data)).digest('hex');
@@ -26,7 +26,7 @@ async function retryOperation(operation, attempts = 3, delay = milliseconds => n
     try { return await operation(); } catch (error) {
       last = error;
       const status = Number(error.response?.status || error.status || error.code);
-      if (['conflict', 'auth_required', 'validation', 'storage_failure'].includes(require('../../../frontend/js/errors').classify(error)) ||
+      if (['conflict', 'auth_required', 'validation', 'storage_failure'].includes(require('../../../shared/errors').classify(error)) ||
           (status >= 400 && status < 500 && ![408, 429].includes(status)) || attempt + 1 >= attempts || attempt === 2) break;
       await delay(250 * 2 ** attempt);
     }
