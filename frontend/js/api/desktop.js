@@ -29,7 +29,11 @@
       getMacroeconomics: () => get('/api/macroeconomics', 'Failed to load macroeconomic data.'),
       getNbuPolicyRate: () => get('/api/macroeconomics/policy-rate', 'Failed to load the NBU key policy rate.'),
       getGoogleDriveStatus: () => get('/api/sync/status', 'Failed to load Google Drive status.'),
-      syncGoogleDrive: (action = 'sync') => write('/api/sync/google-drive', 'POST', { action }, 'Google Drive operation failed.'),
+      getSyncConflictPreview: () => get('/api/sync/preview', 'Could not compare local and cloud versions.'),
+      syncGoogleDrive: (action = 'sync', options = {}) => {
+        try { validation.validateSyncOptions(action, options); } catch (error) { return Promise.reject(errors.clientError(error)); }
+        return write('/api/sync/google-drive', 'POST', { action, ...options }, 'Google Drive operation failed.');
+      },
       getInzhurAssets: () => get('/api/inzhur-assets', 'Failed to load the Inzhur catalog.'),
       syncInzhurAssets: () => write('/api/assets/sync-inzhur', 'POST', undefined, 'Failed to synchronize Inzhur assets.'),
       createAsset: asset => write('/api/assets', 'POST', asset, 'Failed to create asset.'),

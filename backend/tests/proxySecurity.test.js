@@ -34,3 +34,15 @@ test('proxy responses and logs never expose upstream URLs, keys or raw stacks', 
   assert.ok(!logs.join('').includes('https://')); assert.ok(!logs.join('').includes('stack'));
   assert.equal(JSON.parse(result.text).error.code, 'PROXY_ERROR');
 });
+
+test('proxy advertises the repository release and accepts old clients without a version field', () => {
+  const { context } = harness();
+  const contract = require('../../apps-script/api-contract.json');
+  const post = apiVersion => JSON.parse(context.doPost({ postData: { contents: JSON.stringify({ token: 'test-proxy-token', action: 'health', ...(apiVersion === undefined ? {} : { apiVersion }) }) } }).text);
+  const legacy = post(); assert.equal(legacy.ok, true); assert.deepEqual(legacy.api, contract);
+  assert.deepEqual(JSON.parse(context.doGet({ parameter: { action: 'health' } }).text).api, contract);
+  assert.equal(post(1).ok, true);
+  for (const version of [0, 2, '1', null]) {
+    const result = post(version); assert.equal(result.ok, false); assert.equal(result.error.code, 'PROXY_API_INCOMPATIBLE'); assert.equal(result.error.status, 409);
+  }
+});

@@ -16,6 +16,7 @@ function validateHttpRequest(req, _res, next) {
       for (const key of ['action', 'direction']) if (req.body?.[key] !== undefined) rules.validateSyncAction(req.body[key]);
       if (req.body?.action && req.body?.direction && req.body.action !== req.body.direction)
         throw new (require('../utils/domainError').DomainError)({ error: 'Invalid sync direction.' });
+      rules.validateSyncOptions(req.body?.action || req.body?.direction || 'sync', req.body?.previewToken === undefined ? {} : { previewToken: req.body.previewToken });
     }
     next();
   } catch (error) { next(error); }

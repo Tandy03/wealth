@@ -49,6 +49,9 @@ async function main() {
   assert.ok(typeof proxy.proxyToken === 'string' && proxy.proxyToken.length >= 32, 'Proxy token is missing or invalid.');
   assert.ok(proxy.proxyUrl === String(process.env.FINO_PROXY_URL || '').trim() && proxy.proxyToken === String(process.env.FINO_PROXY_TOKEN || '').trim(), 'Generated mobile configuration is stale. Run npm.cmd run mobile:config.');
   const activity = fs.readFileSync(path.join(root, 'android/app/src/main/java/com/tandy03/fino/MainActivity.java'), 'utf8');
+  const manifest = fs.readFileSync(path.join(root, 'android/app/src/main/AndroidManifest.xml'), 'utf8');
+  assert.ok(manifest.includes('android:allowBackup="false"') && manifest.includes('android:fullBackupContent="@xml/backup_rules"') && manifest.includes('android:dataExtractionRules="@xml/data_extraction_rules"'), 'Android financial backup policy is missing.');
+  for (const file of ['backup_rules.xml', 'data_extraction_rules.xml']) assert.ok(fs.existsSync(path.join(root, 'android/app/src/main/res/xml', file)), 'Android backup exclusion rules are missing.');
   for (const plugin of ['GoogleDriveAuthPlugin', 'AppLockPlugin', 'FinoStoragePlugin']) {
     assert.ok(activity.includes('registerPlugin(' + plugin + '.class)'), 'A required Android plugin is not registered.');
   }
@@ -63,6 +66,8 @@ async function main() {
     }, { timeoutMs: 20000 });
     const payload = await response.json();
     assert.ok(response.ok && payload?.ok === true && payload.data?.service === 'fino-market-proxy', 'Live proxy authentication or health check failed.');
+    const proxyApi = require('../../shared/market-model').proxyCompatibility(payload.api, 'health');
+    assert.ok(proxyApi.state === 'compatible' && proxyApi.release === require('../../apps-script/api-contract.json').release, 'Live deployment differs from the repository release. Run the proxy release procedure.');
     console.log('Live market proxy authenticated health check passed. No deployment was changed.');
   }
 }

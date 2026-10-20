@@ -2,6 +2,23 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { harness, fixture, clone } = require('./helpers/nativeHarness');
 
+test('native proxy keeps legacy deployments usable and rejects incompatible envelopes before exposing market data', async () => {
+  const h = harness({ proxy: true });
+  const data = { values: [{ datetime: '2026-10-01', open: 100, high: 101, low: 99, close: 100 }] };
+  let api;
+  h.hooks.externalFetch = async (_url, options) => {
+    assert.equal(JSON.parse(options.body).apiVersion, 1);
+    return new Response(JSON.stringify({ ok: true, ...(api ? {api} : {}), data }));
+  };
+  assert.equal((await h.api.getMarketTimeSeries({symbol:'AAPL'})).values.length,1);
+  assert.equal((await h.api.getGoogleDriveStatus()).proxy.state,'legacy');
+  api = require('../../apps-script/api-contract.json');
+  await h.api.getMarketTimeSeries({symbol:'AAPL'});assert.equal((await h.api.getGoogleDriveStatus()).proxy.release,api.release);
+  api={...api,apiVersion:2,minClientVersion:2};
+  await assert.rejects(h.api.getMarketTimeSeries({symbol:'AAPL'}),e=>e.code==='PROXY_API_INCOMPATIBLE'&&e.category==='remote_unavailable');
+  assert.equal((await h.api.getGoogleDriveStatus()).proxy.state,'incompatible');
+});
+
 test('native API normalizes validation and storage failures without exposing causes or changing local data', async () => {
   const h = harness(); await h.api.getData(); const before = h.local();
   await assert.rejects(h.api.createAsset({}), error => error.code === 'VALIDATION_FAILURE' && error.status === 400 &&

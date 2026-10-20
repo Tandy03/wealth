@@ -15,6 +15,35 @@
 }
 
 .nav-scroll-hint { display: none; }
+.stat-card > small, .valuation-details small { display: block; margin-top: 8px; color: var(--muted); font-size: 11px; line-height: 1.45; overflow-wrap: normal; }
+.valuation-details { margin-top: 10px; font-size: 12px; }
+.valuation-details summary { cursor: pointer; color: var(--muted); }
+.scenario-list { padding-inline-start: 18px; font-size: 12px; line-height: 1.6; }
+.scenario-list li + li { margin-top: 12px; }
+.scenario-list li > span { display: block; font: inherit; }
+.income-forecast-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 12px 20px; font-size: 12px; }
+.income-forecast-metrics div { min-width: 0; }
+.income-forecast-metrics dt { color: var(--muted); }
+.income-forecast-metrics dd { margin: 5px 0 0; font-weight: 600; white-space: nowrap; max-width: 100%; overflow-x: auto; }
+.income-forecast-details { margin-top: 12px; font-size: 12px; line-height: 1.5; }
+.income-forecast-details summary { cursor: pointer; color: var(--muted); }
+.income-forecast-details ul { padding-inline-start: 18px; max-height: 240px; overflow: auto; overflow-wrap: anywhere; }
+.income-forecast-details li + li { margin-top: 10px; }
+#stat-reinvestment { font-size: 20px; font-size: clamp(14px, 6cqi, 20px); white-space: nowrap; max-width: 100%; overflow-x: auto; }
+#stat-reinvestment > span { display: block; font: inherit; color: inherit; white-space: nowrap; max-width: 100%; overflow-x: auto; }
+.analytics-method { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.current-result-panel { margin-bottom: 18px; }
+.current-result-panel > strong { display: block; margin-block: 12px; font-size: 24px; white-space: nowrap; overflow-x: auto; }
+.current-result-panel > p, .concentration-panel > p { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.concentration-panel .panel-header { flex-wrap: wrap; gap: 12px; }
+.concentration-panel select { width: 100%; min-width: 0; }
+.concentration-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 18px; }
+.concentration-groups section { min-width: 0; }
+.concentration-groups ol { list-style: none; padding: 0; }
+.concentration-groups li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 10px; padding-block: 10px; border-bottom: 1px solid var(--border); }
+.concentration-groups li > span { overflow-wrap: anywhere; }
+.concentration-groups li strong { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.concentration-groups li small { grid-column: 1 / -1; color: var(--muted); white-space: nowrap; max-width: 100%; overflow-x: auto; }
 .dashboard-more-metrics { margin-bottom: 18px; }
 .dashboard-more-metrics > summary, .stat-explanation > summary { cursor: pointer; color: var(--muted); }
 .dashboard-more-metrics > summary { min-height: 44px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); font-size: 13px; }
@@ -1651,6 +1680,25 @@ textarea:focus {
 .wallet-page { display: none; }
 .wallet-page.active { display: block; }
 .wallet-table input[type="number"] { width: 130px; }
+.sync-preview-modal { width: min(760px, calc(100vw - 28px)); max-height: calc(100dvh - 28px); overflow-y: auto; }
+#sync-preview-modal { z-index: 110; }
+#notice-modal { z-index: 120; }
+.sync-preview-versions { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 12px; }
+.sync-preview-versions article { min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); }
+.sync-preview-versions dl { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px 12px; font-size: 13px; }
+.sync-preview-versions dt, .sync-preview-versions dd { margin: 0; overflow-wrap: anywhere; }
+.sync-preview-versions dd { text-align: end; }
+.sync-preview-versions p, .sync-preview-differences p { overflow-wrap: anywhere; font-size: 13px; }
+.sync-preview-choices { display: grid; gap: 12px; margin-block: 18px; border: 1px solid var(--border); border-radius: 10px; }
+.sync-preview-choices label { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+.sync-preview-choices input { flex: 0 0 auto; width: auto; }
+#sync-preview-consequence { line-height: 1.5; }
+#wallet-current .table-wrap:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+#wallet-current .wallet-table { border-collapse: separate; border-spacing: 0; }
+#wallet-current .wallet-table th:first-child,
+#wallet-current .wallet-table td:first-child { position: sticky; inset-inline-start: 0; z-index: 1; background: var(--surface); box-shadow: inset -1px 0 var(--border); }
+#wallet-current .wallet-table th:first-child { z-index: 2; }
+#wallet-current .wallet-summary-row td:first-child { background: var(--surface-2); }
 #wallet-month-title span { display: block; }
 .wallet-summary-row { font-weight: 700; background: var(--surface-2); }
 .budget-progress-card {
@@ -1934,15 +1982,8 @@ textarea:focus {
   .profit-table { width: 720px; min-width: 720px; table-layout: fixed; font-size: 10px; }
   .profit-table th,
   .profit-table td { padding: 9px 6px; text-align: center; white-space: normal; overflow-wrap: normal; word-break: normal; }
-  .profit-table th:nth-child(1), .profit-table td:nth-child(1) { width: 82px; }
-  .profit-table th:nth-child(2), .profit-table td:nth-child(2) { width: 82px; }
-  .profit-table th:nth-child(3), .profit-table td:nth-child(3) { width: 76px; }
-  .profit-table th:nth-child(4), .profit-table td:nth-child(4) { width: 72px; }
-  .profit-table th:nth-child(5), .profit-table td:nth-child(5) { width: 76px; }
-  .profit-table th:nth-child(6), .profit-table td:nth-child(6) { width: 82px; }
-  .profit-table th:nth-child(7), .profit-table td:nth-child(7) { width: 82px; }
-  .profit-table th:nth-child(8), .profit-table td:nth-child(8) { width: 82px; }
-  .profit-table th:nth-child(9), .profit-table td:nth-child(9) { width: 60px; }
+  .profit-table th:nth-child(1), .profit-table td:nth-child(1) { width: 120px; }
+  .profit-table th:not(:first-child), .profit-table td:not(:first-child) { width: 100px; }
   .profit-table th:first-child,
   .profit-table td:first-child { position: sticky; left: 0; z-index: 1; background: var(--surface); text-align: left; }
   .profit-table th:first-child { z-index: 2; }
@@ -1960,28 +2001,6 @@ textarea:focus {
   .asset-transactions-table td:nth-child(5) { width: 20%; }
   .asset-transactions-table th:nth-child(6),
   .asset-transactions-table td:nth-child(6) { width: 7%; }
-  #wallet-current .panel { padding-inline: 6px; }
-  #wallet-current .panel-header { padding-inline: 6px; }
-  #wallet-current .table-wrap { width: 100%; overflow-x: visible; }
-  #wallet-current .wallet-table { width: 100%; min-width: 0; table-layout: fixed; font-size: clamp(7px, 2.25vw, 10px); }
-  #wallet-current .wallet-table th,
-  #wallet-current .wallet-table td { padding: 8px 2px; white-space: normal; overflow-wrap: anywhere; line-height: 1.2; }
-  #wallet-current .wallet-table th:nth-child(1),
-  #wallet-current .wallet-table td:nth-child(1) { width: 21%; }
-  #wallet-current .wallet-table th:nth-child(2),
-  #wallet-current .wallet-table td:nth-child(2) { width: 15%; }
-  #wallet-current .wallet-table th:nth-child(3),
-  #wallet-current .wallet-table td:nth-child(3) { width: 14%; }
-  #wallet-current .wallet-table th:nth-child(4),
-  #wallet-current .wallet-table td:nth-child(4) { width: 16%; }
-  #wallet-current .wallet-table th:nth-child(5),
-  #wallet-current .wallet-table td:nth-child(5) { width: 16%; }
-  #wallet-current .wallet-table th:nth-child(6),
-  #wallet-current .wallet-table td:nth-child(6) { width: 13%; }
-  #wallet-current .wallet-table th:nth-child(7),
-  #wallet-current .wallet-table td:nth-child(7) { width: 5%; }
-  #wallet-current .wallet-table input[type="number"] { width: 100%; min-width: 0; padding: 5px 2px; font-size: inherit; }
-  #wallet-current .wallet-table .icon-btn { width: 32px; height: 32px; min-width: 32px; min-height: 32px; padding: 0; font-size: 18px; }
   .loan-row { grid-template-columns: 1fr; }
   .wallet-note-form { align-items: stretch; flex-direction: column; }
   .budget-progress-card { padding: 17px; border-radius: 20px; }
@@ -2241,25 +2260,19 @@ input[type="month"] { max-width: 100%; min-width: 0; }
   #wallet-month-title { font-size: clamp(20px, 7vw, 28px); line-height: 1.08; overflow-wrap: normal; word-break: normal; }
   #wallet-month-title span { margin-top: 3px; font-size: .72em; }
   #wallet-current > .panel { padding-inline: 12px; overflow: hidden; }
-  #wallet-current .table-wrap { width: 100%; overflow: visible; }
-  #wallet-current .wallet-table { display: block; width: 100%; min-width: 0; table-layout: auto; font-size: 14px; }
-  #wallet-current .wallet-table thead { display: none; }
-  #wallet-current-body { display: grid; gap: 12px; }
-  #wallet-current-body tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; position: relative; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); }
-  #wallet-current-body td { display: grid; gap: 6px; width: auto; min-width: 0; padding: 0; border: 0; text-align: start; word-break: normal; overflow-wrap: normal; font-variant-numeric: tabular-nums; }
-  #wallet-current-body td[data-label]::before { content: attr(data-label); color: var(--muted); font-size: 12px; font-weight: 400; }
-  #wallet-current-body td:first-child { grid-column: 1 / -1; font-weight: 650; padding-bottom: 4px; overflow-wrap: anywhere; }
-  #wallet-current-body td:first-child::before { display: none; }
-  #wallet-current-body td:nth-child(3), #wallet-current-body td:nth-child(6), #wallet-current-body .wallet-budget-total { display: none; }
-  #wallet-current-body .wallet-plan-cell { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-  #wallet-current-body .wallet-plan-cell input { width: 60%; min-width: 0; min-height: 44px; margin: 0; font-size: 16px; }
-  #wallet-current-body .wallet-category-actions { position: absolute; inset-inline-end: 8px; top: 6px; }
-  #wallet-current-body .wallet-category-actions button { width: 36px; min-height: 36px; }
-  #wallet-current-body .has-remove-category .wallet-category-title { padding-inline-end: 38px; }
-  #wallet-current-body .wallet-category-actions:empty, #wallet-current-body .wallet-summary-row td:last-child:empty { display: none; }
-  #wallet-current-body .wallet-summary-row td:nth-child(5), #wallet-current-body .wallet-budget-spending td { grid-column: 1 / -1; }
-  #wallet-current-body .wallet-summary-row { border-color: var(--accent); }
-  #wallet-current-body .wallet-budget-spending td::before { display: none; }
+  #wallet-current .panel-header { padding-inline: 6px; }
+  #wallet-current .table-wrap { width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; }
+  #wallet-current .wallet-table { width: 620px; min-width: 620px; table-layout: fixed; font-size: 10px; }
+  #wallet-current .wallet-table th, #wallet-current .wallet-table td { padding: 9px 6px; white-space: normal; overflow-wrap: normal; word-break: normal; hyphens: none; line-height: 1.2; }
+  #wallet-current .wallet-table th:nth-child(1), #wallet-current .wallet-table td:nth-child(1) { width: 132px; }
+  #wallet-current .wallet-table th:nth-child(2), #wallet-current .wallet-table td:nth-child(2) { width: 82px; }
+  #wallet-current .wallet-table th:nth-child(3), #wallet-current .wallet-table td:nth-child(3) { width: 86px; }
+  #wallet-current .wallet-table th:nth-child(4), #wallet-current .wallet-table td:nth-child(4) { width: 94px; }
+  #wallet-current .wallet-table th:nth-child(5), #wallet-current .wallet-table td:nth-child(5) { width: 88px; }
+  #wallet-current .wallet-table th:nth-child(6), #wallet-current .wallet-table td:nth-child(6) { width: 96px; }
+  #wallet-current .wallet-table th:nth-child(7), #wallet-current .wallet-table td:nth-child(7) { width: 42px; }
+  #wallet-current .wallet-table input[type="number"] { width: 100%; min-width: 0; padding: 5px 2px; font-size: inherit; }
+  #wallet-current .wallet-table .icon-btn { width: 32px; height: 32px; min-width: 32px; min-height: 32px; padding: 0; font-size: 18px; }
   .wallet-nav { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
   .wallet-nav::-webkit-scrollbar { display: none; }
   .wallet-nav button { flex: 0 0 auto; white-space: nowrap; }

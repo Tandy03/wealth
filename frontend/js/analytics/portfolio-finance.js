@@ -1,8 +1,9 @@
 (function (root, factory) {
-  const api = factory(typeof module === 'object' && module.exports ? require('../../../shared/portfolio-rules') : root.FinoPortfolioRules);
+  const node = typeof module === 'object' && module.exports;
+  const api = factory(node ? require('../../../shared/portfolio-rules') : root.FinoPortfolioRules, node ? require('../../../shared/state-contract') : root.FinoStateContract);
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.FinoPortfolioFinance = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (rules) {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (rules, contract) {
   function createService({ state, market, values }) {
     const { normalizeNumber, getDateString } = values;
     const { toUAH, toUAHAtDate, toUAHPurchaseCost, getExchangeRateOnDate } = market;
@@ -61,6 +62,72 @@ function calculatePortfolioValue() {
 function getUnrealizedPriceGrowth(asset) {
   if (['savings', 'novapay', 'deposit'].includes(asset.type)) return 0;
   return getAvailableQuantity(asset.id) * getCurrentPrice(asset) - rules.holdingsAtDate(state.data, asset).remainingCost;
+}
+function valuation(asOf = getDateString(new Date()), data = state.data) {
+  const indexed = {};
+  for (const key of ['transactions', 'sales', 'payments']) {
+    indexed[key] = new Map();
+    for (const item of contract.uniqueFinancialRecords(data[key] || [], key)) { if (!indexed[key].has(item.assetId)) indexed[key].set(item.assetId, []); indexed[key].get(item.assetId).push(item); }
+  }
+  const history = new Map();
+  for (const point of data.priceHistory || []) {
+    const previous = history.get(point.assetId);
+    if (!previous || String(point.recordedAt || point.date || '') > String(previous.recordedAt || previous.date || '')) history.set(point.assetId, point);
+  }
+  const rows = [];
+  for (const asset of data.assets || []) {
+    if (asset.type === 'savings') continue;
+    const transactions = indexed.transactions.get(asset.id) || [];
+    const buys = transactions.filter(tx => tx.type === 'BUY');
+    // Preserve the shared legacy holding rules. A gap between acquired quantity
+    // and completed BUY history is reported, never "filled" by a pending order
+    // or removed from historical holdings by guessing where it came from.
+    const holding = rules.holdingsAtDate({ transactions, sales: indexed.sales.get(asset.id), payments: indexed.payments.get(asset.id) }, asset, asOf);
+    if (!(holding.remainingQuantity > 0)) continue;
+    const point = history.get(asset.id), price = Number(asset.currentPrice);
+    const quote = Number.isFinite(price) && price > 0;
+    const rawDate = String(asset.lastSyncedAt || asset.priceUpdatedAt || asset.lastPriceUpdate || (point?.source !== 'initial' ? point?.recordedAt || point?.date : '') || '').slice(0, 10);
+    const validDate = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) && Number.isFinite(Date.parse(rawDate)) && new Date(rawDate + 'T00:00:00Z').toISOString().slice(0, 10) === rawDate && rawDate <= asOf;
+    const fresh = quote && validDate && (Date.parse(asOf) - Date.parse(rawDate)) / 86400000 <= 7;
+    const fx = market.convertWithInfo(1, asset.currency, asOf);
+    const costBasis = fx.amount === null ? null : holding.remainingCost * fx.amount;
+    rows.push({ asset, quantity: holding.remainingQuantity, costBasis, value: quote && fx.amount !== null ? holding.remainingQuantity * price * fx.amount : null,
+      unrealized: quote && fx.amount !== null ? (holding.remainingQuantity * price - holding.remainingCost) * fx.amount : null,
+      fresh, quoteDate: validDate ? rawDate : null, source: String(asset.priceSource || asset.provider || point?.source || 'Manual quote'), fx,
+      historyGap: buys.length > 0 && holding.unknownQuantity > 1e-8 });
+  }
+  const sum = key => rows.reduce((total, row) => total + (row[key] ?? 0), 0);
+  const costBasis = sum('costBasis'), unpricedCount = rows.filter(row => row.value === null).length;
+  return { asOf, rows, knownValue: sum('value'), total: unpricedCount ? null : sum('value'), costBasis,
+    unrealized: sum('unrealized'), unpricedCount, staleCount: rows.filter(row => row.value !== null && !row.fresh && row.quoteDate).length,
+    undatedCount: rows.filter(row => row.value !== null && !row.quoteDate).length,
+    freshQuoteShare: costBasis > 0 && rows.every(row => row.costBasis !== null) ? rows.filter(row => row.fresh).reduce((total, row) => total + row.costBasis, 0) / costBasis * 100 : null,
+    estimatedFx: rows.filter(row => row.fx.estimated).length, missingFx: rows.filter(row => row.fx.rate === null).length };
+}
+function concentration(basis = 'market', snapshot = valuation()) {
+  const instruments = new Map((state.data.instruments || []).map(item => [item.id, item]));
+  const groups = { positions: new Map(), issuers: new Map(), instruments: new Map(), sectors: new Map(), currencies: new Map() };
+  let total = 0, excludedCount = 0;
+  for (const row of snapshot.rows) {
+    const asset = row.asset, instrument = instruments.get(asset.instrumentId);
+    const value = basis === 'cost' ? row.costBasis : row.value;
+    if (value === null) { excludedCount++; continue; }
+    if (!(value > 0)) continue;
+    total += value;
+    const name = String(asset.name || 'Unknown'), currency = String(asset.currency || 'UAH');
+    const identity = asset.isin ? 'isin:' + String(asset.isin).trim().toUpperCase() : [asset.type, asset.ticker || asset.symbol || name.toLowerCase(), currency].join(':');
+    const metadata = (...items) => items.find(value => typeof value === 'string' && value.trim())?.trim() || null;
+    const labels = { positions: [identity, name], issuers: [metadata(asset.issuer, asset.issuerName, instrument?.issuer, instrument?.issuerName)],
+      instruments: [identity, asset.isin || asset.ticker || asset.symbol || name], sectors: [metadata(asset.sector, instrument?.sector)], currencies: [currency] };
+    for (const [key, values] of Object.entries(labels)) {
+      const label = String(values[1] || values[0] || 'Unknown'), id = values[0] == null ? 'unknown:' : String(values[0]).trim().toLowerCase();
+      const current = groups[key].get(id) || { label, value: 0, unknown: values[0] == null };
+      current.value += value; groups[key].set(id, current);
+    }
+  }
+  const result = Object.fromEntries(Object.entries(groups).map(([key, map]) => [key, [...map.values()].sort((a, b) => b.value - a.value).map(item => ({ ...item, share: total > 0 ? item.value / total * 100 : 0 }))]));
+  return { ...result, total, basis, excludedCount, asOf: snapshot.asOf,
+    topOneShare: result.positions[0]?.share || 0, topFiveShare: result.positions.slice(0, 5).reduce((sum, row) => sum + row.share, 0) };
 }
 function getGroupedSaleCost(assets, quantity) {
   let remaining = quantity;
@@ -121,7 +188,7 @@ function calculateRebalancePlan(targets) {
   return { recommendations, totalToInvest };
 }
 
-    return { getRebalanceGroups, calculateRebalancePlan, getAssetInvestedUah, getAssetInvestedUsd, getSoldQuantity, getCryptoEarnQuantity, getAvailableQuantity, getMaturityCostBasis, calculateInvested, calculateInvestedUsd, getCurrentPrice, calculatePortfolioValue, getUnrealizedPriceGrowth, getGroupedSaleCost };
+    return { valuation, concentration, getRebalanceGroups, calculateRebalancePlan, getAssetInvestedUah, getAssetInvestedUsd, getSoldQuantity, getCryptoEarnQuantity, getAvailableQuantity, getMaturityCostBasis, calculateInvested, calculateInvestedUsd, getCurrentPrice, calculatePortfolioValue, getUnrealizedPriceGrowth, getGroupedSaleCost };
   }
   return { createService };
 });

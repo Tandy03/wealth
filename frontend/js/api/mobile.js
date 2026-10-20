@@ -12,6 +12,7 @@
       try { validation.validateReadOptions(options); } catch (error) { return Promise.reject(errors.clientError(error)); }
       return getAdapter().getData({ ...options, sync: options.sync ?? false });
     };
+    service.getSyncConflictPreview = (...args) => getAdapter().getSyncConflictPreview(...args);
     service.syncInzhurAssets = (...args) => getAdapter().syncApiAssets(...args);
     service.getInzhurAssets = async () => { throw errors.clientError(new errors.RemoteUnavailableError({ message: 'Inzhur catalog sync requires the desktop backend.' })); };
     service.getExchangeRates = async () => {

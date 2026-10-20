@@ -124,6 +124,12 @@ function validateWallet(wallet) {
   return wallet;
 }
 function validateSyncAction(action) { if (!SYNC_ACTIONS.includes(action)) fail('sync action'); return action; }
+function validateSyncOptions(action, options = {}) {
+  validateSyncAction(action); object(options, 'sync options');
+  if (Object.keys(options).some(key => key !== 'previewToken')) fail('sync options');
+  if (options.previewToken !== undefined && (!['upload', 'download'].includes(action) || typeof options.previewToken !== 'string' || !/^[a-f0-9]{64}$/.test(options.previewToken))) fail('previewToken');
+  return options;
+}
 function validateQuantity(value, type) {
   number(value, 'quantity');
   if (Number(value) <= 0 || (!constants.FRACTIONAL_ASSET_TYPES.includes(type) && !Number.isInteger(Number(value)))) fail('quantity', 'Quantity must be greater than zero and use the supported precision for this asset.');
@@ -184,6 +190,7 @@ function validateQuery(query) {
   return query;
 }
 const queryContracts = {
+  '/api/sync/preview': [],
   '/api/data': ['sync'],
   '/api/market-data/time-series': ['symbol', 'interval', 'outputsize', 'startDate', 'endDate'],
   '/api/market-data/index-history': ['symbol', 'startDate', 'endDate'],
@@ -216,7 +223,7 @@ function currencyHistoryRange({ startDate, endDate } = {}) {
   if (!isValidDateString(start) || start > end) fail('startDate');
   return { startDate: start, endDate: end };
 }
-return { validateRequest, validateWallet, validateSyncAction, validateQuery, validateAssetCurrency, validateAssetInput, validateQuantity,
+return { validateRequest, validateWallet, validateSyncAction, validateSyncOptions, validateQuery, validateAssetCurrency, validateAssetInput, validateQuantity,
   normalizePurchase, assetInput, normalizeWallet, queryParameters, validateApiQuery, validateReadOptions, validateIdentifier, currencyHistoryRange };
 
 });

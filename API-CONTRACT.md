@@ -72,6 +72,7 @@ Android додатково має несеріалізовані сумісні 
 | `/api/payments` | — | Payment[]; `getPayments` |
 | `/api/calendar-notes` | — | CalendarNote[]; `getCalendarNotes` |
 | `/api/sync/status`, `/api/google-drive/status` | — | SyncStatus; `getGoogleDriveStatus` |
+| `/api/sync/preview` | — | `{local,remote,differences,plansDiffer,targetsDiffer,token}`; `getSyncConflictPreview`; explicit read-only comparison, no full financial records |
 | `/api/exchange-rates` | — | `{rates,exchangeDate,source,...}`; `getExchangeRates` |
 | `/api/market-data/currencies` | — | Currency catalog; `getMarketCurrencies` |
 | `/api/market-data/time-series` | `symbol`; optional `interval`, `outputsize` у 1–5000, `startDate`, `endDate` | `{provider,meta,values,...}`; `getMarketTimeSeries` |
@@ -85,5 +86,9 @@ Android додатково має несеріалізовані сумісні 
 Provider-specific unsupported symbols, intervals, empty series, rate limits і configuration failures зберігають свої коди/HTTP statuses; це не валідація документа. Формат error-відповіді: `{error,code,category}`, `X-Request-Id`; для sync можливе безпечне поле `status`. Деталі — `DATA-CONTRACT.md`, розділ Public API errors.
 
 ## Перевірка
+
+`syncGoogleDrive(action, options)` accepts optional `{previewToken}` only for `upload` / `download`; HTTP sends `{action,previewToken}` to the existing sync endpoint. The token is a SHA-256 comparison fingerprint bound to both complete documents and the native account/backend Drive file scope. A changed local/cloud document returns `409 SYNC_PREVIEW_STALE` (`conflict`) before replacement and requires a fresh comparison. Malformed tokens/options return `400 VALIDATION_FAILURE` without writes. Old clients may omit the token and keep the existing endpoint semantics. Existing backup, conditional Drive writes and read-back confirmation still apply after a valid choice. The UI always obtains a preview before whole-document replacement; canceling makes no financial write. An unreadable, ambiguous or unauthorized remote document fails closed instead of offering fabricated counts.
+
+Preview summaries contain revision, recorded update time/device and counts of assets, transactions, sales, payments/received payments, expenses, loans and notes. Per-collection differences count local-only, remote-only and changed IDs; budget/target differences are flagged separately. These are document comparisons, not an invented cross-currency portfolio valuation. Dates/devices absent in legacy data appear as unknown; a legacy `android-phone` label cannot identify a historical physical device uniquely.
 
 `backend/tests/apiContracts.test.js` запускає реальний Express API й той самий native adapter на однакових синтетичних портфелях. Перевіряє кожну financial mutation, успіх/неправильний ввід/відмову commit, відсутні записи, baseline conflict, grouped sale, aliases покупки, sync/session, query та ID, збереження стану й читання legacy-документів. Спільний native harness лежить у `backend/tests/helpers/nativeHarness.js`; окремі фінансові, API, sync, document та UI regression tests залишаються чинними. APK і Git-публікація не є частиною цього завдання.

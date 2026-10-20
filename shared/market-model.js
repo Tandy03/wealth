@@ -6,6 +6,17 @@
   const finite = value => ['number', 'string'].includes(typeof value) && value !== '' && Number.isFinite(Number(value)) && Number(value) >= 0;
   const macroTimeoutMs = 25000;
   const policyTimeoutMs = 45000;
+  const proxyApiVersion = 1;
+  function proxyCompatibility(api, action) {
+    // Previously deployed proxies have no metadata. Keep their working endpoints usable.
+    if (api === undefined) return { state: 'legacy', apiVersion: null, release: null };
+    if (!api || api.apiVersion !== proxyApiVersion || !Number.isInteger(api.minClientVersion) || api.minClientVersion < 1 || api.minClientVersion > proxyApiVersion ||
+        typeof api.release !== 'string' || !/^[A-Za-z0-9._-]{1,64}$/.test(api.release) || !Array.isArray(api.capabilities) || !api.capabilities.includes(action)) {
+      const error = new Error('The market proxy API is incompatible. Check the deployment before updating the app.');
+      error.code = 'PROXY_API_INCOMPATIBLE'; throw error;
+    }
+    return { state: 'compatible', apiVersion: api.apiVersion, release: api.release };
+  }
   const gdpUrl = 'https://stat.gov.ua/sdmx/workspaces/default:integration/registry/sdmx/3.0/data/dataflow/SSSU/DF_ANNUAL_NATIONAL_ACCOUNTS/latest/*?' + new URLSearchParams({
     startPeriod: '2010', 'c[INDICATOR]': 'GDP_CUR_PRC', 'c[PRICE_TYPE]': 'CURR_PRICES,IDX_VOL_PY',
     'c[REGION]': 'UA00000000000000000', 'c[BREAKDOWN_CATEGORY]': '_T', 'c[BREAKDOWN]': '_T', 'c[SECTOR_ECONOMY]': 'S_1', 'c[FREQ]': 'A',
@@ -93,5 +104,5 @@
     for (const point of values) state.validateEntity('CalendarNote', { date: point.datetime.slice(0, 10) });
     return { ...payload, values };
   }
-  return { nbuRates, inzhurCatalog, history, gdpUrl, macroTimeoutMs, policyTimeoutMs, parseCsv, gdp, policyRate };
+  return { nbuRates, inzhurCatalog, history, gdpUrl, macroTimeoutMs, policyTimeoutMs, parseCsv, gdp, policyRate, proxyApiVersion, proxyCompatibility };
 });

@@ -1,5 +1,9 @@
 # Frontend: глобали та порядок запуску
 
+`npm.cmd run check:frontend` now exposes the existing reviewed loading/global contract as a separate CI command. `npm.cmd run lint` adds ESLint correctness rules for shared modules plus state, API/outbox, sync, financial calculations and settings/conflict UI. The flat configuration reads existing owners from `frontend-globals.json` rather than accepting arbitrary globals. It checks undefined names, illegal assignments, duplicate declarations/keys, unreachable code and unsafe control flow; formatting and mass rewrites are outside this stage. [ESLint flat config](https://eslint.org/docs/latest/use/configure/configuration-files) is a development dependency only and is never loaded by the browser/WebView.
+
+`.github/workflows/checks.yml` uses Node 24 on Windows and runs locked dependency installation, lint, frontend contracts and all tests on push/PR. On a clean checkout `node backend/scripts/prepareTestConfig.js` creates an empty ignored test-only mobile config if absent, preserving any existing local configuration. CI needs no Google/market secrets and does not deploy, sync Android resources, build APKs or publish artifacts. There is no TypeScript migration or new runtime loader.
+
 `frontend/index.html` залишається точкою входу для web і Android WebView. Усі classic scripts локальні, виконуються послідовно наприкінці body. Нового framework, збирача, runtime loader або запитів за HTML-шаблонами немає. Великі секції HTML на цьому етапі залишені в документі: їх поділ не потрібний для ізоляції bootstrap і не додає ризику для offline-запуску.
 
 ## Дозволені глобали та власники

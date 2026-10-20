@@ -1,6 +1,7 @@
 const { runMutation } = require('../domain/mutation');
 const { DomainError } = require("../utils/domainError");
-const { validateSyncAction } = require('../validators/requests');
+const { validateSyncOptions } = require('../validators/requests');
+const syncModel = require('../../shared/sync-model');
 const { digest } = require('../data/journal');
 const { ConflictError, syncError } = require('../../shared/errors');
 function createService(repository) {
@@ -10,17 +11,32 @@ function createService(repository) {
         await initializeStorage();
         return repository.getSyncStatus?.() || googleDriveStorage.getStatus();
     }
-    async function syncDrive(action = "sync") {
-        validateSyncAction(action);
+    async function getConflictPreview() {
+        await initializeStorage();
+        await repository.waitForRemoteInitialization?.();
+        const local = await readLocalData(), remote = await googleDriveStorage.downloadData();
+        return syncModel.comparison(local, remote, googleDriveStorage.getStatus().fileId || '');
+    }
+    async function syncDrive(action = "sync", options = {}) {
+        validateSyncOptions(action, options);
         await initializeStorage();
         await repository.waitForRemoteInitialization?.();
         const previousBackupId = googleDriveStorage.getStatus().lastBackupId;
         try {
+            let expectedRemoteSignature, expectedLocalSignature;
+            if (options.previewToken) {
+                const previewLocal = await readLocalData(), previewRemote = await googleDriveStorage.downloadData();
+                const token = await syncModel.comparisonToken(previewLocal, previewRemote, googleDriveStorage.getStatus().fileId || '');
+                if (token !== options.previewToken) throw new ConflictError({ code: 'SYNC_PREVIEW_STALE', message: 'The local or cloud version changed. Review the comparison again before choosing.' });
+                expectedRemoteSignature = syncModel.signature(previewRemote);
+                expectedLocalSignature = syncModel.signature(previewLocal);
+            }
             if (action === "download") {
                 await googleDriveStorage.pauseUploads?.();
                 try {
                 const localData = await readLocalData();
                 const remoteData = await googleDriveStorage.downloadData();
+                if (options.previewToken && await syncModel.comparisonToken(localData, remoteData, googleDriveStorage.getStatus().fileId || '') !== options.previewToken) throw new ConflictError({ code: 'SYNC_PREVIEW_STALE', message: 'The local or cloud version changed. Review the comparison again before choosing.' });
                 if (!remoteData)
                     throw new DomainError({ error: "fino-data.json was not found on Google Drive." }, 404);
                 await (googleDriveStorage.createAutomaticBackup || googleDriveStorage.createManualBackup)(localData);
@@ -42,7 +58,8 @@ function createService(repository) {
             }
             else {
                 const localData = await readLocalData();
-                await googleDriveStorage.uploadData(localData, 3, { force: action === 'upload' });
+                if (options.previewToken && syncModel.signature(localData) !== expectedLocalSignature) throw new ConflictError({ code: 'SYNC_PREVIEW_STALE', message: 'The local or cloud version changed. Review the comparison again before choosing.' });
+                await googleDriveStorage.uploadData(localData, 3, { force: action === 'upload', ...(options.previewToken ? { expectedRemoteSignature } : {}) });
                 if (!googleDriveStorage.subscribeConfirmation) await repository.acknowledgeRemote?.(localData);
             }
             const status = repository.getSyncStatus?.() || googleDriveStorage.getStatus();
@@ -56,6 +73,6 @@ function createService(repository) {
             throw failure;
         }
     }
-    return { getDriveStatus, syncDrive };
+    return { getDriveStatus, syncDrive, getConflictPreview };
 }
 module.exports = { createService };

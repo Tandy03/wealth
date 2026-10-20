@@ -64,6 +64,17 @@ test('local success remains pending until Drive read-back confirms the exact sna
   assert.equal(h.repository.getSyncStatus().state, 'sync-confirmed');
   assert.deepEqual(h.remote().calendarNotes, data.calendarNotes);
 });
+
+test('reviewed sync resolution rejects a cloud change before upload and preserves the new cloud document', async t => {
+  const h = await storage(t), service = require('../services/syncService').createService(h.repository);
+  const preview = await service.getConflictPreview();
+  const changed = h.remote(); changed.calendarNotes.push({id:'cloud-change',date:'2026-10-01'});h.changeRemote(changed);
+  await assert.rejects(service.syncDrive('upload',{previewToken:preview.token}),error=>error.code==='SYNC_PREVIEW_STALE');
+  assert.deepEqual(h.remote(),changed);assert.equal(h.backups.length,0);
+  const current = await service.getConflictPreview();
+  await service.syncDrive('upload',{previewToken:current.token});
+  assert.equal(h.remote().calendarNotes.length,0);assert.equal(h.backups.length,1);assert.equal(h.backups[0].snapshot.calendarNotes[0].id,'cloud-change');
+});
 test('an older upload confirmation cannot confirm newer local changes', async t => {
   const h = await storage(t);
   let release, started; const began = new Promise(resolve => started = resolve);

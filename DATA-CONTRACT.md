@@ -41,6 +41,10 @@ Sync endpoints include these outcomes in JSON. Financial HTTP mutations expose `
 
 ## Recovery and conflicts
 
+Whole-document upload/download in the UI first requests a read-only comparison with update dates, recorded devices, revision/counts and record differences. Both choices explain which exclusive records cease to be active and which recovery copy/backup is created. Nothing is merged automatically. Confirmation carries a fingerprint of the compared documents; stale local/cloud/account versions return `SYNC_PREVIEW_STALE` without applying the reviewed replacement. Regular local edits and automatic sync do not compute these comparisons or add preview network requests. Legacy callers remain compatible without a token. See `API-CONTRACT.md`.
+
+Android system backup and device transfer explicitly exclude installation state. Fino Drive sync/manual/automatic backups remain the account-scoped recovery mechanisms; see `ANDROID-BACKUP.md`. Older installed APKs retain their prior manifest until an approved update.
+
 Backend uses `data.json.journal.ndjson`: checksummed full-snapshot `prepare`, `commit` and remote `confirmed` events. Files and journal appends are flushed to disk. A failed final commit rolls back the JSON and caller revision. Restart recovers the last committed snapshot if JSON is missing, corrupted or uncommitted; only a torn final journal append is trimmed. Corruption in the middle fails closed. Compaction preserves all changes after the latest acknowledged commit and the latest 50 recovery snapshots. This is a single-writer local repository, not a distributed event database.
 
 Unsent local data is queued on startup, not replaced with Drive data. Unknown baselines and remote deletion become conflicts. Download preserves the prior local version, then locks only the final application step and rejects concurrent local changes. Uploads serialize separately from financial mutations, recheck remote metadata after backup, and use `If-Match` when an ETag is available. If a provider supplies no ETag, the pre/post checks detect divergence but cannot guarantee a server-side compare-and-swap; backups and the journal remain recovery mechanisms.
@@ -96,6 +100,12 @@ The observer emits one HTTP failure event on completion, with request ID, route 
 The normalization runs on failures. Successful responses keep their existing payloads, and API facade dispatch stays unchanged. There are no additional network requests, storage writes, timers or financial recalculations from this contract change.
 
 ## Asset detail read model
+
+Profit-period scope, completed cash-flow projection, FX/quote quality, scenario
+assumptions and concentration bases are specified in [ANALYTICS.md](ANALYTICS.md).
+These projections are pure reads. `uniqueFinancialRecords` in the shared state
+contract removes identified replayed facts for analytics, without rewriting the
+stored document or merging independent equal payments.
 
 `frontend/js/asset-detail/model.js` retains a per-position projection and builds the displayed card from all positions with the same type and normalized name, matching Portfolio/Dashboard. Closed positions contribute their historical results without adding current holdings. It delegates current/historical quantities and remaining cost to `shared/portfolio-rules.js`, then sums the per-position results without merging or changing persisted records. Stored sale profit/cost remain historical facts; each linked sale contributes once. Received payments are counted from the payment records once, not again from their companion transactions. Maturity proceeds include returned principal: only proceeds minus recorded cost basis contribute to realized income. Unlinked legacy income transactions remain visible as records with a warning rather than being guessed into duplicate payout totals.
 

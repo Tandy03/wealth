@@ -53,149 +53,140 @@ function setReturnBenchmarkHover(element, portfolioReturn, state = stateStore.ge
 function setXirrValue(element, xirr) {
   if (!element) return;
   const card = element.closest(".stat-card") || element;
-  element.textContent = xirr == null ? "Unavailable" : `${(xirr * 100).toFixed(2)}%`;
+  const details = xirr && typeof xirr === 'object' ? xirr : null;
+  const value = details ? details.value : xirr;
+  element.textContent = value == null ? window.FinoI18n.t(details?.incomplete ? 'Incomplete' : 'Unavailable') : `${details?.estimated ? '≈ ' : ''}${(value * 100).toFixed(2)}%`;
+  const note = document.querySelector('#stat-xirr-note');
+  if (note && details) {
+    const v = details.valuation, dates = v.rows.map(row => row.quoteDate).filter(Boolean).sort();
+    note.textContent = window.FinoI18n.format('Unvalued: {missing}; stale: {stale}; undated: {undated}. Fresh quote coverage by cost basis: {share}.', { missing: v.unpricedCount, stale: v.staleCount, undated: v.undatedCount, share: v.freshQuoteShare == null ? '—' : v.freshQuoteShare.toFixed(1) + '%' })
+      + ' ' + window.FinoI18n.format('Valuation: {date}. Quote dates: {from} — {to}. Sources: {sources}.', { date: v.asOf, from: dates[0] || '—', to: dates.at(-1) || '—', sources: [...new Set(v.rows.map(row => window.FinoI18n.t(row.source)))].join(', ') || '—' })
+      + ' ' + window.FinoI18n.format('Operation-date FX; estimated conversions: {estimated}; missing FX: {missing}.', { estimated: details.estimatedFx + v.estimatedFx, missing: details.missingFx + v.missingFx })
+      + (details.missingHistory || details.missingAmounts || details.missingDates ? ' ' + window.FinoI18n.t('Incomplete cash-flow history.') : '')
+      + ' ' + window.FinoI18n.t('Fresh means a recorded quote no older than 7 days. Missing prices are not replaced with purchase prices.');
+  }
   card.classList.remove("currency-hover-card");
   card.removeAttribute("title");
   card.removeAttribute("tabindex");
 }
 
-function renderReinvestmentForecast(totalProfit, investedCapital, state = stateStore.getState()) {
-  const amountElement = document.querySelector("#stat-reinvestment");
-  const averageElement = document.querySelector("#stat-average-monthly-profit");
-  if (!amountElement || !averageElement) return;
-  const dates = (state.data.transactions || []).map((item) => item.date).filter(Boolean).sort();
-  const forecast = FinoDashboardAnalytics.reinvestmentForecast({ totalProfit, investedCapital, firstDate: dates[0], usdRate: EXCHANGE_RATES.USD });
-  if (forecast.reason === 'history') {
-    amountElement.dataset.valueUah = "—";
-    amountElement.dataset.valueUsd = "—";
-    amountElement.textContent = "—";
-    averageElement.textContent = "Average monthly profit: insufficient history";
-    return;
+function renderReinvestmentForecast(state = stateStore.getState(), services = createRenderServices(state)) {
+  const amount = document.querySelector('#stat-reinvestment');
+  if (!amount) return;
+  const t = window.FinoI18n.t, f = window.FinoI18n.format;
+  const forecast = FinoDashboardAnalytics.reinvestmentForecast({ data: state.data, market: services, asOf: getDateString() });
+  const set = (id, text) => { const element = document.getElementById(id); if (element) element.textContent = text; };
+  const approximate = forecast.estimated || forecast.incomplete;
+  const currency = (value, estimated = approximate) => Number.isFinite(value) ? (estimated ? '≈ ' : '') + money(value) : '—';
+  const badIncome = forecast.incomeComplete === false;
+  const badCapital = forecast.capitalComplete === false;
+  set('reinvestment-income', currency(badIncome ? null : forecast.income, forecast.estimatedIncomeShare > 0));
+  set('stat-average-monthly-profit', f('Average regular income per month: {amount}', { amount: currency(badIncome ? null : forecast.averageMonthlyIncome) }));
+  set('reinvestment-average-capital', currency(badCapital ? null : forecast.averageCapital, forecast.estimatedCapitalShare > 0));
+  set('reinvestment-current-capital', currency(forecast.currentCapitalComplete === false ? null : forecast.currentCapital, forecast.currentCapitalEstimated));
+  set('reinvestment-annual-yield', Number.isFinite(forecast.annualYield) ? (approximate ? '≈ ' : '') + (forecast.annualYield * 100).toFixed(2) + '%' : '—');
+  set('reinvestment-required-capital', currency(forecast.requiredCapital));
+  set('reinvestment-target', currency(forecast.targetMonthlyIncome, Boolean(forecast.targetFx?.estimated)));
+  set('reinvestment-observation', f('Observation: {from} — {to}; {days} calendar days.', { from: forecast.firstDate || '—', to: forecast.lastDate || '—', days: forecast.observationDays || 0 }) + ' ' + f('Funded capital days: {days}.', { days: forecast.fundedDays || 0 }));
+  set('reinvestment-range', forecast.range ? f('Additional-capital scenario range: {min} — {max}', { min: currency(forecast.range[0]), max: currency(forecast.range[1]) }) : '');
+  set('reinvestment-excess', forecast.additionalInvestment === 0 ? f('Target covered in the base scenario. Observed average above target: {observed}/month; modelled current excess: {current}/month.', { observed: currency(forecast.observedExcess), current: currency(forecast.currentMonthlyExcess) }) : '');
+  const reasons = {
+    data: 'Incomplete data: scenario amounts are hidden.',
+    history: 'Insufficient history: at least 90 days of completed investments are required.',
+    'income-history': 'No confirmed regular-income history. Missing receipts do not prove zero yield.',
+    capital: 'The average invested capital is unavailable or zero.',
+    return: 'Recorded regular-income yield is not positive; required capital cannot be estimated.',
+  };
+  const historyNote = forecast.insufficientHistory ? f('Insufficient history: {days} of the required 90 funded days are available.', { days: forecast.fundedDays || 0 }) : '';
+  const incomeMessages = {
+    missing: 'No confirmed regular-income receipts in the observation period. Income-based metrics are unavailable.',
+    invalid: 'Regular-income receipt data is invalid or cannot be valued. Income-based metrics are unavailable.',
+    'zero-total': 'Recorded regular-income receipts sum to zero. Income-based estimates are unavailable; review the records.',
+  };
+  const incomeMessage = incomeMessages[forecast.incomeState];
+  const status = incomeMessage ? t(incomeMessage) + (forecast.reason === 'data' ? ' ' + t(reasons.data) : '')
+    : forecast.reason === 'history' ? '' : t(reasons[forecast.reason] || (forecast.preliminary ? 'Preliminary scenario: less than 365 days of history.' : 'Assumption scenarios, not forecasts or probabilities.'));
+  set('reinvestment-status', status + (historyNote ? (status ? ' ' : '') + historyNote : ''));
+  set('reinvestment-quality', f('History gaps: {history}; missing FX: {fx}; invalid records: {invalid}; ambiguous receipts: {ambiguous}. Fallback share: capital-days {capital}%, income {income}%.', {
+    history: forecast.issues.history || 0, fx: forecast.issues.missingFx || 0, invalid: forecast.issues.invalidRecords || 0, ambiguous: forecast.issues.ambiguousReceipts || 0,
+    capital: ((forecast.fallbackCapitalShare || 0) * 100).toFixed(1), income: ((forecast.fallbackIncomeShare || 0) * 100).toFixed(1),
+  }) + (forecast.targetUnavailable ? ' ' + t('The target USD rate is missing, undated or older than 7 days.') : ''));
+  amount.textContent = currency(forecast.additionalInvestment);
+  amount.dataset.valueUah = amount.textContent;
+  amount.dataset.valueUsd = Number.isFinite(forecast.additionalInvestment) && forecast.targetFx?.rate > 0 ? '$' + currencyFormatter.format(forecast.additionalInvestment / forecast.targetFx.rate) : '—';
+  const scenarios = document.querySelector('#reinvestment-scenarios');
+  scenarios?.replaceChildren();
+  const names = { conservative: 'Conservative', base: 'Base', optimistic: 'Optimistic' };
+  for (const scenario of forecast.scenarios) {
+    const row = document.createElement('li'), title = document.createElement('b');
+    title.textContent = t(names[scenario.name]) + ' · ' + (scenario.multiplier * 100) + '%'; row.append(title);
+    for (const text of [f('Annual regular-income yield: {yield}', { yield: (scenario.annualYield * 100).toFixed(2) + '%' }),
+      f('Required capital: {amount}', { amount: currency(scenario.requiredCapital) }),
+      f('Additional capital: {amount}', { amount: currency(scenario.additionalInvestment) }),
+      scenario.targetMet ? t('The current capital covers the target under this assumption.') : f('Current capital falls short of the target by {amount}/month.', { amount: currency(scenario.shortfall) })]) {
+      const line = document.createElement('span'); line.textContent = text; row.append(line);
+    }
+    scenarios?.append(row);
   }
-  averageElement.textContent = `Average monthly profit: ${money(forecast.averageMonthlyProfit)}`;
-  if (forecast.reason === 'return') {
-    amountElement.dataset.valueUah = "Insufficient positive return";
-    amountElement.dataset.valueUsd = "Insufficient positive return";
-    amountElement.textContent = "Insufficient positive return";
-    return;
+  const fx = forecast.targetFx;
+  set('reinvestment-fx', fx ? f('Target FX: 1 USD = {rate} UAH; date: {date}; source: {source}.', { rate: fx.rate ?? '—', date: fx.date || t('Date unavailable'), source: t(fx.source || 'Unknown') }) + (fx.estimated ? ' ' + t('Estimated FX.') : '') : '');
+  const fxList = document.querySelector('#reinvestment-fx-usage'); fxList?.replaceChildren();
+  for (const item of forecast.fxUsage) {
+    const row = document.createElement('li');
+    row.textContent = `${item.currency}/UAH · ${t(item.method === 'operation-date' ? 'Historical FX' : 'Report-date FX')} · ${item.minRate == null ? '—' : item.minRate === item.maxRate ? item.minRate : item.minRate + ' — ' + item.maxRate} · ${item.from || t('Date unavailable')} — ${item.to || '—'} · ${t(item.source)}${item.estimated ? ' · ' + t('Estimated FX.') : ''}`;
+    fxList?.append(row);
   }
-  setDashboardCurrencyHover(amountElement, forecast.additionalInvestment);
+  const receipts = document.querySelector('#reinvestment-receipts'); receipts?.replaceChildren();
+  set('reinvestment-receipt-count', f('Included receipts: {count}. Showing the latest 20; full history is in Transactions.', { count: forecast.receipts.length }));
+  for (const receipt of forecast.receipts.slice(0, 20)) {
+    const row = document.createElement('li'), fx = receipt.fx;
+    row.setAttribute('translate', 'no');
+    row.textContent = `${receipt.date} · ${receipt.assetName} · ${t(receipt.type === 'DIVIDEND' ? 'Dividend' : 'Coupon')} · ${money(receipt.originalAmount, receipt.currency)} → ${currency(receipt.amount, fx.estimated)} · FX ${fx.rate ?? '—'} · ${fx.date || t('Date unavailable')} · ${t(fx.source)}`;
+    receipts?.append(row);
+  }
 }
 
 function renderDashboard(state = stateStore.getState()) {
-  const { toUAH, getAssetPurchaseDate, toUAHPurchaseCost, convertCurrency, getAvailableQuantity, getMaturityCostBasis, calculateInvested, calculateInvestedUsd, getCurrentPrice, calculatePortfolioValue, getUnrealizedPriceGrowth, calculatePortfolioXirr } = createRenderServices(state);
-  const invested = calculateInvested();
-  const portfolioValue = calculatePortfolioValue();
-
-  const investedElement = document.querySelector("#stat-invested");
-
-  const valueElement = document.querySelector("#stat-value");
-
-  const profitElement = document.querySelector("#stat-profit");
-
-  const roiElement = document.querySelector("#stat-roi");
-
-  const returnElement = document.querySelector("#stat-return");
-
-  if (investedElement) {
-    setDashboardCurrencyHover(investedElement, invested, calculateInvestedUsd());
-  }
-
-  if (valueElement) {
-    setDashboardCurrencyHover(valueElement, portfolioValue);
-  }
-
-  /*
-   * Realized sales profit
-   */
-
-  const salesProfit = (state.data.sales || []).reduce(
-    (sum, sale) => sum + (sale.type === "savings" ? 0 : toUAH(normalizeNumber(sale.profit), sale.currency)),
-    0,
-  );
-
-  let quotedUnrealized = 0, pricedOpen = 0, unquotedOpen = 0;
-  const priceGrowthProfit = state.data.assets.reduce((sum, asset) => {
-    const growth = toUAH(getUnrealizedPriceGrowth(asset), asset.currency);
-    if (!['savings', 'deposit', 'novapay'].includes(asset.type)) {
-      if (getAvailableQuantity(asset.id) > 0) {
-        if (Number(asset.currentPrice) > 0) { quotedUnrealized += growth; pricedOpen++; }
-        else unquotedOpen++;
-      }
+  const services = createRenderServices(state);
+  const { toUAH, convertCurrency, getAvailableQuantity, getCurrentPrice } = services;
+  const valuation = services.valuation(), report = services.calculateProfit();
+  const observations = services.cashEvents(valuation.asOf);
+  const invested = valuation.costBasis, portfolioValue = valuation.knownValue;
+  const incompleteRealized = report.missingFx > 0 || report.missingAmounts > 0 || report.missingDates > 0;
+  const realized = incompleteRealized ? null : report.totalProfit;
+  const totalProfit = realized === null || valuation.unpricedCount ? null : realized + valuation.unrealized;
+  const roiBase = invested + report.invested;
+  const showResult = (element, amount, sign = false) => {
+    if (!element) return;
+    if (amount === null) {
+      const unavailable = window.FinoI18n.t('Unavailable');
+      element.textContent = unavailable; element.dataset.valueUah = unavailable; element.dataset.valueUsd = unavailable;
+    } else {
+      setDashboardCurrencyHover(element, amount);
+      if (sign && amount > 0) { element.dataset.valueUah = '+' + element.dataset.valueUah; element.dataset.valueUsd = '+' + element.dataset.valueUsd; element.textContent = element.dataset.valueUah; }
     }
-    return sum + growth;
-  }, 0);
-
-  /*
-   * Received payments
-   */
-
-  const receivedPayments = (state.data.payments || [])
-    .filter(
-      (payment) => window.FinoPortfolioRules.received(payment),
-    )
-    .reduce(
-      (sum, payment) =>
-        sum +
-        toUAH(normalizeNumber(payment.amount) -
-        (payment.type === "MATURITY" ? getMaturityCostBasis(payment.assetId) : 0), payment.currency),
-      0,
-    );
-
-  const totalProfit = salesProfit + priceGrowthProfit + receivedPayments;
-  const unrealizedElement = document.querySelector('#stat-unrealized');
-  const realizedElement = document.querySelector('#stat-realized');
-  const showResult = (element, amount) => {
-    setDashboardCurrencyHover(element, amount);
-    if (amount > 0) {
-      element.dataset.valueUah = '+' + element.dataset.valueUah; element.dataset.valueUsd = '+' + element.dataset.valueUsd;
-      element.textContent = element.dataset.valueUah;
-    }
-    element.classList.toggle('result-positive', amount > 0); element.classList.toggle('result-negative', amount < 0);
+    element.classList.toggle('result-positive', sign && amount > 0); element.classList.toggle('result-negative', sign && amount < 0);
   };
-  if (unrealizedElement) {
-    if (unquotedOpen && !pricedOpen) {
-      const unavailable = window.FinoI18n.t('No quote available');
-      unrealizedElement.textContent = unavailable; unrealizedElement.dataset.valueUah = unavailable; unrealizedElement.dataset.valueUsd = unavailable;
-    } else showResult(unrealizedElement, quotedUnrealized);
-    unrealizedElement.classList.toggle('result-positive', quotedUnrealized > 0);
-    unrealizedElement.classList.toggle('result-negative', quotedUnrealized < 0);
-  }
-  if (realizedElement) {
-    const realized = salesProfit + receivedPayments;
-    showResult(realizedElement, realized);
-  }
-  const unrealizedNote = document.querySelector('#stat-unrealized-note');
-  if (unrealizedNote) unrealizedNote.textContent = window.FinoI18n.t('Open quoted positions only; received income is excluded.')
-    + (unquotedOpen ? ` ${unquotedOpen} ${window.FinoI18n.t('unquoted positions are excluded.')}` : '');
-
-  if (profitElement) {
-    setDashboardCurrencyHover(profitElement, totalProfit);
-  }
-
-  /*
-   * ROI
-   */
-
-  const totalCostBasis = (state.data.sales || []).reduce(
-    (sum, sale) => sum + (sale.type === "savings" ? 0 : toUAHPurchaseCost(normalizeNumber(sale.costBasis), sale.currency, sale.assetId, getAssetPurchaseDate(sale.assetId, sale.sellDate))),
-    0,
-  );
-
-  const roiBase = invested + totalCostBasis;
-  const roi = roiBase > 0 ? (totalProfit / roiBase) * 100 : 0;
-  if (roiElement) {
-    setReturnBenchmarkHover(roiElement, roi, state);
-  }
-  if (returnElement) {
-    const xirr = calculatePortfolioXirr();
-    setXirrValue(returnElement, xirr);
-  }
-  renderReinvestmentForecast(totalProfit, roiBase, state);
-
-  /*
-   * Dashboard assets
-   */
+  showResult(document.querySelector('#stat-invested'), valuation.missingFx ? null : invested);
+  showResult(document.querySelector('#stat-value'), valuation.rows.length && valuation.rows.every(row => row.value === null) ? null : portfolioValue);
+  const unrealizedElement = document.querySelector('#stat-unrealized');
+  if (unrealizedElement && valuation.rows.length && valuation.rows.every(row => row.value === null)) {
+    const text = window.FinoI18n.t('No quote available'); unrealizedElement.textContent = text; unrealizedElement.dataset.valueUah = text; unrealizedElement.dataset.valueUsd = text;
+  } else showResult(unrealizedElement, valuation.unrealized, true);
+  showResult(document.querySelector('#stat-realized'), realized, true);
+  showResult(document.querySelector('#stat-profit'), totalProfit);
+  const note = document.querySelector('#stat-unrealized-note');
+  if (note) note.textContent = window.FinoI18n.t('Open quoted positions only; received income is excluded.') + (valuation.unpricedCount ? ` ${valuation.unpricedCount} ${window.FinoI18n.t('unquoted positions are excluded.')}` : '');
+  const currencies = [...new Set([...(state.data.assets || []).map(asset => asset.currency || 'UAH'), ...observations.flows.map(event => event.currency)])];
+  const fx = currencies.map(currency => services.rateInfo(currency, valuation.asOf));
+  const estimated = fx.some(info => info.estimated), dates = fx.filter(info => info.source !== 'UAH').map(info => info.date).filter(Boolean).sort();
+  const method = window.FinoI18n.format('Report-date FX: {date}. {quality}', { date: dates[0] || valuation.asOf, quality: window.FinoI18n.t(estimated ? 'Estimated FX.' : 'Recorded FX.') });
+  for (const id of ['stat-invested-method', 'stat-realized-method', 'stat-profit-method']) { const element = document.getElementById(id); if (element) element.textContent = method; }
+  const valueNote = document.querySelector('#stat-value-note');
+  if (valueNote) valueNote.textContent = window.FinoI18n.format('Quoted value only; excluded positions: {count}.', { count: valuation.unpricedCount });
+  setReturnBenchmarkHover(document.querySelector('#stat-roi'), totalProfit !== null && roiBase > 0 && !valuation.missingFx ? totalProfit / roiBase * 100 : null, state);
+  setXirrValue(document.querySelector('#stat-return'), services.calculatePortfolioXirrDetails(valuation, observations));
+  renderReinvestmentForecast(state, services);
 
   const assetsContainer = document.querySelector("#dashboard-assets");
 

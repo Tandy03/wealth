@@ -41,20 +41,73 @@ function setupModalBackdropClosing() {
 }
 
 function setupGoogleDriveSync() {
+  let comparing = false;
+  const previewModal = document.querySelector('#sync-preview-modal');
+  const compareVersions = async action => {
+    const preview = await api.getSyncConflictPreview();
+    const text = value => window.FinoI18n?.t(value) || value;
+    const e = escapeHtml;
+    const date = value => value ? new Date(value).toLocaleString(window.FinoI18n?.locale || 'en') : text('Unknown');
+    const countLabels = { assets: 'Assets', transactions: 'Transactions', sales: 'Sales', payments: 'Payments', receivedPayments: 'Received payments', expenses: 'Expenses', loans: 'Loans', notes: 'Notes' };
+    const card = (title, version) => `<article><h3>${e(text(title))}</h3>${version ? `<p>${e(text('Updated'))}: ${e(date(version.updatedAt))}<br>${e(text('Device'))}: ${e(version.deviceId || text('Unknown'))}<br>${e(text('Revision'))}: ${e(version.revision ?? text('Unknown'))}</p><dl>${Object.entries(version.counts).map(([key, value]) => `<dt>${e(text(countLabels[key] || key))}</dt><dd>${e(value)}</dd>`).join('')}</dl>` : `<p>${e(text('No cloud document found.'))}</p>`}</article>`;
+    document.querySelector('#sync-preview-versions').innerHTML = card('This device', preview.local) + card('Google Drive', preview.remote);
+    document.querySelector('#sync-preview-differences').innerHTML = Object.entries(preview.differences).map(([key, diff]) => `<p><strong>${e(text(countLabels[key] || key))}</strong>: ${e(window.FinoI18n.format('Only on device: {local}; only in Drive: {remote}; different: {changed}', { local: diff.localOnly, remote: diff.remoteOnly, changed: diff.changed }))}</p>`).join('')
+      + (preview.plansDiffer ? `<p>${e(text('Budget plans differ.'))}</p>` : '') + (preview.targetsDiffer ? `<p>${e(text('Rebalance targets differ.'))}</p>` : '')
+      + `<p>${e(text('Budget plans and rebalance targets are also replaced with the selected document.'))}</p>`;
+    const choices = [...previewModal.querySelectorAll('[name="sync-version"]')];
+    choices.forEach(input => { input.disabled = input.value === 'download' && !preview.remote; input.checked = input.value === action && !input.disabled; });
+    const consequence = () => {
+      const selected = choices.find(input => input.checked)?.value;
+      document.querySelector('#sync-preview-consequence').textContent = text(!selected ? 'Choose a version to see the consequences before confirming.' : selected === 'upload'
+        ? 'Google Drive will be replaced with this device’s document. Cloud-only records will not remain in the active portfolio. A cloud backup is created before replacement.'
+        : 'This device’s document will be replaced with Google Drive. Local-only records will not remain in the active portfolio. A local recovery copy and backup are created before replacement.');
+      document.querySelector('#confirm-sync-preview').disabled = !selected;
+    };
+    choices.forEach(input => { input.onchange = consequence; }); consequence();
+    const previousFocus = document.activeElement;
+    previewModal.classList.add('open');
+    previewModal.querySelector('.modal').scrollTop = 0;
+    document.querySelector('#close-sync-preview').focus();
+    return new Promise(resolve => {
+      const close = accepted => {
+        previewModal.classList.remove('open');
+        previewModal.removeEventListener('click', clicked); previewModal.removeEventListener('keydown', keyed);
+        choices.forEach(input => { input.onchange = null; }); previousFocus?.focus();
+        resolve(accepted ? { action: choices.find(input => input.checked).value, options: { previewToken: preview.token } } : null);
+      };
+      const clicked = event => {
+        if (event.target === previewModal || event.target.closest('#cancel-sync-preview,#close-sync-preview')) close(false);
+        else if (event.target.closest('#confirm-sync-preview') && choices.some(input => input.checked)) close(true);
+      };
+      const keyed = event => {
+        if (event.key === 'Escape') { event.preventDefault(); close(false); }
+        if (event.key === 'Tab') {
+          const focusable = [...previewModal.querySelectorAll('button:not(:disabled),input:not(:disabled)')], first = focusable[0], last = focusable.at(-1);
+          if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+          else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+        }
+      };
+      previewModal.addEventListener('click', clicked); previewModal.addEventListener('keydown', keyed);
+    });
+  };
   document.querySelectorAll("[data-drive-action]").forEach((button) => {
     button.addEventListener("click", async () => {
-      const action = button.dataset.driveAction;
+      if (comparing) return;
+      let action = button.dataset.driveAction, options = {};
       const confirmations = {
-        download: "Download from Drive and replace the local data file? A backup of the local data will be created first.",
-        upload: "Upload local data and replace fino-data.json on Google Drive? A backup of the Drive data will be created first.",
         reconnect: window.mobileApi ? "Disconnect the current Google account? You will choose an account when opening your portfolio again." : "Disconnect the current Google authorization? You will need to run npm run google-auth again.",
       };
-      if (confirmations[action] && !(await showConfirm(confirmations[action], "Google Drive"))) return;
+      if (['upload', 'download', 'compare'].includes(action)) {
+        comparing = true;
+        try { const decision = await compareVersions(action); if (!decision) return; ({ action, options } = decision); }
+        catch (error) { await showNotice(error, 'Google Drive'); return; }
+        finally { comparing = false; }
+      } else if (confirmations[action] && !(await showConfirm(confirmations[action], "Google Drive"))) return;
       document.querySelectorAll("[data-drive-action]").forEach((item) => { item.disabled = true; });
       document.querySelectorAll("[data-drive-state]").forEach((item) => { item.textContent = "Syncing"; });
       try {
         if (action === 'reconnect') stateStore.invalidateContext();
-        const result = await api.syncGoogleDrive(action);
+        const result = await api.syncGoogleDrive(action, options);
         renderGoogleDriveStatus(result.status);
         if (action === "download" || action === "sync") await loadData();
         if (action === "reconnect") await showNotice(

@@ -10,12 +10,21 @@ const price = financeSource.slice(financeSource.indexOf('function getCurrentPric
 function render(assets) {
   const container = { innerHTML: '', querySelectorAll: () => [] };
   const rates = { UAH: 1, USD: 40, EUR: 45 };
-  const context = { state: { data: { assets, sales: [], payments: [] } }, document: { querySelector: (selector) => selector === '#dashboard-assets' ? container : null },
+  const context = { state: { data: { assets, transactions: [], sales: [], payments: [] }, purchaseExchangeRates: {} }, document: { querySelector: (selector) => selector === '#dashboard-assets' ? container : null, getElementById: () => null },
+    window: { FinoI18n: { t: text => text, format: text => text } },
+    setReturnBenchmarkHover: () => {}, setXirrValue: () => {},
     stateStore: { getState: () => context.state }, createRenderServices: () => context, bindDashboardHoldings: () => {},
     calculateInvested: () => 0, calculatePortfolioValue: () => 0, getUnrealizedPriceGrowth: () => 0, getMaturityCostBasis: () => 0, toUAHPurchaseCost: () => 0, renderReinvestmentForecast: () => {}, renderUpcomingPayments: () => {}, setupPortfolioCurrencyHover: () => {},
     getAvailableQuantity: (id) => { const asset = assets.find(item => item.id === id); return asset.closedAt ? 0 : asset.quantity - (asset.sold || 0); },
     normalizeNumber: (value) => Number(value) || 0, convertCurrency: (amount, from = 'UAH', to = 'UAH') => amount * rates[from] / rates[to], toUAH: (amount, currency = 'UAH') => amount * rates[currency],
     portfolioMoneyWithUahHover: (amount, currency, uah) => amount + ' ' + currency + ' [' + uah + ' UAH]', formatQuantity: (value) => String(value), escapeHtml: (value) => String(value), typeLabels: {} };
+  const values = require('../../frontend/js/analytics/values');
+  const market = require('../../frontend/js/market-data').createService({ state: context.state, values, exchangeRates: rates, historicalRates: rates });
+  const finance = require('../../frontend/js/analytics/portfolio-finance').createService({ state: context.state, values, market });
+  const cashflow = require('../../frontend/js/cashflow').createService({ state: context.state, values, market, finance });
+  // Exercise the actual metric collaborators; this test still isolates the
+  // Portfolio card's mocked remaining-unit display from its sibling cards.
+  context.createRenderServices = () => ({ ...context, ...market, ...finance, ...cashflow, getAvailableQuantity: context.getAvailableQuantity });
   vm.createContext(context); vm.runInContext(price + dashboard, context); context.renderDashboard(); return container.innerHTML;
 }
 test('Portfolio card displays current value for remaining units instead of invested cost', () => {

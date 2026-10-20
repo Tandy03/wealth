@@ -12,7 +12,7 @@ const html = fs.readFileSync(path.join(frontend, 'index.html'), 'utf8');
 validateFrontend(html);
 const fixture = () => ({ ...model.createEmptyState(), assets: [{ id: 'stock', name: 'Smoke Stock', type: 'stock', quantity: 2, purchasePrice: 100, currentPrice: 120, purchaseDate: '2026-01-01', currency: 'USD' }], transactions: [{ id: 'buy', assetId: 'stock', type: 'BUY', quantity: 2, amount: 200, date: '2026-01-01', currency: 'USD' }] });
 const flush = async () => { for (let i = 0; i < 8; i++) await new Promise(setImmediate); };
-async function harness(t, { initial = fixture(), blockMarkets = false, locale = 'en', charts = false, failWallet = false, failRebalance = false, failPayments = false, sessionDraft, native = false, nativeStorage: restoredStorage, macroFailureOnce = false, styles = false, compact = false, bootFromEvent = false, browserStorage } = {}) {
+async function harness(t, { initial = fixture(), blockMarkets = false, locale = 'en', charts = false, failWallet = false, failRebalance = false, failPayments = false, sessionDraft, native = false, nativeStorage: restoredStorage, macroFailureOnce = false, styles = false, compact = false, bootFromEvent = false, browserStorage, syncPreview } = {}) {
   const errors = [];
   const console = new VirtualConsole();
   console.on('jsdomError', error => errors.push(error.message));
@@ -116,6 +116,8 @@ async function harness(t, { initial = fixture(), blockMarkets = false, locale = 
     let data;
     if (route === '/api/data') data = stored;
     else if (route === '/api/sync/status') data = { connected: false, enabled: false };
+    else if (route === '/api/sync/preview') data = syncPreview || await require('../../shared/sync-model').comparison(stored, stored);
+    else if (route === '/api/sync/google-drive') data = { success: true, action: body.action, status: { connected: true, enabled: true, state: 'sync-confirmed', remoteConfirmed: true } };
     else if (route === '/api/exchange-rates') data = { rates: { USD: 40, EUR: 45 } };
     else if (route.endsWith('currency-history')) data = { values: [{ datetime: '2026-01-01', close: 40 }] };
     else if (route.endsWith('index-history')) data = { values: [] };
@@ -173,11 +175,147 @@ async function harness(t, { initial = fixture(), blockMarkets = false, locale = 
 }
 
 for (const native of [false, true]) {
+  test(`profit periods, valuation quality and concentration remain consistent in ${native ? 'offline native' : 'web'} UI`, async t => {
+    const initial = fixture(), today = new Date().toISOString().slice(0, 10);
+    initial.assets[0].purchaseDate = '2025-01-01'; initial.assets[0].priceUpdatedAt = today;
+    initial.assets[0].issuer = '<img src=x onerror=alert(1)>'; initial.assets[0].sector = 'Technology';
+    initial.transactions[0].date = '2025-01-01';
+    initial.assets.push({ id:'unquoted', name:'Unquoted', type:'stock', quantity:1, purchasePrice:100, purchaseDate:'2025-01-01', currency:'UAH' });
+    initial.transactions.push({ id:'other-buy', assetId:'unquoted', type:'BUY', quantity:1, amount:100, date:'2025-01-01', currency:'UAH' });
+    initial.payments.push({ id:'income', assetId:'stock', type:'DIVIDEND', date:'2026-01-01', receivedDate:'2026-01-02', received:true, amount:10, currency:'USD' },
+      { id:'later', assetId:'stock', type:'COUPON', date:'2026-01-01', receivedDate:'2026-03-01', status:'paid', amount:5, currency:'USD' });
+    const h = await harness(t, { initial, native, compact:true });
+    assert.equal(h.document.querySelector('#stat-return').textContent, 'Incomplete');
+    assert.match(h.document.querySelector('#stat-xirr-note').textContent, /Unvalued: 1/);
+    assert.match(h.document.querySelector('#stat-xirr-note').textContent, /Sources:/);
+    assert.equal(h.document.querySelectorAll('#reinvestment-scenarios li').length, 0);
+    assert.match(h.document.querySelector('#reinvestment-status').textContent, /Incomplete data/);
+    assert.match(h.document.querySelector('#reinvestment-observation').textContent, /365 calendar days/);
+    h.document.querySelector('[data-section="analytics"]').click();
+    h.document.querySelector('#profit-from').value = '2026-01-01';
+    h.document.querySelector('#profit-to').value = '2026-01-31';
+    h.document.querySelector('#profit-to').dispatchEvent(new h.window.Event('change'));
+    await flush();
+    const amount = h.eval('money(createRenderServices(stateStore.getState()).calculateProfit("2026-01-01","2026-01-31").dividends)');
+    assert.ok(h.document.querySelector('#profit-dividends').textContent.endsWith(amount));
+    assert.ok(h.document.querySelector('#profit-coupons').textContent.endsWith(h.eval('money(0)')));
+    assert.equal(h.document.querySelector('#profit-roi'),null);
+    assert.match(h.document.querySelector('#profit-report-method').textContent,/Current unrealized result is separate/);
+    assert.match(h.document.querySelector('#profit-current-note').textContent,/outside the selected period/);
+    assert.match(h.document.querySelector('#concentration-summary').textContent,/excluded positions: 1/);
+    assert.equal(h.document.querySelector('#concentration-groups img'),null);
+    assert.match(h.document.querySelector('#concentration-groups').textContent,/<img src=x/);
+    const requests = h.requests.length;
+    const select = h.document.querySelector('#concentration-basis'); select.value='cost'; select.dispatchEvent(new h.window.Event('change'));
+    await flush();
+    assert.match(h.document.querySelector('#concentration-summary').textContent,/excluded positions: 0/);
+    assert.match(h.document.querySelector('#concentration-groups').textContent,/Unquoted/);
+    assert.equal(h.requests.length,requests,'changing analytic basis must not issue network requests');
+    h.eval('renderReinvestmentForecast({data:null}, {})');
+    assert.equal(h.document.querySelector('#reinvestment-scenarios').children.length,0);
+    assert.equal(h.document.querySelector('#reinvestment-fx').textContent,'');
+    assert.deepEqual(h.errors,[]);
+  });
+}
+
+for (const native of [false, true]) for (const locale of ['en','uk']) {
+  test(`regular-income card explains its records, daily capital, target FX and scenarios without writes in ${native?'native':'web'} ${locale}`, async t => {
+    const today=require('../../frontend/js/analytics/values').getDateString();
+    const firstDate=new Date(Date.parse(today)-364*86400000).toISOString().slice(0,10);
+    const initial=fixture();initial.assets[0]={...initial.assets[0],name:'Dividend <img src=x>',currency:'UAH',quantity:100,purchaseDate:firstDate};
+    initial.transactions[0]={...initial.transactions[0],currency:'UAH',quantity:100,amount:10000,date:firstDate};
+    initial.payments.push({id:'regular',assetId:'stock',type:'DIVIDEND',status:'received',amount:1200,currency:'UAH',date:today});
+    const h=await harness(t,{initial,native,locale,compact:true});
+    const before=h.eval('JSON.stringify(stateStore.getData())'),requests=h.requests.length;
+    h.eval(`stateStore.setUI({exchangeRateDate:${JSON.stringify(today)},exchangeRateSource:'NBU',exchangeRateStale:false});renderDashboard();`);
+    await flush();
+    assert.equal(h.document.querySelectorAll('#reinvestment-scenarios li').length,3);
+    assert.equal(h.document.querySelector('#reinvestment-annual-yield').textContent,'12.00%');
+    assert.ok(h.document.querySelector('#reinvestment-income').textContent.endsWith(h.eval('money(1200)')));
+    assert.ok(h.document.querySelector('#reinvestment-average-capital').textContent.endsWith(h.eval('money(10000)')));
+    assert.match(h.document.querySelector('#reinvestment-observation').textContent,/365/);
+    assert.match(h.document.querySelector('#reinvestment-fx').textContent,/NBU/);
+    assert.ok(h.document.querySelector('#reinvestment-fx').textContent.includes(today));
+    assert.equal(h.document.querySelectorAll('#reinvestment-receipts li').length,1);
+    assert.match(h.document.querySelector('#reinvestment-receipts').textContent,/<img src=x>/);
+    assert.equal(h.document.querySelector('.reinvestment-stat-card img'),null);
+    const assumptions=h.document.querySelector('.income-forecast-details').textContent;
+    assert.match(assumptions,locale==='en'?/not market value/:/не ринкова вартість/);
+    assert.match(assumptions,locale==='en'?/unrecorded tax/:/необліковані податки/);
+    h.eval('stateStore.setUI({exchangeRateDate:null,exchangeRateSource:null});renderReinvestmentForecast();');
+    await flush();
+    assert.equal(h.document.querySelector('#stat-reinvestment').textContent,'—');
+    assert.equal(h.document.querySelector('#reinvestment-required-capital').textContent,'—');
+    assert.equal(h.document.querySelectorAll('#reinvestment-scenarios li').length,0);
+    assert.equal(h.eval('JSON.stringify(stateStore.getData())'),before);
+    assert.equal(h.requests.length,requests);
+    assert.deepEqual(h.errors,[]);
+  });
+}
+
+for (const native of [false,true]) for (const locale of ['en','uk','de','es','pl','it']) {
+  test(`missing income is unavailable, independently of capital, and recovers without stale scenarios in ${native?'native':'web'} ${locale}`,async t=>{
+    const today=require('../../frontend/js/analytics/values').getDateString();
+    const firstDate=new Date(Date.parse(today)-364*86400000).toISOString().slice(0,10),initial=fixture();
+    initial.assets[0]={...initial.assets[0],currency:'UAH',quantity:100,purchaseDate:firstDate};
+    initial.transactions[0]={...initial.transactions[0],currency:'UAH',quantity:100,amount:10000,date:firstDate};
+    initial.payments.push({id:'regular',assetId:'stock',type:'DIVIDEND',status:'planned',amount:1200,currency:'UAH',date:today});
+    const h=await harness(t,{initial,native,locale,compact:true}),requests=h.requests.length;
+    h.eval(`stateStore.setUI({exchangeRateDate:${JSON.stringify(today)},exchangeRateSource:'NBU',exchangeRateStale:false});renderReinvestmentForecast();`);
+    await flush();
+    const assertUnavailable=()=>{
+      for(const id of ['reinvestment-income','reinvestment-annual-yield','reinvestment-required-capital','stat-reinvestment'])assert.equal(h.document.getElementById(id).textContent,'—',id);
+      assert.ok(h.document.getElementById('stat-average-monthly-profit').textContent.endsWith('—'));
+      assert.equal(h.document.querySelectorAll('#reinvestment-scenarios li').length,0);
+      assert.equal(h.document.querySelector('#reinvestment-range').textContent,'');assert.equal(h.document.querySelector('#reinvestment-excess').textContent,'');
+    };
+    const message=h.window.FinoI18n.t('No confirmed regular-income receipts in the observation period. Income-based metrics are unavailable.');
+    assertUnavailable();assert.equal(h.document.querySelector('#reinvestment-status').textContent,message);
+    for(const id of ['reinvestment-average-capital','reinvestment-current-capital'])assert.equal(h.document.getElementById(id).textContent,h.eval('money(10000)'));
+    assert.equal(h.document.querySelector('#reinvestment-target').textContent,h.eval('money(1000*EXCHANGE_RATES.USD)'));
+    assert.match(h.document.querySelector('#reinvestment-observation').textContent,/365/);assert.match(h.document.querySelector('#reinvestment-fx').textContent,/NBU/);
+    const before=h.eval('JSON.stringify(stateStore.getData())');h.eval('renderReinvestmentForecast()');assert.equal(h.eval('JSON.stringify(stateStore.getData())'),before);
+    h.eval('stateStore.updateData(draft=>{draft.payments[0].status="received";draft.payments[0].amount=0;});renderReinvestmentForecast();');await flush();
+    assertUnavailable();assert.ok(h.document.querySelector('#reinvestment-status').textContent.startsWith(h.window.FinoI18n.t('Regular-income receipt data is invalid or cannot be valued. Income-based metrics are unavailable.')));
+    for(const id of ['reinvestment-average-capital','reinvestment-current-capital'])assert.equal(h.document.getElementById(id).textContent,h.eval('money(10000)'));
+    h.eval('stateStore.updateData(draft=>{draft.payments[0].amount=1200;});renderReinvestmentForecast();');await flush();
+    assert.equal(h.document.querySelector('#reinvestment-income').textContent,h.eval('money(1200)'));
+    assert.equal(h.document.querySelectorAll('#reinvestment-scenarios li').length,3);
+    h.eval('stateStore.updateData(draft=>{draft.payments[0].status="planned";});renderReinvestmentForecast();');await flush();
+    assertUnavailable();assert.equal(h.document.querySelector('#reinvestment-status').textContent,message);
+    assert.equal(h.requests.length,requests);assert.deepEqual(h.errors,[]);
+  });
+}
+
+test('the income card explains both FX and 82-day history blockers, then keeps the history warning after FX recovers', async t => {
+  const today=require('../../frontend/js/analytics/values').getDateString();
+  const firstDate=new Date(Date.parse(today)-81*86400000).toISOString().slice(0,10), initial=fixture();
+  initial.assets[0]={...initial.assets[0],currency:'UAH',quantity:100,purchaseDate:firstDate};
+  initial.transactions[0]={...initial.transactions[0],currency:'UAH',quantity:100,amount:10000,date:firstDate};
+  initial.payments.push({id:'regular',assetId:'stock',type:'DIVIDEND',status:'received',amount:307.8,currency:'UAH',date:today});
+  const h=await harness(t,{initial,compact:true});
+  assert.match(h.document.querySelector('#reinvestment-status').textContent,/Incomplete data.*82.*90/);
+  assert.equal(h.document.querySelector('#reinvestment-income').textContent,h.eval('money(307.8)'),'recorded UAH receipts must not be labelled estimated because target FX is missing');
+  h.eval(`stateStore.setUI({exchangeRateDate:${JSON.stringify(today)},exchangeRateSource:'NBU'});renderReinvestmentForecast();`);
+  assert.match(h.document.querySelector('#reinvestment-status').textContent,/Insufficient history: 82.*90/);
+  assert.doesNotMatch(h.document.querySelector('#reinvestment-status').textContent,/Incomplete data/);
+  assert.equal(h.document.querySelector('#stat-reinvestment').textContent,'—');
+  assert.equal(h.document.querySelectorAll('#reinvestment-scenarios li').length,0);
+  assert.deepEqual(h.errors,[]);
+});
+
+for (const native of [false, true]) {
   test(`compact ${native ? 'native' : 'web'} budget retains one editable input and Dashboard reveals secondary metrics on demand`, async t => {
     const initial = fixture();
     initial.wallet.months['2026-10'] = { plans: { Health: 500 }, customCategories: [], notes: [] };
     initial.wallet.expenses = [{ id: 'health', category: 'Health', date: '2026-10-01', amount: 100 }];
     const h = await harness(t, { initial, native, compact: true });
+    const budgetRegion = h.document.querySelector('#wallet-current .table-wrap');
+    assert.equal(budgetRegion.tabIndex, 0);
+    assert.equal(budgetRegion.getAttribute('role'), 'region');
+    assert.equal(budgetRegion.getAttribute('aria-label'), 'Monthly budget table. Scroll horizontally to see all columns.');
+    budgetRegion.focus();
+    assert.equal(h.document.activeElement, budgetRegion);
     const input = h.document.querySelector('[data-wallet-plan="Health"]');
     const row = input.closest('tr');
     assert.equal(h.document.querySelectorAll('[data-wallet-plan="Health"]').length, 1);
@@ -186,7 +324,13 @@ for (const native of [false, true]) {
     assert.match(row.children[3].textContent, /100/);
     assert.equal(row.children[4].dataset.label, 'Balance');
     assert.match(row.children[4].textContent, /400/);
-    input.value = '600'; input.dispatchEvent(new h.window.Event('change')); await flush();
+    const persisted = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => { unsubscribe(); reject(new Error('Budget save did not publish its confirmed state.')); }, 2000);
+      const unsubscribe = h.eval('stateStore').subscribe(({ state }) => {
+        if (state.data.wallet.months['2026-10'].plans.Health === 600) { clearTimeout(timeout); unsubscribe(); resolve(); }
+      });
+    });
+    input.value = '600'; input.dispatchEvent(new h.window.Event('change')); await persisted; await flush();
     assert.equal(h.eval('stateStore.getData().wallet.months["2026-10"].plans.Health'), 600);
     const more = h.document.querySelector('#dashboard-more-metrics');
     assert.equal(more.open, false);
@@ -840,6 +984,7 @@ test('UI smoke: Ukrainian dynamic content retains names and stored category valu
   assert.deepEqual(h.errors, []);
   assert.match(h.document.querySelector('#portfolio-table').textContent, /Stock/);
   assert.match(h.document.querySelector('#wallet-current-body').textContent, /Десятина/);
+  assert.equal(h.document.querySelector('#wallet-current .table-wrap').getAttribute('aria-label'), 'Таблиця місячного бюджету. Прокручуйте горизонтально, щоб побачити всі колонки.');
   assert.doesNotMatch(h.document.querySelector('#wallet-current-body').textContent, /Expenses for|remaining|Salary/);
   assert.doesNotMatch(h.document.querySelector('#calendar-month-title').textContent, /January|October|November/);
   h.window.ui.forms.wallet.expense();
@@ -1242,6 +1387,29 @@ test('rebalance recovers a pending tab draft on immediate reload and does not ov
   assert.equal(conflict.stored().rebalance.targets['stock::smoke stock'], 25);
   assert.equal(conflict.document.querySelector('#rebalance-save-reload').hidden, false);
   assert.deepEqual(restarted.errors, []); assert.deepEqual(conflict.errors, []);
+});
+
+test('sync comparison escapes device metadata, explains the whole-document choice and sends no write until confirmation', async t => {
+  const initial = fixture(), remote = fixture();
+  initial.sync = { revision: 4, updatedAt: '2026-10-01T12:00:00Z', deviceId: '<img src=x onerror=alert(1)>' };
+  remote.sync = { revision: 5, updatedAt: '2026-10-02T12:00:00Z', deviceId: 'Other phone' };
+  const preview = await require('../../shared/sync-model').comparison(initial, remote);
+  const h = await harness(t, { initial, syncPreview: preview, locale: 'uk' });
+  h.document.querySelector('[data-drive-action="upload"]').click(); await flush();
+  const modal = h.document.querySelector('#sync-preview-modal');
+  assert.equal(modal.classList.contains('open'), true);
+  assert.equal(h.document.activeElement.id, 'close-sync-preview', 'Opening the comparison must start at its heading, not scroll to the final buttons.');
+  assert.equal(modal.querySelector('img'), null); assert.ok(modal.textContent.includes('<img src=x onerror=alert(1)>'));
+  assert.match(modal.textContent,/Порівняти збережені версії/);
+  assert.match(h.document.querySelector('#sync-preview-consequence').textContent,/хмарної версії/);
+  assert.equal(h.requests.filter(r=>r.route==='/api/sync/google-drive').length,0);
+  modal.dispatchEvent(new h.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true})); await flush();
+  assert.equal(modal.classList.contains('open'),false);assert.equal(h.requests.filter(r=>r.route==='/api/sync/google-drive').length,0);
+  h.document.querySelector('[data-drive-action="download"]').click();await flush();
+  assert.match(h.document.querySelector('#sync-preview-consequence').textContent,/Лише локальні записи/);
+  h.document.querySelector('#confirm-sync-preview').click();await flush();
+  const writes=h.requests.filter(r=>r.route==='/api/sync/google-drive');assert.equal(writes.length,1);
+  assert.equal(writes[0].body.action,'download');assert.equal(writes[0].body.previewToken,preview.token);assert.deepEqual(h.errors,[]);
 });
 
 test('native rebalance recovery never adopts another Google account draft', async t => {

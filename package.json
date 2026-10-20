@@ -12,6 +12,9 @@
     "google-auth": "node backend/scripts/googleAuth.js",
     "test": "node --test --test-concurrency=4 backend/tests/*.test.js",
     "test:ui": "node --test backend/tests/uiSmoke.test.js",
+    "lint": "eslint shared frontend/js/state-store.js frontend/js/mobile-api.js frontend/js/data-loader.js frontend/js/api frontend/js/controllers/sync.js frontend/js/forms/settings.js frontend/js/forms/calculators.js frontend/js/renderers/sync.js frontend/js/renderers/dashboard.js frontend/js/renderers/calculators.js frontend/js/analytics frontend/js/cashflow.js frontend/js/market-data.js frontend/js/portfolio",
+    "check:frontend": "node backend/scripts/checkFrontendContract.js",
+    "proxy:smoke": "node backend/scripts/proxySmoke.js",
     "smoke:serve": "node backend/scripts/uiSmokeServer.js",
     "mobile:config": "node backend/scripts/generateMobileConfig.js",
     "mobile:check": "node backend/scripts/checkMobileReadiness.js",
@@ -35,6 +38,7 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.3",
+    "eslint": "10.13.0",
     "jsdom": "^29.1.1"
   },
   "overrides": {

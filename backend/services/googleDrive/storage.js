@@ -154,10 +154,15 @@ function createStorage({ stateFile = path.resolve(__dirname, '../../../', proces
     try { await trim(d, folderId, kind); } catch (error) { logEvent('sync.backup_retention_pending', { code: error.code || 'REMOTE_UNAVAILABLE' }); }
     return { ...response.data, savedLocally: status.savedLocally, savedRemotely: false, backupSaved: true, kind };
   }
-  async function uploadOnce(input, { force = false } = {}) {
+  async function uploadOnce(input, { force = false, expectedRemoteSignature } = {}) {
     const snapshot = validateData(input); status.syncing = true;
     try {
       const d = await drive(); await load(); const expected = { ...remote }; let metadata = await locate(d);
+      if (expectedRemoteSignature !== undefined) {
+        const checked = await readRemote();
+        if (signature(checked?.data || null) !== expectedRemoteSignature || checked?.metadata.id !== metadata?.id || checked?.metadata.version !== metadata?.version)
+          throw new ConflictError({ code: 'SYNC_PREVIEW_STALE', message: 'The cloud version changed. Review the comparison again before choosing.' });
+      }
       if (!metadata && expected.fileId && !force) throw new ConflictError({ message: 'The remote portfolio was deleted. Choose Upload explicitly to restore it.' });
       if (metadata) {
         if (metadata.ownedByMe !== true) throw new AuthRequiredError({ message: 'The portfolio file must belong to the authorized account.' });

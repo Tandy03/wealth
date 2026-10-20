@@ -53,10 +53,12 @@
           <article class="stat-card">
             <span>Total invested</span>
             <strong id="stat-invested">0 ₴</strong>
+            <small id="stat-invested-method"></small>
           </article>
           <article class="stat-card">
             <span>Portfolio value today</span>
             <strong id="stat-value">0 ₴</strong>
+            <small id="stat-value-note"></small>
           </article>
           <article class="stat-card result-stat-card">
             <span>Unrealized result</span>
@@ -66,6 +68,7 @@
           <article class="stat-card result-stat-card">
             <span>Realized result</span>
             <strong id="stat-realized">—</strong>
+            <small id="stat-realized-method"></small>
             <details class="stat-explanation" open><summary>How calculated</summary><small>Recorded sale profit plus received investment income. Returned principal and planned payments are excluded.</small></details>
           </article>
         </div>
@@ -75,20 +78,46 @@
           <article class="stat-card">
             <span>Profit</span>
             <strong id="stat-profit">0 ₴</strong>
+            <small id="stat-profit-method"></small>
           </article>
           <article class="stat-card">
             <span id="stat-roi-label">Return</span>
             <strong id="stat-roi">0%</strong>
+            <small>All-time simple return at report-date FX; unavailable with incomplete valuation.</small>
           </article>
           <article class="stat-card">
             <span id="stat-xirr-label">XIRR</span>
             <strong id="stat-return">0%</strong>
+            <details class="valuation-details"><summary>Valuation and FX quality</summary><small id="stat-xirr-note"></small></details>
           </article>
           <article class="stat-card reinvestment-stat-card">
             <span>Additional investment for $1,000/month</span>
             <strong id="stat-reinvestment">—</strong>
-            <small id="stat-average-monthly-profit">Average monthly profit: —</small>
-            <small>This is only an approximate forecast; the actual amount may differ.</small>
+            <small id="reinvestment-status" role="status"></small>
+            <small id="stat-average-monthly-profit"></small>
+            <small id="reinvestment-observation"></small>
+            <dl class="income-forecast-metrics">
+              <div><dt>Received regular income</dt><dd id="reinvestment-income">—</dd></div>
+              <div><dt>Average daily invested capital</dt><dd id="reinvestment-average-capital">—</dd></div>
+              <div><dt>Current invested capital</dt><dd id="reinvestment-current-capital">—</dd></div>
+              <div><dt>Annual regular-income yield</dt><dd id="reinvestment-annual-yield">—</dd></div>
+              <div><dt>Required capital, base scenario</dt><dd id="reinvestment-required-capital">—</dd></div>
+              <div><dt>Monthly target in UAH</dt><dd id="reinvestment-target">—</dd></div>
+            </dl>
+            <small id="reinvestment-range"></small>
+            <small id="reinvestment-excess"></small>
+            <ul id="reinvestment-scenarios" class="scenario-list"></ul>
+            <small id="reinvestment-fx"></small>
+            <small>Additional funds are assumed to earn the same regular-income yield in a similarly structured portfolio. The 50%, 100% and 150% scenarios are assumptions, not probabilities or confidence intervals.</small>
+            <details class="income-forecast-details"><summary>Income records, capital and FX assumptions</summary>
+              <p>Dividends and coupons are treated as regular unless explicitly marked non-recurring. Maturity proceeds, sale profit, price gains and savings are excluded. Amounts are recorded receipts; unrecorded tax and fees are not deducted.</p>
+              <p>Capital is the end-of-day remaining cost basis, not market value. Receipts use receipt-date FX; daily capital uses that day's FX. Monthly income is annualized income divided by 12.</p>
+              <p>Recorded receipts do not independently prove a complete income history. Gaps, ambiguous mirrors, missing FX, an undated target rate or at least 10% fallback in income or capital-days hide scenario amounts. Recent prior official rates remain marked approximate.</p>
+              <p id="reinvestment-quality"></p>
+              <ul id="reinvestment-fx-usage"></ul>
+              <p id="reinvestment-receipt-count"></p>
+              <ul id="reinvestment-receipts"></ul>
+            </details>
           </article>
         </div>
         </details>
@@ -408,26 +437,20 @@
           </article>
 
           <article class="stat-card">
-            <span>Price growth</span>
-            <strong id="profit-price-growth">0 ₴</strong>
-          </article>
-
-          <article class="stat-card">
-            <span>Total profit</span>
+            <span>Realized result for selected period</span>
             <strong id="profit-total">
               0 ₴
             </strong>
           </article>
 
-          <article class="stat-card">
-            <span>ROI</span>
-            <strong id="profit-roi">
-              0%
-            </strong>
-          </article>
-
         </div>
 
+        <p id="profit-report-method" class="analytics-method" role="status"></p>
+        <article class="panel current-result-panel">
+          <h2>Current unrealized result</h2>
+          <strong id="profit-price-growth">—</strong>
+          <p id="profit-current-note"></p>
+        </article>
 
         <article class="panel">
 
@@ -444,14 +467,12 @@
               <thead>
                 <tr>
                   <th>Asset</th>
-                  <th>Invested</th>
+                  <th>Realized cost basis</th>
                   <th>Dividends</th>
                   <th>Coupons</th>
                   <th>Maturity</th>
                   <th>Sales profit</th>
-                  <th>Price growth</th>
-                  <th>Total profit</th>
-                  <th>ROI</th>
+                  <th>Realized result</th>
                 </tr>
               </thead>
 
@@ -478,14 +499,12 @@
               <thead>
                 <tr>
                   <th>Type</th>
-                  <th>Invested</th>
+                  <th>Realized cost basis</th>
                   <th>Dividends</th>
                   <th>Coupons</th>
                   <th>Maturity</th>
                   <th>Sales profit</th>
-                  <th>Price growth</th>
-                  <th>Total profit</th>
-                  <th>ROI</th>
+                  <th>Realized result</th>
                 </tr>
               </thead>
 
@@ -497,6 +516,15 @@
 
         </article>
 
+        <article class="panel concentration-panel">
+          <div class="panel-header"><h2>Concentration and diversification</h2>
+            <label><span>Weight basis</span><select id="concentration-basis"><option value="market">Quoted market value</option><option value="cost">Remaining cost basis</option></select></label>
+          </div>
+          <p id="concentration-summary" role="status"></p>
+          <p>Issuer and sector use recorded metadata only. Unknown buckets are not a single issuer or sector. ETF holdings and indirect exposures are not inferred.</p>
+          <div id="concentration-groups" class="concentration-groups"></div>
+          <small>Up to 10 largest groups per list.</small>
+        </article>
       </section>
 
       <section id="rebalance-section" class="page-section">
@@ -637,7 +665,7 @@
             <div><h2 id="wallet-month-title">Budget</h2></div>
             <input type="month" id="wallet-current-month" lang="en" />
           </div>
-          <div class="table-wrap">
+          <div class="table-wrap" tabindex="0" role="region" aria-label="Monthly budget table. Scroll horizontally to see all columns.">
             <table class="wallet-table">
               <thead><tr><th>Expense category</th><th>Plan</th><th>Percentage</th><th>Actual amount</th><th>Balance</th><th>Actual percentage</th><th></th></tr></thead>
               <tbody id="wallet-current-body"></tbody>
@@ -770,6 +798,21 @@
     </div>
   </div>
 
+  <div class="modal-backdrop" id="sync-preview-modal">
+    <div class="modal sync-preview-modal" role="dialog" aria-modal="true" aria-labelledby="sync-preview-title" aria-describedby="sync-preview-help">
+      <div class="modal-header"><h2 id="sync-preview-title">Compare saved versions</h2><button class="icon-btn" id="close-sync-preview" type="button" aria-label="Close">×</button></div>
+      <p id="sync-preview-help">Choose a whole document. Records from the other version are not merged automatically.</p>
+      <div id="sync-preview-versions" class="sync-preview-versions"></div>
+      <div id="sync-preview-differences" class="sync-preview-differences"></div>
+      <fieldset class="sync-preview-choices"><legend>Which version should be used?</legend>
+        <label><input type="radio" name="sync-version" value="upload"><span>Keep this device's version</span></label>
+        <label><input type="radio" name="sync-version" value="download"><span>Use Google Drive version</span></label>
+      </fieldset>
+      <p id="sync-preview-consequence" role="status"></p>
+      <div class="modal-actions"><button class="secondary-btn" id="cancel-sync-preview" type="button">Cancel</button><button class="primary-btn" id="confirm-sync-preview" type="button">Confirm choice</button></div>
+    </div>
+  </div>
+
   <div class="modal-backdrop" id="notice-modal">
     <div class="modal notice-modal"><div class="modal-header"><h2 id="notice-title">Message</h2><button class="icon-btn" id="close-notice-modal">×</button></div><p id="notice-message"></p><div class="modal-actions"><button class="secondary-btn" id="notice-cancel" hidden>Cancel</button><button class="primary-btn" id="notice-ok">OK</button></div></div>
   </div>
@@ -798,6 +841,7 @@
           <span class="drive-sync-state" data-drive-state>Syncing</span>
           <div class="drive-sync-actions">
             <button type="button" data-drive-action="sync">Sync now</button>
+            <button type="button" data-drive-action="compare" data-drive-conflict hidden>Review conflict</button>
             <button type="button" data-drive-action="download">Download from Drive</button>
             <button type="button" data-drive-action="upload">Upload to Drive</button>
             <button type="button" data-drive-action="reconnect">Reconnect</button>

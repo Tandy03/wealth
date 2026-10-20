@@ -18,12 +18,15 @@ async function refreshApplicationData() {
     return null;
   }), history]).then(([exchangeData]) => {
     if (!stateStore.isCurrent(snapshot)) return;
+    const update = { marketRevision: (state.marketRevision || 0) + 1 };
     if (exchangeData?.rates) {
-      EXCHANGE_RATES.USD = normalizeNumber(exchangeData.rates.USD) || EXCHANGE_RATES.USD;
-      EXCHANGE_RATES.EUR = normalizeNumber(exchangeData.rates.EUR) || EXCHANGE_RATES.EUR;
+      for (const [currency, rate] of Object.entries(exchangeData.rates)) if (/^[A-Z]{3}$/.test(currency) && Number.isFinite(Number(rate)) && Number(rate) > 0) EXCHANGE_RATES[currency] = Number(rate);
+      Object.assign(update, { exchangeRateDate: exchangeData.exchangeDate || null, exchangeRateSource: exchangeData.source || null, exchangeRateStale: Boolean(exchangeData.stale) });
+    } else {
+      // Keep provenance attached to the retained numbers after a failed refresh.
+      update.exchangeRateStale = true;
     }
-    stateStore.setUI({ marketRevision: (state.marketRevision || 0) + 1,
-      exchangeRateDate: exchangeData?.exchangeDate || null, exchangeRateSource: exchangeData?.source || null });
+    stateStore.setUI(update);
   }).catch(error => console.warn('Could not refresh market-dependent views:', window.FinoErrors.diagnostics(error)));
   return result;
 }
@@ -42,7 +45,7 @@ async function loadPurchaseExchangeRates() {
   const allPurchaseDates = [
     ...(state.data.assets || []).map((asset) => asset.purchaseDate),
     ...(state.data.transactions || [])
-      .filter((transaction) => transaction.type === "BUY")
+      .filter((transaction) => transaction.type === "BUY" && FinoStateContract.isTransactionCompleted(transaction))
       .map((transaction) => transaction.date),
   ].filter(Boolean);
   const purchaseRecords = [
@@ -51,10 +54,10 @@ async function loadPurchaseExchangeRates() {
       date: asset.purchaseDate,
     })),
     ...(state.data.transactions || [])
-      .filter((transaction) => transaction.type === "BUY")
+      .filter((transaction) => transaction.type === "BUY" && FinoStateContract.isTransactionCompleted(transaction))
       .map((transaction) => ({ currency: transaction.currency, date: transaction.date })),
   ].filter(
-    (record) => record.date && ["USD", "EUR"].includes(String(record.currency || "").toUpperCase()),
+    (record) => record.date && /^[A-Z]{3}$/.test(String(record.currency || '').toUpperCase()) && String(record.currency).toUpperCase() !== 'UAH',
   );
   const currencies = [...new Set(["USD", ...purchaseRecords.map((record) => String(record.currency).toUpperCase())])];
 

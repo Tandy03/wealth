@@ -51,6 +51,7 @@ function setupProfitCalculator() {
 
   historyMode?.addEventListener("change", () => renderPortfolioHistoryChart());
   allocationMode?.addEventListener("change", () => renderAssetAllocationChart());
+  document.querySelector('#concentration-basis')?.addEventListener('change', () => renderProfitCalculator());
   document.querySelector("#asset-price-history-select")?.addEventListener("change", () => renderAssetPriceHistoryChart());
   const priceFrom = document.querySelector("#asset-price-history-from");
   const priceTo = document.querySelector("#asset-price-history-to");

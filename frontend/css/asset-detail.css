@@ -24,6 +24,7 @@
 .asset-detail button:focus-visible, .clickable-asset-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .asset-detail-content { display: grid; gap: 18px; container-type: inline-size; }
 .asset-detail-content h3 { margin: 0 0 16px; font-size: 17px; }
+.asset-detail-content .panel > button[data-asset-tab] { margin-top: 20px; }
 .asset-detail-stats { margin-bottom: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .asset-detail .stat-card { padding: 18px; min-width: 0; }
 .asset-detail .stat-card strong { font-size: 24px; font-size: clamp(20px, 8cqi, 26px); white-space: nowrap; overflow-x: auto; overflow-wrap: normal; word-break: normal; max-width: 100%; scrollbar-width: thin; }

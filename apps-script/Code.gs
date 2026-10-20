@@ -4,6 +4,11 @@
  *   FINO_PROXY_TOKEN, TWELVE_DATA_API_KEY, FRED_API_KEY, BINANCE_API_KEY
  */
 
+// Kept in sync with api-contract.json by proxy contract tests. Bump release for deployment.
+const PROXY_API = Object.freeze({
+  apiVersion: 1, minClientVersion: 1, release: '2026-10-20.1',
+  capabilities: Object.freeze(['health', 'twelve', 'fred', 'binance', 'binanceCatalog', 'inzhurCatalog', 'macroeconomics', 'policyRate']),
+});
 const CONFIG = Object.freeze({
   twelveBaseUrl: "https://api.twelvedata.com",
   fredBaseUrl: "https://api.stlouisfed.org",
@@ -35,6 +40,9 @@ function doPost(event) {
     const request = parseRequest(event);
     authorize(request.token);
     consumeBudget('requests', 120);
+    const clientVersion = request.apiVersion === undefined ? 1 : request.apiVersion;
+    if (!Number.isInteger(clientVersion) || clientVersion < PROXY_API.minClientVersion || clientVersion > PROXY_API.apiVersion)
+      throw apiError('The client and proxy API versions are incompatible.', 'PROXY_API_INCOMPATIBLE', 409);
     switch (String(request.action || "")) {
       case "health": return responseOk({ service: "fino-market-proxy", version: 1, time: new Date().toISOString() });
       case "twelve": return responseOk(getTwelveTimeSeries(request));
@@ -385,6 +393,6 @@ function consumeBudget(group, limit) {
     properties.setProperty(key, JSON.stringify({ minute: minute, count: count + 1 }));
   } finally { lock.releaseLock(); }
 }
-function responseOk(data) { return jsonOutput({ ok: true, data: data }); }
-function responseError(message, code, status) { return jsonOutput({ ok: false, error: { message: message, code: code, status: status } }); }
+function responseOk(data) { return jsonOutput({ ok: true, api: PROXY_API, data: data }); }
+function responseError(message, code, status) { return jsonOutput({ ok: false, api: PROXY_API, error: { message: message, code: code, status: status } }); }
 function jsonOutput(value) { return ContentService.createTextOutput(JSON.stringify(value)).setMimeType(ContentService.MimeType.JSON); }

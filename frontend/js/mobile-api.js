@@ -3,6 +3,8 @@
   if (!isNative) return;
 
   const proxyConfig = window.FINO_MOBILE_CONFIG || {};
+  let proxyCompatibility = { state: 'unverified', apiVersion: null, release: null };
+  let deviceId = null;
   const validation = window.FinoValidation;
   const rules = window.FinoPortfolioRules;
   const errors = window.FinoErrors;
@@ -18,7 +20,7 @@
   const MIGRATION_OWNER_KEY = "fino-account-migration-owner";
   const emptyData = () => ({
     ...window.FinoStateModel.createEmptyState(),
-    sync: { revision: 0, updatedAt: new Date().toISOString(), deviceId: "android-phone" },
+    sync: { revision: 0, updatedAt: new Date().toISOString(), deviceId },
   });
   const clone = (value) => JSON.parse(JSON.stringify(value));
   const id = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -150,6 +152,13 @@
 
   async function loadLocal() {
     if (data) return data;
+    if (!deviceId) {
+      try {
+        const saved = (await Preferences.get({ key: 'fino-device-id' })).value;
+        deviceId = typeof saved === 'string' && /^android-[A-Za-z0-9-]{1,80}$/.test(saved) ? saved : 'android-' + (crypto.randomUUID?.() || id('device'));
+        if (deviceId !== saved) await Preferences.set({ key: 'fino-device-id', value: deviceId });
+      } catch (cause) { deviceId = null; throw new errors.StorageError({ cause }); }
+    }
     // Open the last committed account without obtaining a network token.
     // A different Google account is rejected by token(context) before Drive access.
     if (!activeEmail) {
@@ -204,7 +213,7 @@
     if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata) || typeof metadata.pendingUpload !== 'boolean' || !(metadata.baseline === null || typeof metadata.baseline === 'string')) metadata = null;
     const nextMeta = clone(committed?.metadata || metadata || { baseline, pendingUpload: Boolean(stored.value), conflict: false, error: null, lastSyncAt: null });
     if (signature(loaded) !== originalSignature) {
-      loaded.sync = { ...loaded.sync, revision: Number(loaded.sync?.revision || 0) + 1, updatedAt: new Date().toISOString(), deviceId: 'android-phone' };
+      loaded.sync = { ...loaded.sync, revision: Number(loaded.sync?.revision || 0) + 1, updatedAt: new Date().toISOString(), deviceId };
       Object.assign(nextMeta, { pendingUpload: true, remoteConfirmed: false, backupSaved: false });
       await persistJournal(loaded, nextMeta);
     }
@@ -218,7 +227,7 @@
     operations.compact(data);
     data.sync = {
       revision: Number(data.sync?.revision || 0) + 1,
-      updatedAt: new Date().toISOString(), deviceId: "android-phone",
+      updatedAt: new Date().toISOString(), deviceId,
     };
     syncMeta = { ...syncMeta, pendingUpload: true, remoteConfirmed: false, savedLocally: true, backupSaved: false };
     await persistJournal(data, syncMeta);
@@ -369,7 +378,7 @@
       lastSyncAt: syncMeta?.lastSyncAt || null, fileId, email: activeEmail,
     });
     status.status = syncing ? 'Syncing' : ({ 'local-saved': 'Saved locally', 'sync-pending': 'Pending upload', 'sync-confirmed': 'Synced', conflict: 'Conflict detected', 'auth-required': 'Authorization required' })[status.state];
-    return status;
+    return { ...status, proxy: { ...proxyCompatibility } };
   }
   async function finishSync(context, snapshot, replacement = null) {
     await token(context);
@@ -469,12 +478,14 @@
   }
   async function adoptRemote(context, remote) {
     const next = normalizeData(clone(remote));
-    if (signature(next) !== signature(remote)) next.sync = { ...next.sync, revision: Number(next.sync?.revision || 0) + 1, updatedAt: new Date().toISOString(), deviceId: 'android-phone' };
+    if (signature(next) !== signature(remote)) next.sync = { ...next.sync, revision: Number(next.sync?.revision || 0) + 1, updatedAt: new Date().toISOString(), deviceId };
     await finishSync(context, remote, next);
   }
   async function uploadDrive(context, force = false, initialRemote) {
     const snapshot = context.data;
     const remote = initialRemote === undefined ? await readRemote(context, force) : initialRemote;
+    if (context.expectedRemoteSignature !== undefined && signature(remote?.data || null) !== context.expectedRemoteSignature)
+      throw new errors.ConflictError({ code: 'SYNC_PREVIEW_STALE', message: 'The cloud version changed. Review the comparison again before choosing.' });
     const matchesBaseline = remote && (context.metadata.baseline === signature(remote.data) || context.metadata.baseline === 'sha256:' + await syncModel.checksum(remote.data));
     if (!force && remote && !matchesBaseline && signature(remote.data) !== signature(snapshot)) throw conflictError();
     if (!force && !remote && context.metadata.baseline) throw conflictError();
@@ -512,13 +523,13 @@
     uploadScheduled = false; clearTimeout(uploadTimer); uploadTimer = null;
     enqueueSync('automatic').catch(() => console.info('Drive sync remains pending.'));
   }
-  function enqueueSync(action) {
-    const result = driveQueue.then(() => synchronize(action), () => synchronize(action));
+  function enqueueSync(action, options = {}) {
+    const result = driveQueue.then(() => synchronize(action, options), () => synchronize(action, options));
     driveQueue = result.catch(() => {});
     return result;
   }
-  async function synchronize(action = 'sync') {
-    if (action !== 'automatic') validation.validateSyncAction(action);
+  async function synchronize(action = 'sync', options = {}) {
+    if (action !== 'automatic') validation.validateSyncOptions(action, options);
     const context = await queued(async () => {
       if (action === 'automatic' && !data && !activeEmail) return null;
       await loadLocal();
@@ -530,6 +541,16 @@
     let previousBackupId;
     try {
       previousBackupId = context.metadata.lastBackupId;
+      if (options.previewToken) {
+        const remote = await readRemote(context);
+        if (await syncModel.comparisonToken(context.data, remote?.data || null, context.email) !== options.previewToken)
+          throw new errors.ConflictError({ code: 'SYNC_PREVIEW_STALE', message: 'The local or cloud version changed. Review the comparison again before choosing.' });
+        await queued(async () => {
+          if (activeEmail !== context.email) throw new errors.AuthRequiredError();
+          if (signature(data) !== context.localSignature) throw new errors.ConflictError({ code: 'SYNC_PREVIEW_STALE', message: 'The local version changed. Review the comparison again before choosing.' });
+        });
+        context.expectedRemoteSignature = signature(remote?.data || null);
+      }
       if (action === 'reconnect') {
         await DriveAuth.signOut();
         await queued(async () => {
@@ -551,6 +572,8 @@
         else {
           const remote = await readRemote(context);
           if (action === 'download') {
+            if (context.expectedRemoteSignature !== undefined && signature(remote?.data || null) !== context.expectedRemoteSignature)
+              throw new errors.ConflictError({ code: 'SYNC_PREVIEW_STALE', message: 'The cloud version changed. Review the comparison again before choosing.' });
             if (!remote) throw new Error('fino-data.json was not found on Google Drive.');
             await backupLocal(context, context.data, 'before download');
             await adoptRemote(context, remote.data);
@@ -605,9 +628,14 @@
     const response = await fetch(proxyConfig.proxyUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: proxyConfig.proxyToken, action, ...parameters }),
+      body: JSON.stringify({ token: proxyConfig.proxyToken, apiVersion: window.FinoMarketModel.proxyApiVersion, action, ...parameters }),
     }, { timeoutMs: action === 'policyRate' ? window.FinoMarketModel.policyTimeoutMs : 10000 });
     const payload = await response.json();
+    try { proxyCompatibility = window.FinoMarketModel.proxyCompatibility(payload?.api, action); }
+    catch (cause) {
+      proxyCompatibility = { state: 'incompatible', apiVersion: null, release: null };
+      throw new errors.RemoteUnavailableError({ code: 'PROXY_API_INCOMPATIBLE', message: cause.message });
+    }
     if (!payload?.ok) throw new errors.RemoteUnavailableError({ message: 'Market-data proxy request failed.' });
     window.FinoStateModel.validateJson(payload.data);
     if (['twelve', 'fred'].includes(action)) return window.FinoMarketModel.history(payload.data);
@@ -797,10 +825,20 @@
         return statusSnapshot();
       });
     },
-    async syncGoogleDrive(action = 'sync') {
-      validation.validateSyncAction(action);
+    async getSyncConflictPreview() {
+      const operation = driveQueue.then(async () => {
+        const context = await queued(async () => { await loadLocal(); return { email: activeEmail, fileId, data: clone(data) }; });
+        const remote = await readRemote(context);
+        await token(context);
+        return syncModel.comparison(context.data, remote?.data || null, context.email);
+      });
+      driveQueue = operation.catch(() => {});
+      return operation;
+    },
+    async syncGoogleDrive(action = 'sync', options = {}) {
+      validation.validateSyncOptions(action, options);
       if (action === 'reconnect') { uploadScheduled = false; clearTimeout(uploadTimer); uploadTimer = null; }
-      return enqueueSync(action);
+      return enqueueSync(action, options);
     },
     async getMarketTimeSeries(parameters) { return proxy("twelve", parameters); },
     async getMarketCurrencies() { return mobileMarketCurrencies(); },
@@ -1096,7 +1134,7 @@
     syncApiAssets: body => validation.validateRequest('syncAssets', body === undefined ? {} : body),
     createCalendarNote: note => validation.validateRequest('note', note),
     saveWallet: wallet => validation.validateWallet(wallet),
-    syncGoogleDrive: (action = 'sync') => validation.validateSyncAction(action),
+    syncGoogleDrive: (action = 'sync', options = {}) => validation.validateSyncOptions(action, options),
     mergeAssets: assetIds => validation.validateRequest('merge', { assetIds }),
   })) {
     const operation = window.mobileApi[method];

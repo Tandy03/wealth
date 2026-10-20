@@ -17,6 +17,7 @@ function renderGoogleDriveStatus(status) {
     panel.classList.toggle("is-offline", !status.connected && !status.authorizationRequired && !status.conflict);
     panel.classList.toggle("is-auth", Boolean(status.authorizationRequired));
     panel.classList.toggle("is-conflict", Boolean(status.conflict));
+    panel.querySelectorAll('[data-drive-conflict]').forEach(button => { button.hidden = !status.conflict; });
     panel.querySelector("[data-drive-connection]").textContent = status.connected
       ? `Google Drive: ${status.email || "Connected"}`
       : "Google Drive: Offline";

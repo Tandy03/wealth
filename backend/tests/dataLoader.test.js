@@ -5,6 +5,25 @@ const path = require('node:path');
 const vm = require('node:vm');
 const model = require('../../shared/state-model');
 const { createStore } = require('../../frontend/js/state-store');
+const window = { FinoStateContract: require('../../shared/state-contract'), FinoErrors: require('../../shared/errors') };
+
+test('a failed optional FX refresh preserves the date and source of the rates still displayed', async () => {
+  const store=createStore({model,initialState:{purchaseExchangeRates:{}}});
+  let fail=false;
+  const context={console:{warn(){}},window,...window,stateStore:store,state:store.getState(),EXCHANGE_RATES:{USD:45,EUR:51},normalizeNumber:Number,
+    localStorage:{getItem:()=>null,setItem(){}},getDateString:()=> '2026-10-20',
+    api:{getData:async()=>model.createEmptyState(),getCurrencyHistory:async()=>({values:[]}),getExchangeRates:async()=>{
+      if(fail)throw Error('Temporary provider failure');
+      return {rates:{USD:45.0791,EUR:51},exchangeDate:'20.10.2026',source:'NBU'};
+    }},
+  };
+  vm.createContext(context);vm.runInContext(fs.readFileSync(path.join(__dirname,'../../frontend/js/data-loader.js'),'utf8'),context);
+  await context.refreshApplicationData();await new Promise(setImmediate);
+  assert.equal(context.state.exchangeRateDate,'20.10.2026');assert.equal(context.state.exchangeRateSource,'NBU');
+  fail=true;await context.refreshApplicationData();await new Promise(setImmediate);
+  assert.equal(context.EXCHANGE_RATES.USD,45.0791);assert.equal(context.state.exchangeRateDate,'20.10.2026');
+  assert.equal(context.state.exchangeRateSource,'NBU');assert.equal(context.state.exchangeRateStale,true);
+});
 
 test('benchmark uses completed investments and legacy purchase dates, sorted in-period positive quotes and preserves a known result during refresh', async () => {
   const data = model.createEmptyState();
@@ -14,7 +33,7 @@ test('benchmark uses completed investments and legacy purchase dates, sorted in-
     { id: 'income', assetId: 'stock', type: 'DIVIDEND', date: '2020-01-01', amount: 1 }];
   const store = createStore({ model, initialState: { data } });
   let calls = 0;
-  const context = { console, stateStore: store, state: store.getState(), getDateString: () => '2026-10-19',
+  const context = { console, window, ...window, stateStore: store, state: store.getState(), getDateString: () => '2026-10-19',
     api: { getIndexHistory: async query => {
       calls++;
       assert.equal(query.startDate, '2026-02-01'); assert.equal(query.endDate, '2026-10-19');
@@ -39,7 +58,7 @@ test('local holdings become available even when optional market requests never r
   let notifiedCategory;
   store.subscribe(({ type, state }) => { if (type === 'data:changed') notifiedCategory = state.data.wallet.expenses[0].category; });
   const context = {
-    console,
+    console, window, ...window,
     state: store.getState(),
     api: { getData: async options => { readOptions = options; return data; }, getExchangeRates: () => new Promise(() => {}), getCurrencyHistory: () => new Promise(() => {}) },
     stateStore: store,
@@ -68,7 +87,7 @@ test('optional market responses for an inactive account cannot change rates, cac
     purchaseExchangeRates: {},
   } });
   const context = {
-    console, stateStore: store, state: store.getState(), normalizeNumber: Number,
+    console, window, ...window, stateStore: store, state: store.getState(), normalizeNumber: Number,
     EXCHANGE_RATES: { USD: 40, EUR: 45 }, getDateString: () => '2026-10-19',
     localStorage: { getItem: () => '{}', setItem: () => { cacheWrites++; } },
     api: {
