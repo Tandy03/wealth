@@ -43,12 +43,25 @@ public class ExampleInstrumentedTest {
                 assertEquals("localhost", Uri.parse(activity.getBridge().getLocalUrl()).getHost());
                 assertPlugin(activity, "FinoStorage", FinoStoragePlugin.class, "get", "set", "remove");
                 assertPlugin(activity, "PortfolioTransfer", PortfolioTransferPlugin.class, "exportFile", "importFile");
+                assertPlugin(activity, "PortfolioShare", PortfolioSharePlugin.class, "savePng", "sharePng");
                 assertPlugin(activity, "AppLock", AppLockPlugin.class, "getSettings", "setBiometricEnabled", "setTheme");
                 assertPlugin(activity, "GoogleDriveAuth", GoogleDriveAuthPlugin.class, "getAccessToken", "signOut");
                 assertNotNull(activity.getBridge().getPlugin("Preferences"));
                 assertNotNull(activity.getBridge().getPlugin("Network"));
                 assertNotNull(activity.getBridge().getPlugin("App"));
             });
+        }
+    }
+
+    @Test
+    public void pngPluginRejectsInvalidInputWithoutOpeningAFileActivity() throws Exception {
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            for (String method : new String[] { "savePng", "sharePng" }) {
+                JSObject options = new JSObject().put("name", "fino-portfolio-2026-10-21.png").put("mimeType", "image/png").put("base64", "not-a-png");
+                CapturedCall result = invoke(scenario, "PortfolioShare", method, options);
+                assertEquals("VALIDATION_FAILURE", result.errorCode);
+                assertFalse("PNG bytes must not survive in persisted Activity options", result.getData().has("base64"));
+            }
         }
     }
 

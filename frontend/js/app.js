@@ -24,6 +24,7 @@
       ['Wallet', setupWallet], ['Loans', setupLoans],
       ['Command recovery', setupCommandRecovery],
       ['Asset details', root.ui.asset.setup],
+      ['Portfolio share', root.ui.share.setup],
     ],
   });
   // Existing forms keep these names until they migrate to ui.application.

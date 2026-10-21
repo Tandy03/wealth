@@ -53,9 +53,12 @@ async function main() {
   const manifest = fs.readFileSync(path.join(root, 'android/app/src/main/AndroidManifest.xml'), 'utf8');
   assert.ok(manifest.includes('android:allowBackup="false"') && manifest.includes('android:fullBackupContent="@xml/backup_rules"') && manifest.includes('android:dataExtractionRules="@xml/data_extraction_rules"'), 'Android financial backup policy is missing.');
   for (const file of ['backup_rules.xml', 'data_extraction_rules.xml']) assert.ok(fs.existsSync(path.join(root, 'android/app/src/main/res/xml', file)), 'Android backup exclusion rules are missing.');
-  for (const plugin of ['GoogleDriveAuthPlugin', 'AppLockPlugin', 'FinoStoragePlugin', 'PortfolioTransferPlugin']) {
+  for (const plugin of ['GoogleDriveAuthPlugin', 'AppLockPlugin', 'FinoStoragePlugin', 'PortfolioTransferPlugin', 'PortfolioSharePlugin']) {
     assert.ok(activity.includes('registerPlugin(' + plugin + '.class)'), 'A required Android plugin is not registered.');
   }
+  assert.ok(manifest.includes('android:name=".PortfolioShareFileProvider"') && manifest.includes('android:authorities="${applicationId}.portfolio-share"'), 'PNG sharing provider is missing.');
+  const pngPaths = fs.readFileSync(path.join(root, 'android/app/src/main/res/xml/portfolio_share_paths.xml'), 'utf8');
+  assert.ok(pngPaths.includes('path="portfolio-share/"') && !pngPaths.includes('path="."') && !pngPaths.includes('external-path'), 'PNG provider must expose only its private share directory.');
   console.log(`Mobile preflight passed: ${references} asset references, ${scripts.length + 1} JavaScript sources, native configuration and plugin registration.`);
   console.log('Generated proxy configuration matches the build environment. Secret values were not printed.');
   console.log(`Android web bundle includes ${sharedEntries.length} shared modules matching source SHA-256 hashes. Existing APK was not changed or verified against these new sources.`);

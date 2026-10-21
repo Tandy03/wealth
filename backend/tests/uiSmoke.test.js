@@ -11,8 +11,142 @@ const frontend = path.join(__dirname, '../../frontend');
 const html = fs.readFileSync(path.join(frontend, 'index.html'), 'utf8');
 validateFrontend(html);
 const fixture = () => ({ ...model.createEmptyState(), assets: [{ id: 'stock', name: 'Smoke Stock', type: 'stock', quantity: 2, purchasePrice: 100, currentPrice: 120, purchaseDate: '2026-01-01', currency: 'USD' }], transactions: [{ id: 'buy', assetId: 'stock', type: 'BUY', quantity: 2, amount: 200, date: '2026-01-01', currency: 'USD' }] });
+for (const native of [false, true]) for (const locale of ['en', 'uk', 'de', 'es', 'pl', 'it']) {
+  test(`portfolio share stays local, isolated and translated in ${native ? 'native' : 'web'} ${locale}`, async t => {
+    const h = await harness(t, { native, locale, styles: true });
+    const before = JSON.stringify(h.eval('stateStore.selectData()')), requests = h.requests.length;
+    let calculations = 0, exports = 0;
+    const build = h.window.FinoPortfolioShare.createReport;
+    h.window.FinoPortfolioShare.createReport = options => { calculations++; return build(options); };
+    h.window.FinoPortfolioShare.platform.png = () => { exports++; assert.fail('Opening/configuring the modal must not generate a bitmap'); };
+    const button = h.document.querySelector('#portfolio-share-button');
+    h.document.querySelector('#open-investments').click();
+    assert.equal(button.nextElementSibling.id, 'add-asset-btn');
+    assert.equal(calculations, 0);
+    button.focus(); button.click(); await flush();
+    const modal = h.document.querySelector('.portfolio-share-overlay'); assert.ok(modal);
+    assert.equal(modal.querySelector('[data-share-period]').value, 'current');
+    assert.equal(modal.querySelector('[data-share-metric="value"]').checked, false);
+    assert.equal(modal.querySelector('[data-share-metric="invested"]').checked, false);
+    assert.equal(modal.querySelector('h2').textContent, h.window.FinoI18n.t('Portfolio share card'));
+    assert.ok(modal.querySelector('svg[width="1080"][height="1080"]'));
+    assert.doesNotMatch(modal.querySelector('[data-share-preview]').innerHTML, /Smoke Stock|Private|undefined|NaN|Infinity/);
+    const globalTheme = h.document.documentElement.dataset.theme;
+    const colors = new Set();
+    for (const theme of ['dark', 'light', 'monochromatic', 'analog']) {
+      const select = modal.querySelector('[data-share-theme]'); select.value = theme; select.dispatchEvent(new h.window.Event('change', { bubbles: true })); await flush();
+      colors.add(modal.querySelector('[data-share-preview] svg rect').getAttribute('fill'));
+      assert.equal(h.document.documentElement.dataset.theme, globalTheme);
+    }
+    assert.equal(colors.size, 4);
+    assert.equal(calculations, 1, 'Theme-only changes reuse the report');
+    for (const id of ['1m', 'ytd']) { const select = modal.querySelector('[data-share-period]'); select.value = id; select.dispatchEvent(new h.window.Event('change', { bubbles: true })); }
+    await flush();
+    assert.ok(modal.querySelector('[data-share-preview]').textContent.includes(h.window.FinoI18n.t('Year to date')), 'The latest requested period owns the preview');
+    for (const period of ['1m', '3m', '6m', '1y', 'ytd', 'all', 'current']) {
+      const select = modal.querySelector('[data-share-period]'); select.value = period; select.dispatchEvent(new h.window.Event('change', { bubbles: true })); await flush();
+      assert.ok(modal.querySelector('[data-share-preview] svg'), period);
+    }
+    const period = modal.querySelector('[data-share-period]'); period.value = 'custom'; period.dispatchEvent(new h.window.Event('change', { bubbles: true })); await flush();
+    assert.equal(modal.querySelector('[data-share-download]').disabled, true);
+    assert.equal(modal.querySelector('[data-share-status]').textContent, h.window.FinoI18n.t('Choose valid dates ending no later than today.'));
+    const from = modal.querySelector('[data-share-from]'); from.value = '2026-01-01'; from.dispatchEvent(new h.window.Event('change', { bubbles: true })); await flush();
+    assert.ok(modal.querySelector('[data-share-preview] svg'));
+    if (native) {
+      assert.equal(modal.querySelector('[data-share-send]').disabled, true);
+      assert.match(modal.querySelector('[data-share-status]').textContent, new RegExp(h.window.FinoI18n.t('Android file export needs a native bridge. Preview is available; file sharing is not yet verified.').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    }
+    h.document.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(h.document.querySelector('.portfolio-share-overlay'), null);
+    assert.equal(h.document.activeElement, button);
+    button.click(); await flush();
+    assert.equal(h.document.querySelector('[data-share-period]').value, 'current');
+    h.document.querySelector('[data-share-close]').click();
+    assert.equal(exports, 0); assert.equal(h.requests.length, requests);
+    assert.equal(JSON.stringify(h.eval('stateStore.selectData()')), before);
+    assert.deepEqual(h.errors, []);
+  });
+}
+test('portfolio share requires a fresh click for file sharing, handles cancellation, aborts obsolete exports and keeps Dashboard usable if the feature fails', async t => {
+  const h = await harness(t);
+  const button = h.document.querySelector('#portfolio-share-button');
+  let exports = 0, shares = 0, urls = 0, clicks = 0, resolve;
+  h.window.URL.createObjectURL = () => 'blob:' + ++urls; h.window.URL.revokeObjectURL = () => {};
+  h.window.HTMLAnchorElement.prototype.click = () => { clicks++; };
+  Object.defineProperty(h.window.navigator, 'canShare', { configurable: true, value: () => true });
+  Object.defineProperty(h.window.navigator, 'share', { configurable: true, value: async input => {
+    shares++; assert.equal(input.files[0].name.startsWith('fino-portfolio-'), true);
+    assert.deepEqual(Object.keys(input), ['files']); throw Object.assign(new Error('Cancelled'), { name: 'AbortError' });
+  } });
+  h.window.FinoPortfolioShare.platform.png = async () => { exports++; return new h.window.Blob(['PNG'], { type: 'image/png' }); };
+  button.click(); await flush();
+  h.document.querySelector('[data-share-send]').click(); await flush();
+  assert.equal(exports, 1); assert.equal(shares, 0);
+  assert.equal(h.document.querySelector('[data-share-send]').textContent, 'Open share menu');
+  h.document.querySelector('[data-share-send]').click(); await flush();
+  assert.equal(exports, 1); assert.equal(shares, 1);
+  assert.equal(h.document.querySelector('[data-share-status]').textContent, 'Sharing cancelled.');
+  Object.defineProperty(h.window.navigator, 'canShare', { configurable: true, value: () => false });
+  const setting = h.document.querySelector('[data-share-metric="count"]'); setting.checked = false; setting.dispatchEvent(new h.window.Event('change', { bubbles: true })); await flush();
+  h.document.querySelector('[data-share-send]').click(); await flush(); assert.equal(clicks, 1);
+  h.window.FinoPortfolioShare.platform.png = async () => { throw new Error('Internal export details must not reach the UI'); };
+  h.document.querySelector('[data-share-download]').click(); await flush();
+  assert.equal(h.document.querySelector('[data-share-status]').textContent, 'Could not create or share the PNG. Try again.');
+  assert.equal(h.document.querySelector('[data-share-download]').disabled, false, 'Failed exports remain retryable');
+  h.window.FinoPortfolioShare.platform.png = () => new Promise(done => { resolve = done; });
+  h.document.querySelector('[data-share-download]').click(); h.document.querySelector('[data-share-download]').click();
+  h.document.querySelector('[data-share-close]').click(); resolve(new h.window.Blob(['PNG'])); await flush();
+  assert.equal(clicks, 1, 'Closing an export cannot initiate a late download');
+  const feature = h.window.FinoPortfolioShare.view; h.window.FinoPortfolioShare.view = null;
+  // The launcher must tolerate an unavailable optional bundle even after a previous session.
+  button.click(); await flush(); assert.equal(h.document.querySelector('.portfolio-share-overlay'), null);
+  assert.equal(h.document.querySelector('#notice-message').textContent, 'Portfolio share is unavailable.');
+  h.window.FinoPortfolioShare.view = feature;
+  assert.doesNotThrow(() => h.window.ui.dashboard.render());
+  assert.deepEqual(h.errors, []);
+});
+for (const locale of ['en', 'uk', 'de', 'es', 'pl', 'it']) {
+  test(`native Portfolio Share opens the system flow in one click with truthful localized results (${locale})`, async t => {
+    let complete, calls = 0;
+    const pngPlugin = { savePng: () => { calls++; return new Promise(resolve => { complete = resolve; }); }, sharePng: async () => { calls++; return { status: 'dialog-closed', opened: true, deliveryConfirmed: false }; } };
+    const h = await harness(t, { native: true, locale, pngPlugin });
+    // jsdom has no Blob.arrayBuffer; use the browser-equivalent Node Blob and a
+    // deterministic FileReader. Android still validates the complete PNG.
+    h.window.File = class { constructor() { assert.fail('Android export must reuse its Blob without creating a second File.'); } };
+    h.window.FileReader = class {
+      readAsDataURL(blob) { blob.arrayBuffer().then(bytes => { this.result = 'data:image/png;base64,' + Buffer.from(bytes).toString('base64'); this.onload?.(); }); }
+      abort() { this.onabort?.(); }
+    };
+    const bytes = new Uint8Array(64); bytes.set([137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82]);
+    new DataView(bytes.buffer).setUint32(16,1080); new DataView(bytes.buffer).setUint32(20,1080);
+    let exports = 0;
+    h.window.FinoPortfolioShare.platform.png = async () => { exports++; return new Blob([bytes], { type: 'image/png' }); };
+    const before = JSON.stringify(h.eval('stateStore.selectData()')), requests = h.requests.length;
+    const translated = key => h.window.FinoI18n.t(key);
+    h.document.querySelector('#portfolio-share-button').click(); await flush();
+    const save = h.document.querySelector('[data-share-download]'), share = h.document.querySelector('[data-share-send]');
+    save.click(); save.click(); await flush();
+    assert.equal(calls, 1); assert.equal(exports, 1); assert.equal(save.disabled, true); assert.equal(share.disabled, true);
+    assert.equal(h.document.querySelector('[data-share-status]').textContent, translated('Choose where to save the PNG.'));
+    complete({ status: 'cancelled', cancelled: true, saved: false }); await flush();
+    assert.equal(h.document.querySelector('[data-share-status]').textContent, translated('PNG operation cancelled.'));
+    save.click(); await flush(); complete({ status: 'saved', saved: true }); await flush();
+    assert.equal(h.document.querySelector('[data-share-status]').textContent, translated('PNG saved.'));
+    share.click(); await flush();
+    assert.equal(calls, 3); assert.equal(exports, 3);
+    assert.equal(h.document.querySelector('[data-share-status]').textContent, translated('Share menu closed. Delivery is not confirmed.'));
+    for (const [code, key] of [['NO_SHARE_TARGET', 'No app is available to share PNG files.'], ['SHARE_CACHE_FULL', 'Temporary share storage is full. Try again later.'], ['OPERATION_INTERRUPTED', 'PNG operation interrupted. Please try again.'], ['STORAGE_FAILURE', 'Could not create or share the PNG. Try again.']]) {
+      pngPlugin.sharePng = async () => { throw Object.assign(new Error('Private URI and error details'), { code }); };
+      share.click(); await flush(); assert.equal(h.document.querySelector('[data-share-status]').textContent, translated(key));
+      if (locale !== 'en') assert.notEqual(translated(key), key);
+      assert.equal(share.disabled, false);
+    }
+    assert.equal(JSON.stringify(h.eval('stateStore.selectData()')), before); assert.equal(h.requests.length, requests); assert.deepEqual(h.errors, []);
+    h.document.querySelector('[data-share-close]').click();
+  });
+}
 const flush = async () => { for (let i = 0; i < 8; i++) await new Promise(setImmediate); };
-async function harness(t, { initial = fixture(), blockMarkets = false, locale = 'en', charts = false, failWallet = false, failRebalance = false, failPayments = false, sessionDraft, native = false, nativeStorage: restoredStorage, macroFailureOnce = false, styles = false, compact = false, bootFromEvent = false, browserStorage, syncPreview, outbox, transferPicker } = {}) {
+async function harness(t, { initial = fixture(), blockMarkets = false, locale = 'en', charts = false, failWallet = false, failRebalance = false, failPayments = false, sessionDraft, native = false, nativeStorage: restoredStorage, macroFailureOnce = false, styles = false, compact = false, bootFromEvent = false, browserStorage, syncPreview, outbox, transferPicker, pngPlugin } = {}) {
   const errors = [];
   const console = new VirtualConsole();
   console.on('jsdomError', error => errors.push(error.message));
@@ -22,7 +156,7 @@ async function harness(t, { initial = fixture(), blockMarkets = false, locale = 
   window.TextEncoder = TextEncoder;
   if (styles) {
     const style = window.document.createElement('style');
-    style.textContent = ['style.css', 'rebalance.css', 'asset-detail.css'].map(file => fs.readFileSync(path.join(frontend, 'css', file), 'utf8')).join('\n');
+    style.textContent = ['style.css', 'rebalance.css', 'asset-detail.css', 'portfolio-share.css'].map(file => fs.readFileSync(path.join(frontend, 'css', file), 'utf8')).join('\n');
     window.document.head.append(style);
   }
   window.localStorage.setItem('fino-language', locale);
@@ -82,6 +216,7 @@ async function harness(t, { initial = fixture(), blockMarkets = false, locale = 
       },
       GoogleDriveAuth: { getAccessToken: async () => { throw Object.assign(new Error('Google authorization was cancelled.'), { code: 'AUTHORIZATION_REQUIRED' }); } },
       PortfolioTransfer: transferPicker,
+      PortfolioShare: pngPlugin,
     } };
     window.FINO_MOBILE_CONFIG = { proxyUrl: 'https://script.google.com/macros/s/mock/exec', proxyToken: 'mock-token' };
   }

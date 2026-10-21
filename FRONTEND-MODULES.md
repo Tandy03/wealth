@@ -23,6 +23,7 @@
 | `asset-detail/model.js` | `FinoAssetDetail`, DOM-free read adapter позицій і спільної картки активу: групує за типом/назвою як Portfolio, підсумовує чинні shared розрахунки й історію, не змінює документ |
 | `asset-detail/view.js` | `FinoAssetDetailView`, factory контролера `ui.asset` з явними залежностями store/model/DOM/i18n/actions/Chart; шаблони локальні, API викликається лише через передані чинні дії |
 | `state.js` | Єдиний `stateStore`, таблиці курсів і wallet-категорій; глобальний alias `state` вилучений |
+| `share-card/{data,card,platform,view}.js` | Один namespace `FinoPortfolioShare`; ізольований read adapter, SVG, export/platform adapter і модальне вікно; контролер створюється після натискання. [Методика й Android-обмеження](PORTFOLIO-SHARE.md) |
 | Analytics, market-data, cashflow, rebalance/model, views/wallet | DOM-free factories `Fino…`, `PortfolioPerformance`; сервіси отримують snapshot і залежності явно |
 | `models.js`, `utils.js`, `data-loader.js` | Старі lexical aliases, форматування, facade сервісів та завантаження; точні імена в JSON |
 | Renderers, forms, charts, controllers, rebalance UI | Старі function exports та `FinoChartPlugins`, `FinoRebalanceDashboard`, `FinoRebalanceCurrencyHover`; точні імена та відповідальні файли в JSON |

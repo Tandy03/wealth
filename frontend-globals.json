@@ -708,6 +708,10 @@
       ],
       "bindings": []
     },
+    {"src":"/js/share-card/data.js","globals":["FinoPortfolioShare"],"bindings":[]},
+    {"src":"/js/share-card/card.js","globals":[],"bindings":[]},
+    {"src":"/js/share-card/platform.js","globals":[],"bindings":[]},
+    {"src":"/js/share-card/view.js","globals":[],"bindings":[]},
     {
       "src": "/js/ui.js",
       "globals": [

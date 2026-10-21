@@ -58,6 +58,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(AppLockPlugin.class);
         registerPlugin(FinoStoragePlugin.class);
         registerPlugin(PortfolioTransferPlugin.class);
+        registerPlugin(PortfolioSharePlugin.class);
         super.onCreate(savedInstanceState);
         lockPreferences = getSharedPreferences(LOCK_PREFERENCES, MODE_PRIVATE);
         showLaunchLock();
