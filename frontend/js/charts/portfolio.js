@@ -10,7 +10,7 @@ function renderAssetAllocationChart(state = stateStore.getState()) {
   for (const asset of stateStore.selectAssets(state) || []) {
     if (asset.type === 'savings') continue;
     const value = toUAH(getAvailableQuantity(asset.id) * getCurrentPrice(asset), asset.currency);
-    const label = mode === 'tools' ? String(asset.instrumentName || '').trim() || window.FinoI18n.t('Unassigned') : window.FinoI18n.t(typeLabels[asset.type] || asset.type);
+    const label = mode === 'tools' ? String(asset.instrumentName || '').trim() || window.FinoI18n.t('Unassigned') : window.FinoI18n.t(window.FinoI18n.locale === 'uk' && asset.type === 'stock' ? 'Stocks' : typeLabels[asset.type] || asset.type);
     const key = mode === 'tools' ? label.toLocaleLowerCase() : asset.type;
     const item = allocation.get(key) || { value: 0, label };
     item.value += value; allocation.set(key, item);

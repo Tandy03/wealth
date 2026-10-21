@@ -55,10 +55,13 @@ async function getIndexHistory({ symbol, startDate, endDate }) {
     if (!response.ok || payload?.error_code) {
       throw new FredApiError("FRED request failed.", "FRED_API_ERROR", response.status >= 400 ? response.status : 502);
     }
+    if (!Array.isArray(payload?.observations)) {
+      // An HTML error page with HTTP 200 is a provider failure, not an
+      // authoritative answer that the requested history does not exist.
+      throw new FredApiError("FRED returned an invalid response.", "FRED_API_ERROR", 502);
+    }
 
-    const observations = Array.isArray(payload?.observations)
-      ? payload.observations.filter((item) => item?.value !== "." && Number.isFinite(Number(item?.value)))
-      : [];
+    const observations = payload.observations.filter((item) => item?.value !== "." && Number.isFinite(Number(item?.value)));
     if (!observations.length) {
       throw new FredApiError(`FRED returned no ${index.name} history for this period.`, "INDEX_HISTORY_NOT_FOUND", 404);
     }

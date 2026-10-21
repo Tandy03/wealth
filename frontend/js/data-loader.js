@@ -102,7 +102,7 @@ async function updateSp500Benchmark() {
   const start = dates[0], end = getDateString(new Date());
   const samePeriod = stateStore.selectUI('sp500BenchmarkPeriod') === `${start}:${end}`;
   stateStore.setUI({ sp500Benchmark: samePeriod ? stateStore.selectUI('sp500Benchmark') : null, sp500BenchmarkStatus: start && start <= end ? 'loading' : 'empty',
-    sp500BenchmarkPeriod: `${start}:${end}`, sp500BenchmarkStart: start || null, sp500BenchmarkEnd: end });
+    sp500BenchmarkErrorCode: null, sp500BenchmarkPeriod: `${start}:${end}`, sp500BenchmarkStart: start || null, sp500BenchmarkEnd: end });
   if (!start || start > end) return;
   try {
     const result = await api.getIndexHistory({ symbol: ".INX", startDate: start, endDate: end });
@@ -111,10 +111,11 @@ async function updateSp500Benchmark() {
       .filter(point => isDate(point.date) && point.date >= start && point.date <= end && Number.isFinite(point.close) && point.close > 0)
       .sort((a, b) => a.date.localeCompare(b.date));
     stateStore.setUI({ sp500Benchmark: values.length > 1 ? (values.at(-1).close / values[0].close - 1) * 100 : null,
-      sp500BenchmarkStatus: values.length > 1 ? 'ready' : 'unavailable', sp500BenchmarkStart: values[0]?.date || start, sp500BenchmarkEnd: values.at(-1)?.date || end });
+      sp500BenchmarkStatus: values.length > 1 ? 'ready' : 'unavailable', sp500BenchmarkErrorCode: values.length > 1 ? null : 'INDEX_HISTORY_NOT_FOUND', sp500BenchmarkStart: values[0]?.date || start, sp500BenchmarkEnd: values.at(-1)?.date || end });
   } catch (error) {
     if (!stateStore.isCurrent(snapshot)) return;
-    stateStore.setUI({ sp500BenchmarkStatus: 'unavailable' });
+    const code = ['FRED_NOT_CONFIGURED', 'NOT_CONFIGURED', 'INDEX_HISTORY_NOT_FOUND'].includes(error?.code) ? error.code : 'FRED_API_ERROR';
+    stateStore.setUI({ sp500BenchmarkStatus: 'unavailable', sp500BenchmarkErrorCode: code });
     console.warn("Could not load the S&P 500 benchmark:", window.FinoErrors.diagnostics(error));
   }
 }

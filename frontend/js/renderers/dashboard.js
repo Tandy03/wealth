@@ -24,10 +24,20 @@ function setReturnBenchmarkHover(element, portfolioReturn, state = stateStore.ge
   if (!element) return;
   const card = element.closest(".stat-card") || element;
   const label = document.querySelector("#stat-roi-label");
+  const note = card.querySelector('#stat-roi-note') || card.querySelector('small');
+  const t = window.FinoI18n.t;
   if (portfolioReturn !== undefined) element.dataset.portfolioReturn = portfolioReturn == null ? "Unavailable" : `${portfolioReturn.toFixed(2)}%`;
   element.dataset.benchmarkReturn = state.sp500Benchmark == null ? window.FinoI18n.t(state.sp500BenchmarkStatus === 'loading' ? 'Loading…' : 'Unavailable') : `${state.sp500Benchmark >= 0 ? "+" : ""}${state.sp500Benchmark.toFixed(2)}%`;
   card.classList.add("currency-hover-card");
   card.title = state.sp500BenchmarkStart && state.sp500BenchmarkEnd ? `S&P 500 · ${state.sp500BenchmarkStart} — ${state.sp500BenchmarkEnd}` : "Compare with S&P 500";
+  element.dataset.portfolioNote = t('All-time simple return at report-date FX; unavailable with incomplete valuation.');
+  const benchmarkNote = state.sp500Benchmark != null
+    ? state.sp500BenchmarkStatus === 'unavailable' ? 'S&P 500: last loaded result; the data provider is currently unavailable.' : 'S&P 500 price change over the investment period; dividends are excluded.'
+    : state.sp500BenchmarkStatus === 'loading' ? 'Loading S&P 500 history…'
+      : state.sp500BenchmarkErrorCode === 'INDEX_HISTORY_NOT_FOUND' ? 'No S&P 500 quotes are available for the investment period.'
+        : ['FRED_NOT_CONFIGURED', 'NOT_CONFIGURED'].includes(state.sp500BenchmarkErrorCode) ? 'S&P 500 data access is not configured.'
+          : 'S&P 500 history is temporarily unavailable from the data provider.';
+  element.dataset.benchmarkNote = t(benchmarkNote);
   card.tabIndex = 0;
   if (!card.dataset.benchmarkHoverBound) {
     card.dataset.benchmarkHoverBound = "true";
@@ -35,11 +45,13 @@ function setReturnBenchmarkHover(element, portfolioReturn, state = stateStore.ge
       card.dataset.benchmarkView = 'benchmark';
       if (label) label.textContent = "S&P 500";
       element.textContent = element.dataset.benchmarkReturn;
+      if (note) note.textContent = element.dataset.benchmarkNote;
     };
     const showPortfolioReturn = () => {
       card.dataset.benchmarkView = 'portfolio';
       if (label) label.textContent = "Return";
       element.textContent = element.dataset.portfolioReturn;
+      if (note) note.textContent = element.dataset.portfolioNote;
     };
     card.addEventListener("mouseenter", showBenchmark);
     card.addEventListener("mouseleave", showPortfolioReturn);
@@ -48,6 +60,7 @@ function setReturnBenchmarkHover(element, portfolioReturn, state = stateStore.ge
   }
   if (label) label.textContent = card.dataset.benchmarkView === 'benchmark' ? 'S&P 500' : 'Return';
   element.textContent = card.dataset.benchmarkView === 'benchmark' ? element.dataset.benchmarkReturn : element.dataset.portfolioReturn;
+  if (note) note.textContent = card.dataset.benchmarkView === 'benchmark' ? element.dataset.benchmarkNote : element.dataset.portfolioNote;
 }
 
 function setXirrValue(element, xirr) {
