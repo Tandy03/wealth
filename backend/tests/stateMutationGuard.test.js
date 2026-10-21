@@ -9,6 +9,7 @@ test('test guard detects snapshot replacement, nested writes, arrays and subscri
   for (const mutate of [() => { snapshot.data = fixture(); }, () => { snapshot.data.assets = []; },
     () => { store.getData().assets[0].quantity = 99; }, () => store.select(state => state.data.assets).push({}),
     () => { Object.getOwnPropertyDescriptor(snapshot, 'data').value.assets[0].quantity = 99; },
+    () => { store.setUI({ section: 'dashboard' }).data.assets[0].quantity = 99; },
     () => { delete snapshot.data.assets[0].name; }, () => Object.defineProperty(snapshot.data, 'assets', { value: [] })]) {
     assert.throws(mutate, /store command/);
   }

@@ -1,9 +1,10 @@
 (function (root, factory) {
-  const api = factory(typeof module === 'object' && module.exports ? require('../../shared/state-contract') : root.FinoStateContract);
+  const api = factory(typeof module === 'object' && module.exports ? require('../../shared/state-contract') : root.FinoStateContract, typeof module === 'object' && module.exports ? require('./state-store') : root.FinoStateStore);
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.FinoMarketData = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (contract) {
-  function createService({ state, exchangeRates, historicalRates, values, getCustomRange = () => null }) {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (contract, readers) {
+  function createService({ state, selectData, selectUI, exchangeRates, historicalRates, values, getCustomRange = () => null }) {
+    ({ selectData, selectUI } = readers.createReader({ state, selectData, selectUI }));
     const { normalizeNumber } = values;
     const EXCHANGE_RATES = exchangeRates;
     const HISTORICAL_RATE_FALLBACKS = historicalRates;
@@ -26,7 +27,7 @@ function rateInfo(currency = 'UAH', date = '', method = 'report-date') {
   if (code === 'UAH') return { rate: 1, date: day, source: 'UAH', estimated: false, method };
   const validDay = value => /^\d{4}-\d{2}-\d{2}$/.test(value || '') && Number.isFinite(Date.parse(value + 'T00:00:00Z')) && new Date(value + 'T00:00:00Z').toISOString().slice(0, 10) === value;
   if (method === 'operation-date') {
-    const source = state.purchaseExchangeRates?.[code];
+    const source = selectUI('purchaseExchangeRates')?.[code];
     let index = historyIndexes.get(code);
     if (!index || index.source !== source) {
       index = { source, rows: (Array.isArray(source) ? source : []).filter(item => item && validDay(item.date) && Number(item.rate) > 0 && Number.isFinite(Number(item.rate))).slice().sort((a, b) => a.date.localeCompare(b.date)) };
@@ -40,20 +41,20 @@ function rateInfo(currency = 'UAH', date = '', method = 'report-date') {
     const fallback = Number(HISTORICAL_RATE_FALLBACKS[code]);
     return { rate: fallback > 0 && Number.isFinite(fallback) ? fallback : null, date: null, source: 'Fallback', estimated: true, method };
   }
-  const raw = String(state.exchangeRateDate || ''), parts = raw.match(/^(\d{2})[.\/-](\d{2})[.\/-](\d{4})$/);
+  const raw = String(selectUI('exchangeRateDate') || ''), parts = raw.match(/^(\d{2})[.\/-](\d{2})[.\/-](\d{4})$/);
   const rateDate = parts ? `${parts[3]}-${parts[2]}-${parts[1]}` : raw.slice(0, 10);
   const rate = Number(EXCHANGE_RATES[code]);
-  const known = validDay(rateDate) && rateDate <= day && state.exchangeRateSource;
+  const known = validDay(rateDate) && rateDate <= day && selectUI('exchangeRateSource');
   // An undated/next-day live quote is not today's fallback. Prefer a dated
   // official observation already loaded for this report, without another fetch.
-  if (!known || state.exchangeRateStale || (Date.parse(day) - Date.parse(rateDate)) / 86400000 > 7) {
+  if (!known || selectUI('exchangeRateStale') || (Date.parse(day) - Date.parse(rateDate)) / 86400000 > 7) {
     const historical = rateInfo(code, day, 'operation-date');
     if (historical.source === 'NBU history' && historical.date) return { ...historical, method };
   }
-  const datedSource = validDay(rateDate) && state.exchangeRateSource;
+  const datedSource = validDay(rateDate) && selectUI('exchangeRateSource');
   const future = datedSource && rateDate > day;
-  return { rate: !future && rate > 0 && Number.isFinite(rate) ? rate : null, date: datedSource ? rateDate : null, source: datedSource ? state.exchangeRateSource : 'Fallback',
-    estimated: !known || Boolean(state.exchangeRateStale) || (Date.parse(day) - Date.parse(rateDate)) / 86400000 > 7, method };
+  return { rate: !future && rate > 0 && Number.isFinite(rate) ? rate : null, date: datedSource ? rateDate : null, source: datedSource ? selectUI('exchangeRateSource') : 'Fallback',
+    estimated: !known || Boolean(selectUI('exchangeRateStale')) || (Date.parse(day) - Date.parse(rateDate)) / 86400000 > 7, method };
 }
 function convertWithInfo(value, currency = 'UAH', date = '', method = 'report-date') {
   const info = rateInfo(currency, date, method), amount = Number(value);
@@ -73,10 +74,10 @@ function toUAHAtDate(value, currency = "UAH", date = "") {
 }
 
 function getAssetPurchaseDate(assetId, fallback = "") {
-  const asset = (state.data.assets || []).find((item) => item.id === assetId);
+  const asset = (selectData().assets || []).find((item) => item.id === assetId);
   if (asset?.purchaseDate) return asset.purchaseDate;
 
-  return (state.data.transactions || [])
+  return (selectData().transactions || [])
     .filter((transaction) => transaction.assetId === assetId && transaction.type === "BUY" && contract.isTransactionCompleted(transaction) && transaction.date)
     .map((transaction) => transaction.date)
     .sort()[0] || fallback;
@@ -86,7 +87,7 @@ function getAssetPurchaseExchangeRate(assetId, currency = "UAH", fallbackDate = 
   const normalizedCurrency = String(currency || "UAH").toUpperCase();
   if (normalizedCurrency === "UAH") return 1;
 
-  const purchases = (state.data.transactions || []).filter(
+  const purchases = (selectData().transactions || []).filter(
     (transaction) =>
       transaction.assetId === assetId &&
       transaction.type === "BUY" &&
@@ -151,7 +152,7 @@ function currencyParamsForRange(range) {
 function resolveMarketSymbol(input) {
   const value = String(input || "").trim().toUpperCase();
   if ([".INX", ".DJI", ".IXIC"].includes(value)) return value;
-  const holding = (state.data?.assets || []).find((asset) =>
+  const holding = (selectData()?.assets || []).find((asset) =>
     [asset.name, asset.ticker, asset.symbol].some((candidate) => String(candidate || "").trim().toUpperCase() === value),
   );
   return String(holding?.underlyingSymbol || value).trim().toUpperCase();

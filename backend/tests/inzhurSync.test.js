@@ -4,11 +4,96 @@ const { once } = require('node:events');
 const model = require('../../frontend/js/market-model');
 const stateModel = require('../../frontend/js/state-model');
 const { createApp } = require('../app');
+const { createService } = require('../domain/marketService');
+const { INZHUR_ASSETS_URL, INZHUR_CACHE_TTL_MS } = require('../config/constants');
 
 const catalog = date => [{ type: 'bond', slug: 'test-bond', assetDetails: {
   isin: 'TEST', maturityDate: '2027-12-01', prices: { sellUAH: 1100 },
   paymentSchedule: [{ date, amount: 5000 }, { date: '2027-11-30T22:00:00.000Z', amount: 100000 }],
 } }];
+
+test('Inzhur callers share the normalized catalog and preserve null/true/false cache metadata at the TTL boundary', async t => {
+  let now = Date.parse('2026-10-21T12:00:00Z'), calls = 0;
+  let payload = catalog('2027-05-31T21:00:00.000Z');
+  t.mock.method(Date, 'now', () => now);
+  t.mock.method(global, 'fetch', async (url, options) => {
+    calls++;
+    assert.equal(url, INZHUR_ASSETS_URL);
+    assert.deepEqual(options.headers, { Accept: 'application/json' });
+    return new Response(JSON.stringify(payload));
+  });
+  const service = createService();
+  const first = await service.getInzhurAssets();
+  assert.equal(first.cached, null);
+  assert.equal(first.updatedAt, new Date(now).toISOString());
+  assert.deepEqual(first.assets, model.inzhurCatalog(payload));
+  assert.equal(await service.getInzhurCatalogAssets(), first.assets);
+  assert.equal((await service.getInzhurAssets()).cached, true);
+  now += INZHUR_CACHE_TTL_MS - 1;
+  assert.equal(await service.getInzhurCatalogAssets(), first.assets);
+  assert.equal(calls, 1);
+  now++;
+  payload = catalog('2027-06-02'); payload[0].assetDetails.prices.sellUAH = 1200;
+  const refreshed = await service.getInzhurAssets();
+  assert.equal(refreshed.cached, false);
+  assert.equal(refreshed.updatedAt, new Date(now).toISOString());
+  assert.notEqual(refreshed.updatedAt, first.updatedAt);
+  assert.deepEqual(refreshed.assets, model.inzhurCatalog(payload));
+  assert.equal(await service.getInzhurCatalogAssets(), refreshed.assets);
+  assert.equal((await service.getInzhurAssets()).cached, true);
+  assert.equal(calls, 2);
+});
+
+test('an internal initial load, including an empty catalog, is a cache hit for the HTTP caller', async t => {
+  for (const payload of [catalog('2027-06-01'), []]) await t.test(payload.length ? 'nonempty' : 'empty', async t => {
+    let calls = 0;
+    t.mock.method(global, 'fetch', async () => { calls++; return new Response(JSON.stringify(payload)); });
+    const service = createService(), assets = await service.getInzhurCatalogAssets();
+    assert.ok(Array.isArray(assets));
+    assert.deepEqual(assets, model.inzhurCatalog(payload));
+    const response = await service.getInzhurAssets();
+    assert.equal(response.assets, assets);
+    assert.equal(response.cached, true);
+    assert.equal(calls, 1);
+  });
+});
+
+test('invalid Inzhur payloads, normalization errors and failed requests never become a fresh cache', async t => {
+  const networkError = Object.assign(new Error('Provider unavailable'), { status: 504, code: 'EXTERNAL_API_TIMEOUT' });
+  for (const [name, invalid, expected] of [
+    ['wrong shape', {}, /Inzhur API returned an invalid payload/],
+    ['invalid normalized entry', catalog('2026-02-31'), /Invalid Inzhur/],
+    ['request failure', networkError, error => error === networkError],
+  ]) await t.test(name, async t => {
+    let now = Date.parse('2026-10-21T12:00:00Z'), calls = 0, fail = true;
+    const payload = catalog('2027-06-01');
+    t.mock.method(Date, 'now', () => now);
+    t.mock.method(global, 'fetch', async () => {
+      calls++;
+      if (fail && invalid instanceof Error) throw invalid;
+      return new Response(JSON.stringify(fail ? invalid : payload));
+    });
+    const service = createService();
+    await assert.rejects(service.getInzhurCatalogAssets(), expected);
+    fail = false;
+    const first = await service.getInzhurAssets();
+    assert.equal(first.cached, null);
+    assert.equal(calls, 2);
+    now += INZHUR_CACHE_TTL_MS;
+    fail = true;
+    await assert.rejects(service.getInzhurAssets(), expected);
+    fail = false;
+    payload[0].assetDetails.prices.sellUAH = 1200;
+    const assets = await service.getInzhurCatalogAssets();
+    assert.equal(assets[0].prices.sellUAH, 1200);
+    assert.notEqual(assets, first.assets);
+    assert.equal(calls, 4);
+    const confirmed = await service.getInzhurAssets();
+    assert.equal(confirmed.assets, assets);
+    assert.equal(confirmed.cached, true);
+    assert.equal(confirmed.updatedAt, new Date(now).toISOString());
+  });
+});
 
 test('Inzhur timestamps normalize to Ukrainian payment days without changing calendar dates', () => {
   for (const [input, expected] of [
@@ -45,9 +130,11 @@ test('Sync API accepts provider timestamps and preserves receipts and sale-adjus
     saveData: async next => { stateModel.validateState(next); data = structuredClone(next); saves++; },
     runMutation: operation => operation(), drive: { getStatus: () => ({}) } };
   const originalFetch = global.fetch;
-  let sourceCalls = 0;
+  let sourceCalls = 0, now = Date.now();
+  let sourcePayload = catalog('2027-05-31T21:00:00.000Z');
+  t.mock.method(Date, 'now', () => now);
   global.fetch = async (url, options) => {
-    if (String(url).startsWith('https://www.inzhur.reit/_api/assets')) { sourceCalls++; return new Response(JSON.stringify(catalog('2027-05-31T21:00:00.000Z'))); }
+    if (String(url).startsWith('https://www.inzhur.reit/_api/assets')) { sourceCalls++; return new Response(JSON.stringify(sourcePayload)); }
     return originalFetch(url, options);
   };
   t.after(() => { global.fetch = originalFetch; });
@@ -63,4 +150,22 @@ test('Sync API accepts provider timestamps and preserves receipts and sale-adjus
   const maturity = data.payments.find(payment => payment.status === 'planned' && payment.type === 'MATURITY');
   assert.equal(coupon.date, '2027-06-01'); assert.equal(coupon.amount, 250);
   assert.equal(maturity.date, '2027-12-01'); assert.equal(maturity.amount, 5000);
+  const cached = await fetch(base + '/api/inzhur-assets');
+  assert.equal(cached.status, 200);
+  const body = await cached.json();
+  assert.equal(body.cached, true);
+  assert.equal(body.assets[0].paymentSchedule[0].date, coupon.date);
+  assert.equal(sourceCalls, 1, 'HTTP reads reuse the catalog already fetched by asset synchronization');
+  now += INZHUR_CACHE_TTL_MS;
+  sourcePayload = {};
+  const rejected = await fetch(base + '/api/inzhur-assets');
+  assert.equal(rejected.status, 502);
+  assert.deepEqual(await rejected.json(), { error: 'Could not load the Inzhur asset catalog.', code: 'REMOTE_UNAVAILABLE', category: 'remote_unavailable' });
+  assert.ok(rejected.headers.get('x-request-id'));
+  assert.equal(saves, 1, 'Failed catalog refreshes cannot write portfolio data');
+  sourcePayload = catalog('2027-05-31T21:00:00.000Z');
+  const refreshed = await (await fetch(base + '/api/inzhur-assets')).json();
+  assert.equal(refreshed.cached, false);
+  assert.equal(refreshed.updatedAt, new Date(now).toISOString());
+  assert.equal(sourceCalls, 3, 'A failed HTTP refresh leaves the old cache expired and retryable');
 });

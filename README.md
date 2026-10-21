@@ -184,6 +184,8 @@ API приймає JSON, відхиляє чужий `Origin`, міжсайто�
 
 ## Android
 
+Незалежне перенесення без Google Drive: **Налаштування → Файл портфеля**. Явний JSON-експорт містить приватні незашифровані дані; створюється тільки після підтвердження. Перед відновленням перевіряються формат v1, SHA-256 і document validation та показується preview; відновлення можливе лише в порожній портфель. На чистому Android створюється локальний профіль без Google-авторизації. Формат, обмеження, безпечні кроки перенесення й recovery drill: [PORTFOLIO-FILES.md](PORTFOLIO-FILES.md). Новий native document picker потребує наступної окремо дозволеної збірки APK.
+
 Перед перескладанням виконайте `npm.cmd test`, `npm.cmd run mobile:prepare` і `npm.cmd run mobile:check`. Prepare готує лише `.tmp/mobile-web/`, не змінюючи Android assets або APK. Preflight перевіряє синтаксис, HTML-посилання, SHA-256 frontend/shared ресурсів для Android, конфігурацію проксі та реєстрацію плагінів. Детальний результат перевірки й кроки на телефоні: [MOBILE-READINESS.md](MOBILE-READINESS.md).
 
 ~~~powershell
@@ -195,6 +197,10 @@ npm run mobile:build
 mobile:sync генерує frontend/js/mobile-config.generated.js, готує `.tmp/mobile-web/` із frontend та shared і копіює ресурси через Capacitor. Copy hook оновлює підготовлені ресурси перед копіюванням. mobile:build повторює sync, потім збирає debug APK. Команда mobile:apk є її псевдонімом.
 
 Окрема перевірка Android без створення APK: `android\gradlew.bat -p android :app:compileDebugJavaWithJavac :app:testDebugUnitTest :app:lintDebug` у середовищі з JDK 21 та Android SDK 36. Для Windows-шляхів із кирилицею Gradle використовує `file.encoding=COMPAT`; Java-файли компілюються явно як UTF-8.
+
+Instrumentation-контракти — `android/app/src/androidTest/java/com/tandy03/fino/ExampleInstrumentedTest.java`: application ID `com.tandy03.fino`, реєстрація й методи FinoStorage/AppLock/GoogleDriveAuth та bundled plugins, локальний HTTPS WebView, наявність offline frontend/shared ресурсів, реальні set/get/remove із підтвердженням запису й перевідкриттям Activity, validation failure та типи налаштувань блокування. OAuth, PIN і фінансові ключі не змінюються; storage probe має унікальний `fino-instrumentation-*` ключ і finally-cleanup. Перевірка компіляції без APK: `android\gradlew.bat -p android :app:compileDebugAndroidTestJavaWithJavac`. Запуск `connectedDebugAndroidTest` збирає/встановлює APK, тому виконується лише за окремим дозволом на виділеному тестовому емуляторі; він не входить у source-only перевірку.
+
+`npm run check:frontend` включає `check:state-mutations` для всіх UI-модулів; правила позиченого фінансового стану й межі статичного аналізу описані у [FRONTEND-STATE.md](FRONTEND-STATE.md). Панель відновлення команд використовує локалізацію всіх шести мов, зберігаючи початкові operationId/scope при повторі. Оновлення FX перемальовує видимий екран; приховані фінансові екрани оновлюються при відкритті.
 
 APK: android/app/build/outputs/apk/debug/app-debug.apk.
 
@@ -209,6 +215,8 @@ Android не запускає Node.js backend. frontend/js/api.js делегує
 Зміни лише в backend не потребують нового APK. Після змін frontend або shared необхідно за окремим дозволом виконати mobile:sync і перебудувати застосунок.
 
 ## Перевірки
+
+`npm run lint` перевіряє **весь авторський `frontend/js` і `shared`** за каталогами, без ручного переліку модулів. Vendor і `*.generated.js` виключені; нові файли автоматично потрапляють у перевірку. `lintCoverage.test.js` звіряє фактичне охоплення з деревом файлів. Backend і Apps Script залишаються поза цим ESLint scope та перевіряються своїми тестами/source preflight. `npm run test:recovery` запускає синтетичний повний цикл збереження/відновлення; він також входить у звичайний `npm test` і CI, без доступу до реального портфеля чи Drive.
 
 ~~~powershell
 npm test

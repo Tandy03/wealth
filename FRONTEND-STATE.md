@@ -2,6 +2,18 @@
 
 Власник опублікованого фінансового документа — `frontend/js/state-store.js`. Значення з `getData()`, `getState().data`, `select()`, результатів команд і subscription events є **позиченими значеннями лише для читання**. UI не змінює їхні поля, вкладені об'єкти або масиви й не передає їх mutating-normalizer. Нові зміни проходять через команди нижче. У production на звичайному читанні немає глибокого копіювання, Proxy або `Object.freeze`.
 
+## Явні selectors і snapshots
+
+Форми читають актуальні дані через `selectAssets()`, `selectTransactions()`, `selectPayments()`, `selectSales()`, `selectWallet()`, `selectRebalance()`, `selectCalendarNotes()`, `selectPriceHistory()`, `selectInstruments()`; `selectData()` повертає цілий документ для доменного розрахунку. Це O(1) читання без копіювання, нормалізації, збереження, сповіщень або запитів. Значення залишаються лише для читання; фінансові зміни проходять через наявні команди, без зміни їхніх persistence-результатів.
+
+Кожен фінансовий selector приймає необов'язковий явний snapshot: `store.selectAssets(snapshot)`. Переданий snapshot завжди має пріоритет над поточним store; після `replaceData` він продовжує описувати попередній документ. Renderers, графіки, Asset details і Rebalance використовують саме цю форму. `getState()` зберігається як джерело render snapshot, але читання його `.data` поза власником store заборонено lint.
+
+`selectUI(key, snapshot?)` читає UI-поле; ключ `data` заборонений. Форми змінюють editing IDs, календарну дату й незбережені rebalance drafts через `setUI`, а фінансові записи — через API/store-команди. Асинхронний data-loader зберігає перевірку `capture/isCurrent` і читає поточний FX-кеш перед об'єднанням паралельних відповідей.
+
+DOM-free factories MarketData, PortfolioFinance, Cashflow і WalletAnalytics отримують явні `selectData` та `selectUI`. `models.js` передає live readers для подій користувача, а `createRenderServices(snapshot)` прив'язує обидва readers до переданого snapshot. Лише централізований `FinoStateStore.createReader({state})` залишає сумісність зі старими standalone споживачами; прикладний код цей адаптер не використовує. Глобальний alias `state` у `state.js` вилучений із коду та реєстру browser bindings; нових browser globals немає.
+
+`stateSelectors.test.js` перевіряє live/snapshot читання, ідентичність значень, guard, ізоляцію DI-сервісів і FX після заміни документа; наявний UI smoke завантажує реальний HTML для web/native.
+
 ## Перелік знайдених записів і їхній власник
 
 | Місце | Попередня поведінка / класифікація | Тепер |
@@ -44,6 +56,20 @@ Store перевіряє revision документа, покоління context
 ## Перевірки
 
 `frontendStateStore.test.js`, `walletActions.test.js`, `dataLoader.test.js` перевіряють повідомлення, нормалізацію до публікації, чергу, результат збереження, помилки й конкуренцію snapshot/account. Усі UI smoke-тести використовують той самий mutation guard, який доступний у development.
+
+### Статична заборона мутацій
+
+`npm run check:state-mutations` запускає AST-правило ESLint `financial/no-financial-state-mutation` для всіх `frontend/js` UI-модулів. Воно входить у `check:frontend`, який уже викликає CI. Загальний lint залишається поступовим; нова фінансова перевірка охоплює також legacy-форми та renderers. Винятки — власники приватних persistence/document drafts `state-store.js` і `mobile-api.js`; generated config і vendor не є UI-кодом.
+
+Правило відстежує `state.data`, `getState().data`, `getData()`, `select`, результати команд і subscription events, локальні aliases, destructuring, for-of та callbacks масивів. Воно відхиляє присвоєння, delete, інкременти, mutating array methods, відомі mutating-normalizers, Object.assign/defineProperty і Reflect.set над позиченими значеннями. Сортування локальної копії масиву дозволене; зміна активу всередині shallow copy — ні. Приватні drafts store-команд залишаються mutable. Перевірки `financialStateLint.test.js` тестують як заборонені/дозволені приклади, так і реальне застосування CI-конфігурації до UI-файлів.
+
+Це статичний захист поширених шляхів доступу, а не доказ безпеки довільного динамічного JavaScript: приховані через сторонні функції aliases та runtime-generated код потребують dev/test guard. У production не додано Proxy, freeze чи копій на читанні. Іменовані selectors також охоплені mutation guard. Опція `banLegacyReads` у CI відхиляє читання `state.data`/`snapshot.data`, aliases від `getState()` та destructuring документа з root state. Винятки — власники `state-store.js` і приватних native persistence drafts у `mobile-api.js`; це не UI-читання.
+
+### Перемальовування після FX
+
+`marketRevision` перемальовує лише видимий екран Investment або Wallet. Dashboard, Portfolio й Transactions при відкритті читають актуальний snapshot; Analytics/Rebalance зберігають власні чинні render-виклики, Asset details будує модель при відкритті за поточним `marketRevision`. Повне фінансове завантаження зберігає `renderApplication`; FX-подія не публікує фінансових змін і не запускає мережевих запитів.
+
+Перед оптимізацією заміряно реальний HTML/локальні модулі в jsdom: 100 синтетичних позицій, Market відкритий, 2 прогріви й 9 FX-подій. Медіана синхронної обробки — 242,96 мс до / 3,58 мс після; 7 груп рендерів на кожну подію до / 0 прихованих рендерів після. Це локальний замір без малювання пікселів, не Android WebView benchmark. UI smoke перевіряє кожний видимий фінансовий екран, актуальність прихованих значень при переході та незмінність документа для web/native.
 
 ## Mutation guard у dev/test
 

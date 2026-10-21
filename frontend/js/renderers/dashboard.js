@@ -74,7 +74,7 @@ function renderReinvestmentForecast(state = stateStore.getState(), services = cr
   const amount = document.querySelector('#stat-reinvestment');
   if (!amount) return;
   const t = window.FinoI18n.t, f = window.FinoI18n.format;
-  const forecast = FinoDashboardAnalytics.reinvestmentForecast({ data: state.data, market: services, asOf: getDateString() });
+  const forecast = FinoDashboardAnalytics.reinvestmentForecast({ data: stateStore.selectData(state), market: services, asOf: getDateString() });
   const set = (id, text) => { const element = document.getElementById(id); if (element) element.textContent = text; };
   const approximate = forecast.estimated || forecast.incomplete;
   const currency = (value, estimated = approximate) => Number.isFinite(value) ? (estimated ? '≈ ' : '') + money(value) : '—';
@@ -177,7 +177,7 @@ function renderDashboard(state = stateStore.getState()) {
   showResult(document.querySelector('#stat-profit'), totalProfit);
   const note = document.querySelector('#stat-unrealized-note');
   if (note) note.textContent = window.FinoI18n.t('Open quoted positions only; received income is excluded.') + (valuation.unpricedCount ? ` ${valuation.unpricedCount} ${window.FinoI18n.t('unquoted positions are excluded.')}` : '');
-  const currencies = [...new Set([...(state.data.assets || []).map(asset => asset.currency || 'UAH'), ...observations.flows.map(event => event.currency)])];
+  const currencies = [...new Set([...(stateStore.selectAssets(state) || []).map(asset => asset.currency || 'UAH'), ...observations.flows.map(event => event.currency)])];
   const fx = currencies.map(currency => services.rateInfo(currency, valuation.asOf));
   const estimated = fx.some(info => info.estimated), dates = fx.filter(info => info.source !== 'UAH').map(info => info.date).filter(Boolean).sort();
   const method = window.FinoI18n.format('Report-date FX: {date}. {quality}', { date: dates[0] || valuation.asOf, quality: window.FinoI18n.t(estimated ? 'Estimated FX.' : 'Recorded FX.') });
@@ -191,7 +191,7 @@ function renderDashboard(state = stateStore.getState()) {
   const assetsContainer = document.querySelector("#dashboard-assets");
 
   if (assetsContainer) {
-    const activeAssets = state.data.assets.filter(
+    const activeAssets = stateStore.selectAssets(state).filter(
       (asset) => getAvailableQuantity(asset.id) > 0,
     );
 
@@ -263,7 +263,7 @@ function renderUpcomingPayments(state = stateStore.getState()) {
 
   const today = getDateString(new Date());
 
-  const payments = groupPaymentEvents((state.data.payments || [])
+  const payments = groupPaymentEvents((stateStore.selectPayments(state) || [])
     .filter(
       (payment) =>
         payment.date >= today &&

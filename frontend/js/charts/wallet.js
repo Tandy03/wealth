@@ -1,5 +1,4 @@
 (function () {
-const state = stateStore.getState();
 const stackedDoughnutLegendPlugin = window.FinoChartPlugins.stackedDoughnutLegend;
 // charts/wallet.js
 let walletCategoryChart = null;
@@ -54,7 +53,7 @@ function renderWalletPeriodChart(state = stateStore.getState()) {
 
   const from = fromInput.value;
   const to = toInput.value;
-  const expenses = (state.data.wallet.expenses || []).filter((expense) => {
+  const expenses = (stateStore.selectWallet(state).expenses || []).filter((expense) => {
     const category = String(expense.category || "").trim().toLowerCase();
     const isExpense = category !== "salary";
     const isRegularExpense = isExpense && category !== "tithe" && category !== "save+invest" && category !== "savings";
@@ -146,7 +145,7 @@ function renderWalletDailyChart(key, state = stateStore.getState()) {
 
 function renderWalletMonthlyChart(state = stateStore.getState()) {
   if (typeof Chart === "undefined") return;
-  const allExpenses = (state.data.wallet.expenses || []).filter((expense) => expense.category !== "Salary");
+  const allExpenses = (stateStore.selectWallet(state).expenses || []).filter((expense) => expense.category !== "Salary");
   const monthlyCategorySelect = document.querySelector("#wallet-monthly-category");
   const previousSelection = monthlyCategorySelect?.value || "__total__";
   const allCategories = [...new Set(allExpenses.map((expense) => expense.category))].sort();

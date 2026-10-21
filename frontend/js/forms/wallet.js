@@ -1,10 +1,9 @@
 (function () {
-const state = stateStore.getState();
 // forms/wallet.js
 function openExpenseModal(expenseId = null) {
   const modal = document.querySelector("#expense-modal");
   const form = document.querySelector("#expense-form");
-  const expense = (state.data.wallet.expenses || []).find((item) => item.id === expenseId);
+  const expense = (stateStore.selectWallet().expenses || []).find((item) => item.id === expenseId);
   stateStore.setUI({ editingExpenseId: expense?.id || null });
   form.reset();
   form.elements.date.value = expense?.date || getDateString();
@@ -61,8 +60,8 @@ function setupWallet() {
       category = document.querySelector("#new-expense-category").value.trim();
       if (!category) return showNotice("Enter a new category name.");
     }
-    const expense = { id: state.editingExpenseId || `expense-${Date.now()}`, date, category, amount: normalizeNumber(values.get("amount")), note: values.get("note") || "", currency: "UAH" };
-    const editingId = state.editingExpenseId;
+    const expense = { id: stateStore.selectUI('editingExpenseId') || `expense-${Date.now()}`, date, category, amount: normalizeNumber(values.get("amount")), note: values.get("note") || "", currency: "UAH" };
+    const editingId = stateStore.selectUI('editingExpenseId');
     if (submitButton) submitButton.disabled = true;
     try {
       await walletActions.mutate(wallet => {

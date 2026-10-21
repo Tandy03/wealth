@@ -20,7 +20,7 @@
     const date = value => { const parsed = new Date(String(value || '').slice(0, 10) + 'T12:00:00'); return Number.isFinite(parsed.getTime()) ? formatter('date:' + i18n.locale, () => new Intl.DateTimeFormat(i18n.locale)).format(parsed) : t('No data'); };
     function detailFor(snapshot) {
       const id = snapshot.assetPage?.selectedId, day = new Date().toDateString();
-      if (cachedModel?.data !== snapshot.data || cachedModel?.id !== id || cachedModel?.day !== day || cachedModel?.marketRevision !== snapshot.marketRevision) cachedModel = { data: snapshot.data, id, day, marketRevision: snapshot.marketRevision, value: model.createGroupModel(snapshot.data, id, { convert }) };
+      if (cachedModel?.data !== store.selectData(snapshot) || cachedModel?.id !== id || cachedModel?.day !== day || cachedModel?.marketRevision !== snapshot.marketRevision) cachedModel = { data: store.selectData(snapshot), id, day, marketRevision: snapshot.marketRevision, value: model.createGroupModel(store.selectData(snapshot), id, { convert }) };
       return cachedModel.value;
     }
     const signed = (value, currency) => value == null ? t('No data') : (value > 0 ? '+' : '') + money(value, currency);
@@ -108,7 +108,7 @@
       const canvas = root()?.querySelector('#asset-detail-chart'), message = root()?.querySelector('[data-asset-chart-message]');
       if (!canvas || !message) return;
       const invalid = current.from && current.to && current.from > current.to;
-      const points = invalid ? [] : model.chartSeries(snapshot.data, detail, current);
+      const points = invalid ? [] : model.chartSeries(store.selectData(snapshot), detail, current);
       const Chart = getChart();
       const enoughPoints = points.filter(point => Number.isFinite(point.value)).length >= 2;
       if (invalid || !enoughPoints || current.mode === 'value' && detail.incompleteHistory || !Chart) {
@@ -129,9 +129,9 @@
       if (!element || !current?.active || !element.classList.contains('active')) return;
       if (initialScope && snapshot.portfolioLoaded) { scope = store.capture().scope; initialScope = false; }
       if (scope !== store.capture().scope && snapshot.portfolioLoaded) { close(); return; }
-      if (!force && last?.data === snapshot.data && last?.page === current && last?.locale === i18n.locale && last?.error === snapshot.portfolioLoadError && last?.marketRevision === snapshot.marketRevision) return;
-      if (last && last.data !== snapshot.data) syncStatus = null;
-      last = { data: snapshot.data, page: current, locale: i18n.locale, error: snapshot.portfolioLoadError, marketRevision: snapshot.marketRevision };
+      if (!force && last?.data === store.selectData(snapshot) && last?.page === current && last?.locale === i18n.locale && last?.error === snapshot.portfolioLoadError && last?.marketRevision === snapshot.marketRevision) return;
+      if (last && last.data !== store.selectData(snapshot)) syncStatus = null;
+      last = { data: store.selectData(snapshot), page: current, locale: i18n.locale, error: snapshot.portfolioLoadError, marketRevision: snapshot.marketRevision };
       destroyChart();
       const back = `<button type="button" class="secondary-btn" data-asset-back>← ${e(t('Back'))}</button>`;
       if (!snapshot.portfolioLoaded) {

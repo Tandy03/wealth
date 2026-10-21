@@ -6,6 +6,7 @@ const xml = name => new JSDOM(fs.readFileSync('android/app/src/main/' + name, 'u
 test('Android excludes financial journals, credentials, WebView and lock state from cloud backup and device transfer', () => {
   const manifest = xml('AndroidManifest.xml'), legacy = xml('res/xml/backup_rules.xml'), modern = xml('res/xml/data_extraction_rules.xml');
   try {
+    assert.equal(JSON.parse(fs.readFileSync('capacitor.config.json', 'utf8')).loggingBehavior, 'none', 'Native bridge must not log financial payloads or credentials');
     const app = manifest.window.document.querySelector('application');
     assert.equal(app.getAttribute('android:allowBackup'), 'false');
     assert.equal(app.getAttribute('android:fullBackupContent'), '@xml/backup_rules');

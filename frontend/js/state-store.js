@@ -5,8 +5,28 @@
   else root.FinoStateStore = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (walletRules, errors) {
   const clone = value => JSON.parse(JSON.stringify(value));
+  // Named, allocation-free reads. An explicit snapshot never falls back to live data.
+  const financialSelectors = {
+    selectData: snapshot => snapshot.data,
+    ...Object.fromEntries(['assets', 'transactions', 'payments', 'sales', 'wallet', 'rebalance', 'calendarNotes', 'priceHistory', 'instruments']
+      .map(key => ['select' + key[0].toUpperCase() + key.slice(1), snapshot => snapshot.data[key]])),
+  };
+  function uiValue(snapshot, key) {
+    if (key === 'data') throw new TypeError('Use a financial selector to read portfolio data.');
+    return snapshot[key];
+  }
+  // DOM-free services accept explicit readers; the state option is a compatibility
+  // adapter for existing standalone consumers, not an application global.
+  function createReader({ selectData, selectUI, state }) {
+    if (selectData) {
+      if (typeof selectData !== 'function' || typeof selectUI !== 'function') throw new TypeError('State readers must be functions.');
+      return { selectData, selectUI };
+    }
+    if (!state) throw new TypeError('Explicit state readers or a snapshot are required.');
+    return { selectData: () => financialSelectors.selectData(state), selectUI: key => uiValue(state, key) };
+  }
   function guardFinancialReads(store, { mode = 'test', onViolation } = {}) {
-    const proxies = new WeakMap();
+    const proxies = new WeakMap(), guarded = new WeakSet();
     const fields = new Set(['data', 'assets', 'transactions', 'sales', 'payments', 'wallet', 'rebalance', 'calendarNotes', 'priceHistory', 'instruments',
       'quantity', 'amount', 'price', 'purchasePrice', 'remainingQuantity', 'remainingCostBasis', 'name', 'id', 'months', 'expenses', 'loans', 'plans', 'length', 'type', 'date', 'sync']);
     const child = (path, key) => path + '.' + (fields.has(String(key)) ? String(key) : '[entry]');
@@ -17,6 +37,7 @@
     }
     function readonly(value, path = 'data') {
       if (!value || typeof value !== 'object') return value;
+      if (guarded.has(value)) return value;
       if (!proxies.has(value)) proxies.set(value, new Proxy(value, {
         get: (target, key) => readonly(Reflect.get(target, key), child(path, key)),
         getOwnPropertyDescriptor: (target, key) => {
@@ -28,7 +49,9 @@
         defineProperty: (_target, key) => deny('define', child(path, key)),
         setPrototypeOf: () => deny('prototype', path), preventExtensions: () => deny('preventExtensions', path),
       }));
-      return proxies.get(value);
+      const result = proxies.get(value);
+      guarded.add(result);
+      return result;
     }
     const state = new Proxy(store.getState(), {
       get: (target, key) => key === 'data' ? readonly(target.data) : Reflect.get(target, key),
@@ -42,7 +65,9 @@
       setPrototypeOf: () => deny('prototype', 'state'),
     });
     return { ...store,
+      ...Object.fromEntries(Object.keys(financialSelectors).map(name => [name, snapshot => readonly(store[name](snapshot))])),
       getState: () => state, getData: () => state.data, select: selector => selector(state),
+      setUI: patch => { store.setUI(patch); return state; },
       subscribe: listener => store.subscribe(event => listener({ ...event, state })),
       replaceData: data => readonly(store.replaceData(data)), updateData: change => readonly(store.updateData(change)),
       loadData: async loader => { const result = await store.loadData(loader); return result.data ? { ...result, data: readonly(result.data) } : result; },
@@ -147,6 +172,8 @@
       return { applied: true, value: state.data.rebalance, persistence };
     }
     const store = {
+      ...Object.fromEntries(Object.entries(financialSelectors).map(([name, selector]) => [name, (snapshot = state) => selector(snapshot)])),
+      selectUI: (key, snapshot = state) => uiValue(snapshot, key),
       getState: () => state,
       getData: () => state.data,
       replaceData, updateData, loadData, saveWallet, saveRebalance, capture, isCurrent,
@@ -166,5 +193,5 @@
     };
     return guard ? guardFinancialReads(store, { mode: guard, onViolation }) : store;
   }
-  return { createStore, guardFinancialReads };
+  return { createStore, guardFinancialReads, createReader };
 });

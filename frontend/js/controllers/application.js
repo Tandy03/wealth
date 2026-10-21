@@ -1,5 +1,4 @@
 (function () {
-const state = stateStore.getState();
 // Application wiring and centralized render triggers.
 function renderApplication(snapshot = stateStore.getState()) {
   window.ui.dashboard.render(snapshot);
@@ -13,21 +12,32 @@ function renderApplication(snapshot = stateStore.getState()) {
   window.ui.asset.render(snapshot);
 }
 function renderMarketViews(snapshot = stateStore.getState()) {
-  window.ui.asset.render(snapshot);
-  window.ui.calculators.rebalance(snapshot);
-  window.ui.dashboard.render(snapshot);
-  window.ui.portfolio.render(snapshot);
-  window.ui.transactions.render(snapshot);
-  window.ui.calculators.render(snapshot);
-  window.ui.wallet.render(snapshot);
+  // FX updates invalidate derived views, not the financial document. Hidden
+  // views use the latest snapshot when opened, without rebuilding their DOM now.
+  const wallet = document.querySelector('#wallet-app');
+  if (wallet && !wallet.hidden) {
+    window.ui.wallet.render(snapshot);
+    return;
+  }
+  const renderers = {
+    'asset-detail-section': window.ui.asset.render,
+    'dashboard-section': window.ui.dashboard.render,
+    'portfolio-section': window.ui.portfolio.render,
+    'transactions-section': window.ui.transactions.render,
+    'analytics-section': window.ui.calculators.render,
+    'rebalance-section': window.ui.calculators.rebalance,
+  };
+  const active = document.querySelector('#investments-app .page-section.active');
+  renderers[active?.id]?.(snapshot);
 }
 let stopRenderSubscription = null;
 function setupCommandRecovery() {
   const panel = document.querySelector('#command-recovery');
   if (!panel || !api.outbox) return;
+  const t = key => window.FinoI18n.t(key);
   let sequence = 0;
-  const labels = { createAsset: 'Create asset', buyMoreAsset: 'Buy asset', createSale: 'Sell asset', createTransaction: 'Transaction',
-    createPayment: 'Payment', markPaymentReceived: 'Receive payment', createCalendarNote: 'Calendar note', mergeAssets: 'Merge assets' };
+  const labels = { createAsset: 'Create asset', buyMoreAsset: 'Buy asset', createSale: 'Sell asset', createTransaction: 'Create transaction',
+    createPayment: 'Create payment', markPaymentReceived: 'Receive payment', createCalendarNote: 'Create calendar note', mergeAssets: 'Merge assets' };
   const states = { queued: 'Saved locally; not sent', 'in-flight': 'Waiting for confirmation',
     'outcome-unknown': 'Result unknown; recover the original request', confirmed: 'Confirmed; saved response retained locally',
     rejected: 'Rejected; review the request', conflict: 'Conflict; review before continuing' };
@@ -39,22 +49,22 @@ function setupCommandRecovery() {
       if (!result.corrupt && !result.entries.length && panel.hidden) return;
       panel.replaceChildren(); panel.hidden = !result.corrupt && !result.entries.length;
       if (panel.hidden) return;
-      const title = document.createElement('strong'); title.textContent = 'Command recovery'; panel.append(title);
+      const title = document.createElement('strong'); title.textContent = t('Command recovery'); panel.append(title);
       if (result.corrupt) {
         const notice = document.createElement('p');
-        notice.textContent = 'Local recovery data is damaged and has been preserved. No commands will be sent. Code: ' + result.code;
+        notice.textContent = window.FinoI18n.format('Local recovery data is damaged and has been preserved. No commands will be sent. Code: {code}', { code: result.code });
         panel.append(notice); return;
       }
       for (const entry of result.entries) {
         const row = document.createElement('div'); row.className = 'command-recovery-row';
         const message = document.createElement('span');
         const expired = entry.lastErrorCode === 'OPERATION_RESULT_EXPIRED';
-        message.textContent = `${labels[entry.method]} — ${expired ? 'Already recorded; replay result expired. Reload the portfolio to review it.' : states[entry.state]}${entry.lastErrorCode ? ' (' + entry.lastErrorCode + ')' : ''}`;
+        message.textContent = `${t(labels[entry.method] || 'Financial command')} — ${t(expired ? 'Already recorded; replay result expired. Reload the portfolio to review it.' : states[entry.state] || 'Unknown status')}${entry.lastErrorCode ? ' (' + entry.lastErrorCode + ')' : ''}`;
         row.append(message);
         const retryable = ['queued', 'outcome-unknown'].includes(entry.state);
         if (entry.state !== 'in-flight') {
           const button = document.createElement('button'); button.type = 'button'; button.className = 'secondary-btn';
-          button.textContent = retryable ? 'Retry original command' : expired ? 'Reload portfolio' : 'Dismiss';
+          button.textContent = t(retryable ? 'Retry original command' : expired ? 'Reload portfolio' : 'Dismiss');
           button.addEventListener('click', async () => {
             button.disabled = true;
             try {
@@ -96,7 +106,7 @@ function setupPortfolioSort() {
     return;
   }
 
-  select.value = state.portfolioSort;
+  select.value = stateStore.getState().portfolioSort;
 
   select.addEventListener("change", () => {
     stateStore.setUI({ portfolioSort: select.value });
@@ -151,6 +161,60 @@ function setupInzhurSync() {
 }
 
 
+// Native page gestures reuse navigation clicks; they never modify portfolio data.
+function setupNativeSectionSwipes() {
+  if (!window.Capacitor?.isNativePlatform?.()) return;
+  let gesture = null;
+  const blocked = 'input, textarea, select, button, a, label, summary, canvas, video, audio, [role="slider"], [role="button"], [contenteditable]:not([contenteditable="false"]), [data-no-swipe]';
+  const reset = () => { gesture = null; };
+  const obstructed = () => Boolean(document.querySelector('.modal-backdrop.open') || window.getSelection()?.toString());
+  document.querySelectorAll('.app-shell > .main').forEach(main => {
+    const shell = main.closest('.app-shell');
+    const wallet = shell.id === 'wallet-app';
+    const buttons = [...shell.querySelectorAll(wallet ? '.wallet-tab' : '.nav-item[data-section]')];
+    const activePage = () => main.querySelector(wallet ? '.wallet-page.active' : '.page-section.active');
+    const matchesPage = (button, page) => page?.id === (wallet ? `wallet-${button.dataset.walletTab}` : `${button.dataset.section}-section`);
+    main.addEventListener('touchstart', event => {
+      reset();
+      if (event.touches.length !== 1 || shell.hidden || obstructed() || event.target.closest?.(blocked)) return;
+      const page = activePage(), touch = event.touches[0];
+      const index = buttons.findIndex(button => button.classList.contains('active') && matchesPage(button, page));
+      // Leave screen edges to Android's back gesture, and scrolling regions to their contents.
+      if (index < 0 || !page.contains(event.target) || touch.clientX < 24 || touch.clientX > window.innerWidth - 24) return;
+      for (let node = event.target; node && node !== main; node = node.parentElement) {
+        if (node.scrollWidth > node.clientWidth + 1 && /^(auto|scroll|overlay)$/.test(window.getComputedStyle(node).overflowX)) return;
+      }
+      gesture = { main, page, index, id: touch.identifier, x: touch.clientX, y: touch.clientY, started: event.timeStamp };
+    }, { passive: true });
+    main.addEventListener('touchmove', event => {
+      if (!gesture || gesture.main !== main) return;
+      const touch = event.touches[0];
+      if (event.touches.length !== 1 || touch.identifier !== gesture.id) return reset();
+      const dx = Math.abs(touch.clientX - gesture.x), dy = Math.abs(touch.clientY - gesture.y);
+      // Once a gesture becomes a vertical scroll, it cannot later turn into navigation.
+      if (dy > 12 && dy >= dx) reset();
+    }, { passive: true });
+    main.addEventListener('touchend', event => {
+      const start = gesture;
+      reset();
+      if (!start || start.main !== main || event.touches.length || shell.hidden || obstructed()) return;
+      const touch = [...event.changedTouches].find(item => item.identifier === start.id);
+      if (!touch || activePage() !== start.page || !buttons[start.index].classList.contains('active')) return;
+      const dx = touch.clientX - start.x, dy = Math.abs(touch.clientY - start.y);
+      const next = buttons[start.index + (dx < 0 ? 1 : -1)];
+      if (!next || next.disabled || Math.abs(dx) < 72 || Math.abs(dx) < dy * 1.8 || dy > 48 || event.timeStamp - start.started > 750) return;
+      // Suppress the compatibility click only for an accepted navigation swipe.
+      if (event.cancelable) event.preventDefault();
+      next.click();
+      const nav = next.closest('.nav');
+      if (nav && nav.scrollWidth > nav.clientWidth) {
+        nav.scrollLeft += next.getBoundingClientRect().left - nav.getBoundingClientRect().left - (nav.clientWidth - next.offsetWidth) / 2;
+      }
+    }, { passive: false });
+    main.addEventListener('touchcancel', reset, { passive: true });
+  });
+}
+
 function setupNavigation() {
   const compact = window.matchMedia('(max-width: 700px)');
   const arrangeMetrics = () => document.querySelectorAll('#dashboard-section .dashboard-more-metrics, #dashboard-section .stat-explanation').forEach(details => { details.open = !compact.matches; });
@@ -192,6 +256,12 @@ function setupNavigation() {
         pageTitle.textContent = titleMap[section] || section;
       }
 
+      // These views may have been hidden when market/FX metadata changed.
+      const latest = stateStore.getState();
+      if (section === 'dashboard') window.ui.dashboard.render(latest);
+      if (section === 'portfolio') window.ui.portfolio.render(latest);
+      if (section === 'transactions') window.ui.transactions.render(latest);
+
       if (section === "calendar") {
         renderCalendar();
       }
@@ -212,6 +282,7 @@ function setupNavigation() {
       if (section === "macroeconomics" && !stateStore.getState().macroLoaded) renderMacroeconomics();
     });
   });
+  setupNativeSectionSwipes();
 }
 
 

@@ -2,8 +2,8 @@
 function renderTransactions(state = stateStore.getState()) {
   const { getMaturityCostBasis, getTransactionEffectiveDate } = createRenderServices(state);
   const tbody = document.querySelector("#transactions-table");
-  const assetsById = new Map((state.data.assets || []).map(asset => [asset.id, asset]));
-  const paymentsById = new Map((state.data.payments || []).map(payment => [payment.id, payment]));
+  const assetsById = new Map((stateStore.selectAssets(state) || []).map(asset => [asset.id, asset]));
+  const paymentsById = new Map((stateStore.selectPayments(state) || []).map(payment => [payment.id, payment]));
   const name = value => typeof value === 'string' ? value.trim() : '';
 
   if (!tbody) {
@@ -11,12 +11,12 @@ function renderTransactions(state = stateStore.getState()) {
   }
 
   const paymentTransactionIds = new Set(
-    (state.data.transactions || [])
+    (stateStore.selectTransactions(state) || [])
       .filter((transaction) => transaction.paymentId)
       .map((transaction) => transaction.paymentId),
   );
 
-  const receivedPaymentTransactions = (state.data.payments || [])
+  const receivedPaymentTransactions = (stateStore.selectPayments(state) || [])
     .filter(
       (payment) =>
         (payment.status === "received" || payment.status === "paid") &&
@@ -36,7 +36,7 @@ function renderTransactions(state = stateStore.getState()) {
     }));
 
   const transactions = [
-    ...(state.data.transactions || []),
+    ...(stateStore.selectTransactions(state) || []),
     ...receivedPaymentTransactions,
   ].sort((a, b) =>
     String(getTransactionEffectiveDate(b) || "").localeCompare(String(getTransactionEffectiveDate(a) || "")),

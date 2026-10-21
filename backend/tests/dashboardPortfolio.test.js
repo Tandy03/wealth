@@ -13,12 +13,14 @@ function render(assets) {
   const context = { state: { data: { assets, transactions: [], sales: [], payments: [] }, purchaseExchangeRates: {} }, document: { querySelector: (selector) => selector === '#dashboard-assets' ? container : null, getElementById: () => null },
     window: { FinoI18n: { t: text => text, format: text => text } },
     setReturnBenchmarkHover: () => {}, setXirrValue: () => {},
-    stateStore: { getState: () => context.state }, createRenderServices: () => context, bindDashboardHoldings: () => {},
+    createRenderServices: () => context, bindDashboardHoldings: () => {},
     calculateInvested: () => 0, calculatePortfolioValue: () => 0, getUnrealizedPriceGrowth: () => 0, getMaturityCostBasis: () => 0, toUAHPurchaseCost: () => 0, renderReinvestmentForecast: () => {}, renderUpcomingPayments: () => {}, setupPortfolioCurrencyHover: () => {},
     getAvailableQuantity: (id) => { const asset = assets.find(item => item.id === id); return asset.closedAt ? 0 : asset.quantity - (asset.sold || 0); },
     normalizeNumber: (value) => Number(value) || 0, convertCurrency: (amount, from = 'UAH', to = 'UAH') => amount * rates[from] / rates[to], toUAH: (amount, currency = 'UAH') => amount * rates[currency],
     portfolioMoneyWithUahHover: (amount, currency, uah) => amount + ' ' + currency + ' [' + uah + ' UAH]', formatQuantity: (value) => String(value), escapeHtml: (value) => String(value), typeLabels: {} };
   const values = require('../../frontend/js/analytics/values');
+  context.stateStore = require('../../frontend/js/state-store').createStore({ model: require('../../shared/state-model'), initialState: context.state });
+  context.state = context.stateStore.getState();
   const market = require('../../frontend/js/market-data').createService({ state: context.state, values, exchangeRates: rates, historicalRates: rates });
   const finance = require('../../frontend/js/analytics/portfolio-finance').createService({ state: context.state, values, market });
   const cashflow = require('../../frontend/js/cashflow').createService({ state: context.state, values, market, finance });

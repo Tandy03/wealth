@@ -13,6 +13,7 @@
       return getAdapter().getData({ ...options, sync: options.sync ?? false });
     };
     service.getSyncConflictPreview = (...args) => getAdapter().getSyncConflictPreview(...args);
+    for (const method of ['exportPortfolio', 'previewPortfolioImport', 'restorePortfolio']) service[method] = (...args) => getAdapter()[method](...args);
     service.syncInzhurAssets = (...args) => getAdapter().syncApiAssets(...args);
     service.getInzhurAssets = async () => { throw errors.clientError(new errors.RemoteUnavailableError({ message: 'Inzhur catalog sync requires the desktop backend.' })); };
     service.getExchangeRates = async () => {

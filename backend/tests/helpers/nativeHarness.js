@@ -77,6 +77,8 @@ function harness({ local = fixture(), remote = clone(local), metadata = true, co
   context.window.FinoErrors = context.FinoErrors; context.window.FinoOperations = context.FinoOperations; context.window.FinoSyncModel = context.FinoSyncModel; context.window.FinoStateContract = context.FinoStateContract;
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../../../shared/state-model.js'), 'utf8'), context);
   context.window.FinoStateModel = context.FinoStateModel;
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../../../shared/portfolio-transfer.js'), 'utf8'), context);
+  context.window.FinoPortfolioTransfer = context.FinoPortfolioTransfer;
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../../../shared/market-model.js'), 'utf8'), context);
   context.window.FinoMarketModel = context.FinoMarketModel;
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../../../shared/constants.js'), 'utf8'), context);

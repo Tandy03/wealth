@@ -19,7 +19,7 @@
   const copy = value => value == null ? null : JSON.parse(JSON.stringify(value));
   const account = () => window.mobileApi?.localAccountScope || 'desktop';
   const scope = () => JSON.stringify([window.location.origin, account(),
-    (snapshot.data.assets || []).map(asset => asset.id).sort()]);
+    (stateStore.selectAssets(snapshot) || []).map(asset => asset.id).sort()]);
   function cacheDraft() {
     try { sessionStorage.setItem(recoveryKey, JSON.stringify({ scope: scope(), expected, plan: draft(), inflight })); }
     catch (_) { /* Local API/journal persistence remains available without browser storage. */ }
@@ -35,12 +35,12 @@
       if (!recovery || recovery.scope !== scope()) return;
       window.FinoStateModel.validateJson(recovery);
       window.FinoStateModel.validateRebalance(recovery.plan);
-      const actual = signature(snapshot.data.rebalance);
+      const actual = signature(stateStore.selectRebalance(snapshot));
       const acceptable = [recovery.expected, recovery.plan, ...(recovery.inflight ? [recovery.inflight] : [])].some(plan => signature(plan) === actual);
       restoredScope = scope();
       if (signature(recovery.plan) === actual) { clearDraft(); return; }
       // Recover the editor, but never overwrite a different saved plan implicitly.
-      hydrate(recovery.plan); expected = copy(acceptable ? snapshot.data.rebalance : recovery.expected); pending = true;
+      hydrate(recovery.plan); expected = copy(acceptable ? stateStore.selectRebalance(snapshot) : recovery.expected); pending = true;
       if (!acceptable) saveError = new window.FinoErrors.ConflictError();
       else { timer = setTimeout(() => { timer = null; void flush(); }, 200); }
     } catch (_) { /* An invalid recovery draft cannot enter the shared document. */ }
@@ -283,7 +283,7 @@
       clearTimeout(timer); timer = null; pending = false; saveError = null; lastPersistence = null;
       hydrated = false; restoredScope = null; inflight = null; generation++; renderedAccount = account();
     }
-    if (!hydrated || !pending && !saving && signature(next.data.rebalance) !== signature(expected)) hydrate(next.data.rebalance);
+    if (!hydrated || !pending && !saving && signature(stateStore.selectRebalance(next)) !== signature(expected)) hydrate(stateStore.selectRebalance(next));
     restoreDraft();
     baseView = null; update(false); renderPersistence();
   }

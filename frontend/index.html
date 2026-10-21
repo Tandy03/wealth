@@ -849,6 +849,20 @@
           </div>
         </div>
       </section>
+      <section class="settings-section" id="portfolio-transfer">
+        <div><h3>Portfolio file</h3><p>Independent JSON export and restore. Google Drive is not required.</p></div>
+        <p>Exports contain private financial data and are not encrypted. Save them only in a trusted location.</p>
+        <p>Restore is available only for an empty portfolio. Accounts, tokens, PIN, device journals and unfinished commands are not transferred.</p>
+        <button class="settings-row-button" id="portfolio-export" type="button">Export portfolio file</button>
+        <button class="settings-row-button" id="portfolio-import" type="button">Choose portfolio file</button>
+        <input id="portfolio-import-file" type="file" accept="application/json,.json" hidden />
+        <div id="portfolio-import-preview" hidden>
+          <p id="portfolio-import-summary"></p>
+          <p id="portfolio-import-checksum" class="portfolio-file-checksum" translate="no"></p>
+          <div class="modal-actions"><button class="secondary-btn" id="portfolio-import-cancel" type="button">Cancel</button><button class="primary-btn" id="portfolio-import-confirm" type="button">Restore checked portfolio</button></div>
+        </div>
+        <p id="portfolio-transfer-status" role="status" aria-live="polite"></p>
+      </section>
       <section class="settings-section settings-account-section">
         <div><h3>Account</h3><p>Account controls will be available later</p></div>
         <button class="settings-row-button settings-logout" id="settings-logout" type="button">Log out</button>
@@ -1344,6 +1358,7 @@
   <script src="/shared/sync-model.js"></script>
   <script src="/shared/state-contract.js"></script>
   <script src="/shared/state-model.js"></script>
+  <script src="/shared/portfolio-transfer.js"></script>
   <script src="/shared/market-model.js"></script>
   <script src="/js/controllers/wallet-actions.js"></script>
   <script src="/js/state-store.js"></script>

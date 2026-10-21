@@ -1,9 +1,10 @@
 (function (root, factory) {
-  const api = factory(typeof module === 'object' && module.exports ? require('../../shared/state-contract') : root.FinoStateContract);
+  const api = factory(typeof module === 'object' && module.exports ? require('../../shared/state-contract') : root.FinoStateContract, typeof module === 'object' && module.exports ? require('./state-store') : root.FinoStateStore);
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.FinoCashflow = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (contract) {
-  function createService({ state, market, finance, values }) {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (contract, readers) {
+  function createService({ state, selectData, selectUI, market, finance, values }) {
+    ({ selectData, selectUI } = readers.createReader({ state, selectData, selectUI }));
     const { normalizeNumber, getDateString, isDateInRange } = values;
     const { getMaturityCostBasis } = finance;
 function calculateXirr(cashFlows) {
@@ -51,11 +52,11 @@ const validDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.te
 const paidDate = payment => String(payment.receivedDate || payment.receivedAt || payment.date || '').slice(0, 10);
 const uniqueRecords = contract.uniqueFinancialRecords;
 function cashEvents(asOf) {
-  const assets = new Map((state.data.assets || []).map(asset => [asset.id, asset]));
-  const transactions = uniqueRecords((state.data.transactions || []).filter(contract.isTransactionCompleted), 'transaction');
-  const sales = uniqueRecords(state.data.sales || [], 'sale');
-  const payments = uniqueRecords((state.data.payments || []).filter(contract.isPaymentCompleted), 'payment');
-  const allBuyAssets = new Set((state.data.transactions || []).filter(tx => tx.type === 'BUY').map(tx => tx.assetId));
+  const assets = new Map((selectData().assets || []).map(asset => [asset.id, asset]));
+  const transactions = uniqueRecords((selectData().transactions || []).filter(contract.isTransactionCompleted), 'transaction');
+  const sales = uniqueRecords(selectData().sales || [], 'sale');
+  const payments = uniqueRecords((selectData().payments || []).filter(contract.isPaymentCompleted), 'payment');
+  const allBuyAssets = new Set((selectData().transactions || []).filter(tx => tx.type === 'BUY').map(tx => tx.assetId));
   const saleIds = new Set(sales.map(sale => sale.id).filter(Boolean));
   const saleKey = (assetId, date, quantity, proceeds) => JSON.stringify([assetId, date, Number(quantity), Number(proceeds)]);
   const mirroredSales = new Set(sales.map(sale => saleKey(sale.assetId, sale.sellDate, sale.quantity, sale.saleProceeds ?? Number(sale.quantity) * Number(sale.sellPrice))));
@@ -80,7 +81,7 @@ function cashEvents(asOf) {
     const proceeds = sale.saleProceeds != null ? Number(sale.saleProceeds) : sale.sellPrice != null ? Number(sale.quantity) * Number(sale.sellPrice) : null;
     add(sale.sellDate, proceeds === null ? null : proceeds - Number(sale.fees || 0), sale.currency || assets.get(sale.assetId)?.currency, 'SELL', sale);
   }
-  const paymentIds = new Set((state.data.payments || []).map(item => item.id).filter(Boolean));
+  const paymentIds = new Set((selectData().payments || []).map(item => item.id).filter(Boolean));
   for (const payment of payments) if (assets.get(payment.assetId)?.type !== 'savings') add(paidDate(payment), payment.amount == null ? null : Number(payment.amount), payment.currency || assets.get(payment.assetId)?.currency, payment.type, payment);
   for (const tx of transactions) {
     if ((assets.get(tx.assetId)?.type || tx.assetType) === 'savings') continue;
@@ -93,7 +94,7 @@ function cashEvents(asOf) {
 }
 function calculatePortfolioXirrDetails(snapshot = null, inputEvents = null) {
   const events = inputEvents || cashEvents(snapshot?.asOf || getDateString(new Date())), cashFlows = []; let estimatedFx = 0, missingFx = 0;
-  snapshot ||= finance.valuation(getDateString(new Date()), { ...state.data, transactions: uniqueRecords(state.data.transactions || [], 'transaction'), sales: uniqueRecords(state.data.sales || [], 'sale'), payments: uniqueRecords(state.data.payments || [], 'payment') });
+  snapshot ||= finance.valuation(getDateString(new Date()), { ...selectData(), transactions: uniqueRecords(selectData().transactions || [], 'transaction'), sales: uniqueRecords(selectData().sales || [], 'sale'), payments: uniqueRecords(selectData().payments || [], 'payment') });
   for (const event of events.flows) {
     const conversion = market.convertWithInfo(event.amount, event.currency, event.date, 'operation-date');
     if (conversion.amount === null) missingFx++; else cashFlows.push({ date: event.date, amount: conversion.amount, fx: conversion });
@@ -112,7 +113,7 @@ function calculateProfit(from = null, to = null) {
   const result = { scope: 'realized-period', from, to: upper, asOf, dividends: 0, coupons: 0, maturity: 0, salesProfit: 0, priceGrowth: 0, totalProfit: 0, invested: 0, roi: null,
     assets: {}, fx: {}, estimatedFx: 0, missingFx: 0, missingAmounts: 0, missingDates: 0, method: 'report-date', eventCount: 0 };
   if (from && !validDate(from) || to && !validDate(to) || from && upper && from > upper) { result.invalidPeriod = true; return result; }
-  const assets = new Map((state.data.assets || []).map(asset => [asset.id, asset]));
+  const assets = new Map((selectData().assets || []).map(asset => [asset.id, asset]));
   const convert = (amount, currency) => {
     const info = market.convertWithInfo(amount, currency, asOf);
     const { amount: converted, ...provenance } = info;
@@ -125,7 +126,7 @@ function calculateProfit(from = null, to = null) {
     const key = `${type}::${String(name).trim().toLowerCase()}`;
     return result.assets[key] ||= { assetName: name, currency: 'UAH', invested: 0, dividends: 0, coupons: 0, maturity: 0, salesProfit: 0, priceGrowth: 0 };
   };
-  for (const payment of uniqueRecords((state.data.payments || []).filter(contract.isPaymentCompleted), 'payment')) {
+  for (const payment of uniqueRecords((selectData().payments || []).filter(contract.isPaymentCompleted), 'payment')) {
     const date = paidDate(payment);
     if (assets.get(payment.assetId)?.type === 'savings') continue;
     if (!validDate(date)) { result.missingDates++; continue; }
@@ -137,7 +138,7 @@ function calculateProfit(from = null, to = null) {
     const row = entry(payment); result[key] += income; row[key] += income; result.eventCount++;
     if (basis > 0) { const converted = convert(basis, payment.currency || assets.get(payment.assetId)?.currency); if (converted !== null) { row.invested += converted; result.invested += converted; } }
   }
-  for (const sale of uniqueRecords(state.data.sales || [], 'sale')) {
+  for (const sale of uniqueRecords(selectData().sales || [], 'sale')) {
     if ((assets.get(sale.assetId)?.type || sale.type) === 'savings') continue;
     if (!validDate(sale.sellDate)) { result.missingDates++; continue; }
     if (!isDateInRange(sale.sellDate, from, upper)) continue;
@@ -153,14 +154,14 @@ function calculateProfit(from = null, to = null) {
 
 function getTransactionEffectiveDate(transaction) {
   if (!transaction?.paymentId) return transaction?.date;
-  const payment = (state.data.payments || []).find((item) => item.id === transaction.paymentId);
+  const payment = (selectData().payments || []).find((item) => item.id === transaction.paymentId);
   return payment?.receivedDate || String(payment?.receivedAt || "").slice(0, 10) || transaction.date;
 }
 
 function getCalendarEvents() {
-  const paymentEvents = groupPaymentEvents(state.data.payments || []);
+  const paymentEvents = groupPaymentEvents(selectData().payments || []);
 
-  const noteEvents = (state.data.calendarNotes || []).map((note) => ({
+  const noteEvents = (selectData().calendarNotes || []).map((note) => ({
     id: note.id,
     source: "note",
     date: note.date,
@@ -214,7 +215,7 @@ function paymentToCalendarEvent(payment) {
 function groupPaymentEvents(payments) {
   const groups = new Map();
   payments.forEach((payment) => {
-    const asset = (state.data.assets || []).find((item) => item.id === payment.assetId);
+    const asset = (selectData().assets || []).find((item) => item.id === payment.assetId);
     const assetName = String(asset?.name || payment.assetName || "Payment").trim();
     const assetType = asset?.type || "";
     const statusGroup = contract.isPaymentCompleted(payment) ? "received" : "planned";

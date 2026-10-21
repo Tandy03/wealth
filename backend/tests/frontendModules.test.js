@@ -44,7 +44,8 @@ test('real local scripts execute in HTML order with only reviewed globals and re
   assert.ok(listeners.some(([event, callback]) => event === 'DOMContentLoaded' && callback === context.init));
   assert.equal(context.ui.application.init, context.init);
   assert.equal(context.ui.application.loadData, context.loadData);
-  assert.equal(vm.runInContext('state.data.schemaVersion', context), 1);
+  assert.equal(vm.runInContext('stateStore.selectData().schemaVersion', context), 1);
+  assert.equal(vm.runInContext('typeof state', context), 'undefined');
   assert.equal(vm.runInContext('typeof api.getData', context), 'function');
   // A missing optional local chart resource must still allow the UI fallback.
   context.Chart = undefined;

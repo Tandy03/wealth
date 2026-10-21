@@ -1,37 +1,38 @@
 (function (root, factory) {
   const node = typeof module === 'object' && module.exports;
-  const api = factory(node ? require('../../../shared/portfolio-rules') : root.FinoPortfolioRules, node ? require('../../../shared/state-contract') : root.FinoStateContract);
+  const api = factory(node ? require('../../../shared/portfolio-rules') : root.FinoPortfolioRules, node ? require('../../../shared/state-contract') : root.FinoStateContract, typeof module === 'object' && module.exports ? require('../state-store') : root.FinoStateStore);
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.FinoPortfolioFinance = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (rules, contract) {
-  function createService({ state, market, values }) {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (rules, contract, readers) {
+  function createService({ state, selectData, selectUI, market, values }) {
+    ({ selectData, selectUI } = readers.createReader({ state, selectData, selectUI }));
     const { normalizeNumber, getDateString } = values;
     const { toUAH, toUAHAtDate, toUAHPurchaseCost, getExchangeRateOnDate } = market;
 function getAssetInvestedUah(asset, quantity = getAvailableQuantity(asset.id)) {
-  const holding = rules.holdingsAtDate(state.data, asset);
+  const holding = rules.holdingsAtDate(selectData(), asset);
   const cost = holding.remainingCost * Math.min(1, Math.max(0, quantity) / (holding.remainingQuantity || 1));
   return toUAHPurchaseCost(cost, asset.currency, asset.id, asset.purchaseDate);
 }
 function getAssetInvestedUsd(asset, quantity = getAvailableQuantity(asset.id)) {
-  const holding = rules.holdingsAtDate(state.data, asset);
+  const holding = rules.holdingsAtDate(selectData(), asset);
   const cost = holding.remainingCost * Math.min(1, Math.max(0, quantity) / (holding.remainingQuantity || 1));
   if (asset.currency === 'USD') return cost;
   return toUAHPurchaseCost(cost, asset.currency, asset.id, asset.purchaseDate) / getExchangeRateOnDate('USD', asset.purchaseDate);
 }
 function getSoldQuantity(assetId) {
-  return (state.data.sales || [])
+  return (selectData().sales || [])
     .filter((sale) => sale.assetId === assetId)
     .reduce((sum, sale) => sum + normalizeNumber(sale.quantity), 0);
 }
 
-function getCryptoEarnQuantity(asset, targetDate = getDateString(new Date())) { return rules.quantityOnDate(state.data, asset, targetDate); }
-function getAvailableQuantity(assetId) { return rules.quantityOnDate(state.data, assetId); }
+function getCryptoEarnQuantity(asset, targetDate = getDateString(new Date())) { return rules.quantityOnDate(selectData(), asset, targetDate); }
+function getAvailableQuantity(assetId) { return rules.quantityOnDate(selectData(), assetId); }
 function getMaturityCostBasis(assetId) {
-  const payment = (state.data.payments || []).find(p => p.assetId === assetId && p.type === 'MATURITY' && rules.received(p));
-  return payment?.costBasis ?? rules.holdingsAtDate(state.data, assetId, payment?.receivedDate || payment?.date || getDateString(new Date()), { ignoreClosure: true }).remainingCost;
+  const payment = (selectData().payments || []).find(p => p.assetId === assetId && p.type === 'MATURITY' && rules.received(p));
+  return payment?.costBasis ?? rules.holdingsAtDate(selectData(), assetId, payment?.receivedDate || payment?.date || getDateString(new Date()), { ignoreClosure: true }).remainingCost;
 }
 function calculateInvested() {
-  return state.data.assets.reduce((sum, asset) => {
+  return selectData().assets.reduce((sum, asset) => {
     if (asset.type === "savings") return sum;
     const availableQuantity = getAvailableQuantity(asset.id);
 
@@ -40,7 +41,7 @@ function calculateInvested() {
 }
 
 function calculateInvestedUsd() {
-  return state.data.assets.reduce((sum, asset) => {
+  return selectData().assets.reduce((sum, asset) => {
     if (asset.type === "savings") return sum;
     return sum + getAssetInvestedUsd(asset, getAvailableQuantity(asset.id));
   }, 0);
@@ -53,7 +54,7 @@ function getCurrentPrice(asset) {
 }
 
 function calculatePortfolioValue() {
-  return state.data.assets.reduce(
+  return selectData().assets.reduce(
     (sum, asset) => sum + (asset.type === "savings" ? 0 : toUAH(getAvailableQuantity(asset.id) * getCurrentPrice(asset), asset.currency)),
     0,
   );
@@ -61,9 +62,9 @@ function calculatePortfolioValue() {
 
 function getUnrealizedPriceGrowth(asset) {
   if (['savings', 'novapay', 'deposit'].includes(asset.type)) return 0;
-  return getAvailableQuantity(asset.id) * getCurrentPrice(asset) - rules.holdingsAtDate(state.data, asset).remainingCost;
+  return getAvailableQuantity(asset.id) * getCurrentPrice(asset) - rules.holdingsAtDate(selectData(), asset).remainingCost;
 }
-function valuation(asOf = getDateString(new Date()), data = state.data) {
+function valuation(asOf = getDateString(new Date()), data = selectData()) {
   const indexed = {};
   for (const key of ['transactions', 'sales', 'payments']) {
     indexed[key] = new Map();
@@ -105,7 +106,7 @@ function valuation(asOf = getDateString(new Date()), data = state.data) {
     estimatedFx: rows.filter(row => row.fx.estimated).length, missingFx: rows.filter(row => row.fx.rate === null).length };
 }
 function concentration(basis = 'market', snapshot = valuation()) {
-  const instruments = new Map((state.data.instruments || []).map(item => [item.id, item]));
+  const instruments = new Map((selectData().instruments || []).map(item => [item.id, item]));
   const groups = { positions: new Map(), issuers: new Map(), instruments: new Map(), sectors: new Map(), currencies: new Map() };
   let total = 0, excludedCount = 0;
   for (const row of snapshot.rows) {
@@ -135,14 +136,14 @@ function getGroupedSaleCost(assets, quantity) {
   assets.forEach((asset) => {
     if (remaining <= 0) return;
     const taken = Math.min(remaining, getAvailableQuantity(asset.id));
-      cost += taken * rules.holdingsAtDate(state.data, asset).averagePrice;
+      cost += taken * rules.holdingsAtDate(selectData(), asset).averagePrice;
     remaining -= taken;
   });
   return cost;
 }
 function getRebalanceGroups() {
   return Object.values(
-    state.data.assets
+    selectData().assets
       .filter((asset) => getAvailableQuantity(asset.id) > 0 && asset.type !== "savings")
       .reduce((result, asset) => {
         const id = asset.type === "ovdp" ? "ovdp" : `${asset.type}::${String(asset.name).trim().toLowerCase()}`;
@@ -152,7 +153,7 @@ function getRebalanceGroups() {
         result[id].assets.push(asset);
         return result;
       }, {}),
-  ).concat(state.rebalanceDrafts.map((draft) => ({ ...draft, assets: [] })));
+  ).concat(selectUI('rebalanceDrafts').map((draft) => ({ ...draft, assets: [] })));
 
 }
 

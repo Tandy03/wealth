@@ -22,7 +22,7 @@
 | `api/outbox.js` | `FinoOutbox`, platform-neutral factory локального recovery; storage/scope/logger/UI не читає з globals, отримує їх явно |
 | `asset-detail/model.js` | `FinoAssetDetail`, DOM-free read adapter позицій і спільної картки активу: групує за типом/назвою як Portfolio, підсумовує чинні shared розрахунки й історію, не змінює документ |
 | `asset-detail/view.js` | `FinoAssetDetailView`, factory контролера `ui.asset` з явними залежностями store/model/DOM/i18n/actions/Chart; шаблони локальні, API викликається лише через передані чинні дії |
-| `state.js` | Єдиний `stateStore`, compatibility `state`, таблиці курсів і wallet-категорій |
+| `state.js` | Єдиний `stateStore`, таблиці курсів і wallet-категорій; глобальний alias `state` вилучений |
 | Analytics, market-data, cashflow, rebalance/model, views/wallet | DOM-free factories `Fino…`, `PortfolioPerformance`; сервіси отримують snapshot і залежності явно |
 | `models.js`, `utils.js`, `data-loader.js` | Старі lexical aliases, форматування, facade сервісів та завантаження; точні імена в JSON |
 | Renderers, forms, charts, controllers, rebalance UI | Старі function exports та `FinoChartPlugins`, `FinoRebalanceDashboard`, `FinoRebalanceCurrencyHover`; точні імена та відповідальні файли в JSON |

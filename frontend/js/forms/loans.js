@@ -1,5 +1,4 @@
 (function () {
-const state = stateStore.getState();
 // forms/loans.js
 function updateLoanMethodFields() {
   const method = document.querySelector("#loan-method")?.value;
@@ -22,7 +21,7 @@ function openLoanModal(loanId = null) {
   const modal = document.querySelector("#loan-modal");
   const form = document.querySelector("#loan-form");
   if (!modal || !form) return;
-  const loan = (state.data.wallet.loans || []).find((item) => item.id === loanId);
+  const loan = (stateStore.selectWallet().loans || []).find((item) => item.id === loanId);
   stateStore.setUI({ editingLoanId: loan?.id || null });
   form.reset();
   form.elements.name.value = loan?.name || "";
@@ -56,7 +55,7 @@ function setupLoans() {
     const values = new FormData(form);
     const amount = normalizeNumber(values.get("amount"));
     const manualSchedule = String(values.get("manualSchedule") || "").split(/\r?\n/).map((line) => { const [date, value] = line.split(",").map((part) => part.trim()); return { id: `loan-payment-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, date, amount: normalizeNumber(value), paid: false }; }).filter((payment) => payment.date && payment.amount > 0);
-    const previous = state.data.wallet.loans.find((loan) => loan.id === state.editingLoanId);
+    const previous = stateStore.selectWallet().loans.find((loan) => loan.id === stateStore.selectUI('editingLoanId'));
     const paidAmount = previous ? normalizeNumber(previous.amount) - normalizeNumber(previous.balance) : 0;
     const loan = { id: previous?.id || `loan-${Date.now()}`, createdAt: previous?.createdAt || new Date().toISOString(), name: String(values.get("name") || "").trim(), amount, balance: Math.max(0, amount - paidAmount), method: values.get("method"), institution: String(values.get("institution") || "").trim(), dueDate: values.get("dueDate"), monthlyPayment: normalizeNumber(values.get("monthlyPayment")), paymentDay: normalizeNumber(values.get("paymentDay")), lastPaymentDate: values.get("lastPaymentDate") || null, manualSchedule, comment: String(values.get("comment") || "").trim(), repayments: previous?.repayments || [], status: amount > paidAmount ? "active" : "paid" };
     if (submitButton) submitButton.disabled = true;

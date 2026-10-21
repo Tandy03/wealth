@@ -18,7 +18,7 @@ function renderPortfolio(state = stateStore.getState()) {
     return;
   }
 
-  if (!state.data.assets.length) {
+  if (!stateStore.selectAssets(state).length) {
     tbody.innerHTML = `
             <tr>
                 <td
@@ -36,7 +36,7 @@ function renderPortfolio(state = stateStore.getState()) {
   const today = getDateString(new Date());
 
   const getNextPaymentDate = (assetId) =>
-    (state.data.payments || [])
+    (stateStore.selectPayments(state) || [])
       .filter(
         (payment) =>
           payment.assetId === assetId &&
@@ -47,7 +47,7 @@ function renderPortfolio(state = stateStore.getState()) {
       .map((payment) => payment.date)
       .sort()[0] || "9999-12-31";
 
-  const rawAssets = state.data.assets
+  const rawAssets = stateStore.selectAssets(state)
     .filter((asset) => getAvailableQuantity(asset.id) > 0)
     .sort((a, b) => {
       if (state.portfolioSort === "next-payment") {
@@ -182,16 +182,16 @@ function renderAssetTransactionsModal(state = stateStore.getState()) {
   const hideSales = document.querySelector("#asset-hide-sales")?.checked;
   const onlyCurrent = document.querySelector("#asset-only-current")?.checked;
   if (onlyCurrent) {
-    const holdings = state.data.assets.filter((asset) => ids.includes(asset.id) && getAvailableQuantity(asset.id) > 0);
+    const holdings = stateStore.selectAssets(state).filter((asset) => ids.includes(asset.id) && getAvailableQuantity(asset.id) > 0);
     body.innerHTML = holdings.length ? holdings.map((asset) => `<tr><td>${formatDate(asset.purchaseDate)}</td><td><span translate="no">${escapeHtml(asset.instrumentName || "—")}</span> — ${escapeHtml(asset.instrumentType || "")}</td><td>AVAILABLE</td><td>${getAvailableQuantity(asset.id)}</td><td>${money(getAvailableQuantity(asset.id) * asset.purchasePrice, asset.currency)}</td><td><button class="secondary-btn" data-detail-edit="${escapeHtml(asset.id)}">Edit</button> <button class="danger-btn" data-detail-delete="${escapeHtml(asset.id)}">Delete</button></td></tr>`).join("") : '<tr><td colspan="6" class="empty-state">No current holdings.</td></tr>';
     bindHoldingDetailActions(body);
     return;
   }
-  let transactions = (state.data.transactions || []).filter((transaction) => ids.includes(transaction.assetId));
+  let transactions = (stateStore.selectTransactions(state) || []).filter((transaction) => ids.includes(transaction.assetId));
   if (hideSales) transactions = transactions.filter((transaction) => transaction.type === "BUY");
   transactions.sort((a, b) => String(getTransactionEffectiveDate(b) || "").localeCompare(String(getTransactionEffectiveDate(a) || "")));
   body.innerHTML = transactions.length ? transactions.map((transaction) => {
-    const asset = state.data.assets.find((item) => item.id === transaction.assetId);
+    const asset = stateStore.selectAssets(state).find((item) => item.id === transaction.assetId);
     return `<tr><td>${formatDate(getTransactionEffectiveDate(transaction))}</td><td><span translate="no">${escapeHtml(asset?.instrumentName || "—")}</span></td><td>${escapeHtml(transaction.type)}</td><td>${escapeHtml(transaction.quantity ?? "—")}</td><td>${money(transaction.amount, transaction.currency || asset?.currency)}</td><td></td></tr>`;
   }).join("") : '<tr><td colspan="6" class="empty-state">No matching transactions.</td></tr>';
 }

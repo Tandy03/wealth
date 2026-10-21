@@ -1,5 +1,4 @@
 (function () {
-const state = stateStore.getState();
 // charts/macroeconomics.js
 let macroCharts = [];
 

@@ -21,6 +21,9 @@
         return get('/api/data', 'Failed to load data.', options.sync ? { sync: 'true' } : undefined);
       },
       getExchangeRates: () => get('/api/exchange-rates', 'Failed to load NBU exchange rates.'),
+      exportPortfolio: () => get('/api/portfolio/export', 'Could not export the portfolio.'),
+      previewPortfolioImport: backup => write('/api/portfolio/import/preview', 'POST', { backup }, 'Could not validate the portfolio file.'),
+      restorePortfolio: body => write('/api/portfolio/import', 'POST', body, 'Could not restore the portfolio.'),
       getMarketTimeSeries: params => get('/api/market-data/time-series', 'Failed to load market prices.', params),
       getMarketCurrencies: () => get('/api/market-data/currencies', 'Failed to load NBU currencies.'),
       getCurrencyHistory: params => get('/api/market-data/currency-history', 'Failed to load NBU currency history.', params),

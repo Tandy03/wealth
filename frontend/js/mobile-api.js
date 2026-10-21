@@ -10,6 +10,7 @@
   const errors = window.FinoErrors;
   const syncModel = window.FinoSyncModel;
   const operations = window.FinoOperations;
+  const transfer = window.FinoPortfolioTransfer;
   const fetch = async (...args) => {
     const response = await window.FinoRequest.fetchWithTimeout(...args);
     if (response.status === 401) { try { await response.json(); } catch {} throw new errors.AuthRequiredError(); }
@@ -231,6 +232,59 @@
     };
     syncMeta = { ...syncMeta, pendingUpload: true, remoteConfirmed: false, savedLocally: true, backupSaved: false };
     await persistJournal(data, syncMeta);
+  }
+
+  async function transferTarget() {
+    if (!activeEmail) {
+      const saved = (await Preferences.get({ key: 'fino-active-account' })).value;
+      const scope = saved || 'local-only';
+      const key = LEGACY_STORAGE_KEY + ':' + accountSuffix(scope);
+      const stored = (await Preferences.get({ key })).value;
+      const journal = (await Preferences.get({ key: 'fino-journal-v1:' + accountSuffix(scope) })).value;
+      if (!stored && !journal) {
+        if ((await Preferences.get({ key: LEGACY_STORAGE_KEY })).value)
+          throw new errors.ConflictError({ code: 'RESTORE_NOT_EMPTY', message: 'Restore requires an empty portfolio. Existing data was preserved.' });
+        return { scope, data: window.FinoStateModel.createEmptyState(), fresh: true };
+      }
+    }
+    await loadLocal();
+    return { scope: activeEmail, data: clone(data), fresh: false };
+  }
+
+  async function restorePortfolio(body) {
+    await transfer.validateExport(body?.backup);
+    return queued(async () => {
+      const target = await transferTarget();
+      const imported = await transfer.restoreInput(body, target.data, target.scope);
+      const before = { data, syncMeta, localHistory, activeEmail, storageKey, fileId };
+      const savedAccount = (await Preferences.get({ key: 'fino-active-account' })).value;
+      try {
+        if (target.fresh) {
+          activeEmail = target.scope;
+          storageKey = LEGACY_STORAGE_KEY + ':' + accountSuffix(activeEmail);
+          fileId = null;
+          await loadLocal();
+        }
+        data = imported;
+        data.sync = { revision: Number(target.data.sync?.revision || 0) + 1, updatedAt: new Date().toISOString(), deviceId };
+        syncMeta = { baseline: null, pendingUpload: true, remoteConfirmed: false, backupSaved: false, conflict: false, error: null, lastSyncAt: null };
+        // Persist the profile before its commit. If the journal fails, put the
+        // prior profile back; a successful commit never depends on a mirror write.
+        await Preferences.set({ key: 'fino-active-account', value: activeEmail });
+        await persistJournal(data, syncMeta);
+      } catch (cause) {
+        ({ data, syncMeta, localHistory, activeEmail, storageKey, fileId } = before);
+        if (target.fresh) {
+          try {
+            if (savedAccount) await Preferences.set({ key: 'fino-active-account', value: savedAccount });
+            else await Preferences.remove({ key: 'fino-active-account' });
+          } catch (_) { /* The failed commit did not replace any financial document. */ }
+        }
+        throw cause.code ? cause : new errors.StorageError({ cause });
+      }
+      if (activeEmail === 'local-only') authorizationRequired = true;
+      return { success: true, checksum: await transfer.contentChecksum(data), persistence: { savedLocally: true, savedRemotely: false, backupSaved: false } };
+    });
   }
 
   async function token(context) {
@@ -536,6 +590,10 @@
       return { email: activeEmail, fileId, data: clone(data), metadata: clone(syncMeta), localSignature: signature(data) };
     });
     if (!context) return;
+    if (context.email === 'local-only' && action !== 'reconnect') {
+      authorizationRequired = true;
+      throw new errors.AuthRequiredError({ message: 'Local-only portfolio: Google Drive is not connected.' });
+    }
     if (action === 'automatic' && !context.metadata.pendingUpload) return;
     syncing = true;
     let previousBackupId;
@@ -789,6 +847,12 @@
 
   window.mobileApi = {
     isNative: true,
+    exportPortfolio: () => queued(async () => { await loadLocal(); return transfer.createExport(data); }),
+    previewPortfolioImport: async backup => {
+      await transfer.validateExport(backup);
+      return queued(async () => { const target = await transferTarget(); return transfer.preview(backup, target.data, target.scope); });
+    },
+    restorePortfolio,
     async getCommandContext() {
       return queued(async () => { await loadLocal(); return { scope: 'android:' + activeEmail + ':' + storageKey, account: activeEmail }; });
     },

@@ -1,5 +1,4 @@
 (function () {
-const state = stateStore.getState();
 // forms/settings.js
 let noticeResolver = null;
 
@@ -127,9 +126,110 @@ function setupGoogleDriveSync() {
   window.setInterval(refreshGoogleDriveStatus, 15000);
 }
 
+function setupPortfolioTransfer() {
+  const panel = document.querySelector('#portfolio-transfer');
+  if (!panel) return () => {};
+  const model = window.FinoPortfolioTransfer, native = Boolean(window.Capacitor?.isNativePlatform?.());
+  const picker = window.Capacitor?.Plugins?.PortfolioTransfer;
+  const fileInput = panel.querySelector('#portfolio-import-file');
+  const preview = panel.querySelector('#portfolio-import-preview');
+  const status = panel.querySelector('#portfolio-transfer-status');
+  const t = key => window.FinoI18n.t(key);
+  let pending = null, busy = false;
+  const clear = () => { pending = null; preview.hidden = true; fileInput.value = ''; };
+  const run = async action => {
+    if (busy) return;
+    busy = true;
+    panel.querySelectorAll('button').forEach(button => { button.disabled = true; });
+    status.textContent = '';
+    try { await action(); }
+    catch (error) { await showNotice(error, 'Portfolio file'); }
+    finally { busy = false; panel.querySelectorAll('button').forEach(button => { button.disabled = false; }); }
+  };
+  const assertCurrent = token => {
+    if (!stateStore.isCurrent(token)) throw new window.FinoErrors.ConflictError({ message: 'The portfolio changed. Choose the file again before continuing.' });
+  };
+  const validateFile = async text => {
+    clear();
+    const token = stateStore.capture();
+    const checked = await model.validateExport(text);
+    const result = await api.previewPortfolioImport(checked.file);
+    assertCurrent(token);
+    pending = { backup: checked.file, expected: result.expected, token };
+    panel.querySelector('#portfolio-import-summary').textContent = window.FinoI18n.format('File checked: {assets} assets, {transactions} transactions, {payments} payments, {expenses} expenses. Exported: {date}.', {
+      ...result.counts, date: new Date(result.createdAt).toLocaleString(window.FinoI18n.locale),
+    });
+    panel.querySelector('#portfolio-import-checksum').textContent = 'SHA-256: ' + checked.checksum;
+    preview.hidden = false;
+    status.textContent = t('Checksum and document validation passed. Nothing has been restored yet.');
+  };
+  panel.querySelector('#portfolio-export').addEventListener('click', () => run(async () => {
+    const token = stateStore.capture();
+    if (!await showConfirm('This file contains unencrypted financial data. Save it in a trusted location and check it before removing the app. Continue?', 'Portfolio file')) return;
+    assertCurrent(token);
+    const recovery = await api.outbox.list();
+    if (recovery.corrupt || recovery.entries.some(entry => ['queued', 'in-flight', 'outcome-unknown'].includes(entry.state)))
+      throw new window.FinoErrors.ConflictError({ message: 'Recover unfinished commands before exporting a portfolio.' });
+    const backup = await api.exportPortfolio();
+    await model.validateExport(backup);
+    assertCurrent(token);
+    const text = JSON.stringify(backup, null, 2);
+    if (native) {
+      if (!picker) throw new window.FinoErrors.StorageError({ message: 'Update the Android app to use portfolio files.' });
+      const result = await picker.exportFile({ text });
+      if (!result.cancelled) status.textContent = t('Portfolio file saved. Keep it private.');
+    } else {
+      const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+      const link = document.createElement('a');
+      link.href = url; link.download = 'fino-portfolio-' + backup.createdAt.slice(0, 10) + '.json';
+      document.body.append(link);
+      try { link.click(); status.textContent = t('Portfolio download started. Check the saved file before removing the app.'); }
+      finally { link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
+    }
+  }));
+  panel.querySelector('#portfolio-import').addEventListener('click', () => {
+    if (busy) return;
+    clear();
+    status.textContent = '';
+    if (!native) { if (!busy) fileInput.click(); return; }
+    void run(async () => {
+      if (!picker) throw new window.FinoErrors.StorageError({ message: 'Update the Android app to use portfolio files.' });
+      const result = await picker.importFile();
+      if (!result.cancelled) await validateFile(result.text);
+    });
+  });
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    void run(async () => {
+      if (file.size > model.MAX_BYTES) throw new window.FinoErrors.ValidationError({ message: 'Portfolio files must be JSON of at most 1 MiB.' });
+      const text = await new Promise((resolve, reject) => {
+        const reader = new FileReader(); reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new window.FinoErrors.StorageError({ message: 'Could not read the portfolio file.' }));
+        reader.readAsText(file);
+      });
+      await validateFile(text);
+    });
+  });
+  panel.querySelector('#portfolio-import-cancel').addEventListener('click', () => { if (!busy) { clear(); status.textContent = ''; } });
+  panel.querySelector('#portfolio-import-confirm').addEventListener('click', () => run(async () => {
+    if (!pending) return;
+    const request = pending;
+    assertCurrent(request.token);
+    const result = await api.restorePortfolio({ backup: request.backup, expected: request.expected });
+    if (result.persistence?.savedLocally !== true) throw new window.FinoErrors.StorageError();
+    stateStore.invalidateContext();
+    clear();
+    status.textContent = t('Portfolio saved locally. Google Drive upload is not confirmed.');
+    await loadData();
+  }));
+  return clear;
+}
+
 function setupSettingsModal() {
   const modal = document.querySelector("#settings-modal");
-  const close = () => modal?.classList.remove("open");
+  const clearTransfer = setupPortfolioTransfer();
+  const close = () => { modal?.classList.remove("open"); clearTransfer(); };
   document.querySelectorAll("[data-open-settings]").forEach((button) => {
     button.addEventListener("click", () => {
       modal?.classList.add("open");

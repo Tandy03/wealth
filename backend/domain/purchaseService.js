@@ -2,7 +2,6 @@ const rules = require('../../shared/portfolio-rules');
 const { normalizeNumber, createId } = require('../utils/values');
 const { validatePurchase } = require('../validators/assets');
 const { DomainError } = require('../utils/domainError');
-const { updatePlannedPaymentsForAsset } = require('./portfolio');
 const { validateRequest, validateAssetCurrency, normalizePurchase } = require('../validators/requests');
 const { mutationCommands, commandStorage } = require('./mutation');
 function createService(repository) {
@@ -48,21 +47,7 @@ function createService(repository) {
         };
         data.transactions.push(transaction);
         rules.updateHolding(data, asset);
-        updatePlannedPaymentsForAsset(data, assetId);
         rules.rebuildPayments(data, asset, createId);
-        data.sales = (data.sales || []).map((sale) => {
-            if (sale.assetId !== assetId) {
-                return sale;
-            }
-            /*
-             * We do not rewrite
-             * historical sale results.
-             *
-             * Each sale keeps its
-             * original stored values.
-             */
-            return sale;
-        });
         await saveData(data);
         return {
             asset,

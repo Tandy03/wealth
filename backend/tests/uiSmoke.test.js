@@ -12,12 +12,14 @@ const html = fs.readFileSync(path.join(frontend, 'index.html'), 'utf8');
 validateFrontend(html);
 const fixture = () => ({ ...model.createEmptyState(), assets: [{ id: 'stock', name: 'Smoke Stock', type: 'stock', quantity: 2, purchasePrice: 100, currentPrice: 120, purchaseDate: '2026-01-01', currency: 'USD' }], transactions: [{ id: 'buy', assetId: 'stock', type: 'BUY', quantity: 2, amount: 200, date: '2026-01-01', currency: 'USD' }] });
 const flush = async () => { for (let i = 0; i < 8; i++) await new Promise(setImmediate); };
-async function harness(t, { initial = fixture(), blockMarkets = false, locale = 'en', charts = false, failWallet = false, failRebalance = false, failPayments = false, sessionDraft, native = false, nativeStorage: restoredStorage, macroFailureOnce = false, styles = false, compact = false, bootFromEvent = false, browserStorage, syncPreview } = {}) {
+async function harness(t, { initial = fixture(), blockMarkets = false, locale = 'en', charts = false, failWallet = false, failRebalance = false, failPayments = false, sessionDraft, native = false, nativeStorage: restoredStorage, macroFailureOnce = false, styles = false, compact = false, bootFromEvent = false, browserStorage, syncPreview, outbox, transferPicker } = {}) {
   const errors = [];
   const console = new VirtualConsole();
   console.on('jsdomError', error => errors.push(error.message));
   const dom = new JSDOM(html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ''), { url: 'http://localhost/', runScripts: 'outside-only', pretendToBeVisual: true, virtualConsole: console });
   const { window } = dom;
+  Object.defineProperty(window, 'crypto', { value: require('node:crypto').webcrypto });
+  window.TextEncoder = TextEncoder;
   if (styles) {
     const style = window.document.createElement('style');
     style.textContent = ['style.css', 'rebalance.css', 'asset-detail.css'].map(file => fs.readFileSync(path.join(frontend, 'css', file), 'utf8')).join('\n');
@@ -72,8 +74,6 @@ async function harness(t, { initial = fixture(), blockMarkets = false, locale = 
     ['fino-data-v1:smoke%40example.com', JSON.stringify(stored)],
   ]);
   if (native) {
-    Object.defineProperty(window, 'crypto', { value: require('node:crypto').webcrypto });
-    window.TextEncoder = TextEncoder;
     window.Capacitor = { isNativePlatform: () => true, Plugins: {
       FinoStorage: {
         get: async ({ key }) => ({ value: nativeStorage.get(key) || null }),
@@ -81,6 +81,7 @@ async function harness(t, { initial = fixture(), blockMarkets = false, locale = 
         remove: async ({ key }) => nativeStorage.delete(key),
       },
       GoogleDriveAuth: { getAccessToken: async () => { throw Object.assign(new Error('Google authorization was cancelled.'), { code: 'AUTHORIZATION_REQUIRED' }); } },
+      PortfolioTransfer: transferPicker,
     } };
     window.FINO_MOBILE_CONFIG = { proxyUrl: 'https://script.google.com/macros/s/mock/exec', proxyToken: 'mock-token' };
   }
@@ -88,6 +89,7 @@ async function harness(t, { initial = fixture(), blockMarkets = false, locale = 
   const repository = {
     readData: async () => structuredClone(stored),
     saveData: async data => { stored = model.normalizeState(data); },
+    writeLocalData: async data => { stored = model.normalizeState(data); return { savedLocally: true, savedRemotely: false, backupSaved: false }; },
     runMutation(operation) { const result = queue.then(operation); queue = result.catch(() => {}); return result; },
   };
   const assets = require('../domain/assetService').createService(repository);
@@ -115,6 +117,15 @@ async function harness(t, { initial = fixture(), blockMarkets = false, locale = 
     if (blockMarkets && /exchange-rates|currency-history|index-history/.test(route)) return new Promise(() => {});
     let data;
     if (route === '/api/data') data = stored;
+    else if (route === '/api/portfolio/export') data = await require('../domain/portfolioTransferService').createService(repository).exportPortfolio();
+    else if (route === '/api/portfolio/import/preview' || route === '/api/portfolio/import') {
+      try {
+        const service = require('../domain/portfolioTransferService').createService(repository);
+        data = route.endsWith('/preview') ? await service.previewPortfolioImport(body.backup) : await service.restorePortfolio(body);
+      } catch (error) {
+        return new Response(JSON.stringify({ error: error.message, code: error.code, category: error.category }), { status: error.status || 500, headers: { 'Content-Type': 'application/json', 'X-Request-Id': 'transfer-test' } });
+      }
+    }
     else if (route === '/api/sync/status') data = { connected: false, enabled: false };
     else if (route === '/api/sync/preview') data = syncPreview || await require('../../shared/sync-model').comparison(stored, stored);
     else if (route === '/api/sync/google-drive') data = { success: true, action: body.action, status: { connected: true, enabled: true, state: 'sync-confirmed', remoteConfirmed: true } };
@@ -160,6 +171,7 @@ async function harness(t, { initial = fixture(), blockMarkets = false, locale = 
     }
     if (locale !== 'en' && src.endsWith('/i18n.js')) window.document.dispatchEvent(new window.Event('DOMContentLoaded'));
   }
+  if (outbox) Object.assign(vm.runInContext('api.outbox', dom.getInternalVMContext()), outbox);
   if (bootFromEvent) {
     window.document.dispatchEvent(new window.Event('DOMContentLoaded'));
     await flush();
@@ -172,6 +184,159 @@ async function harness(t, { initial = fixture(), blockMarkets = false, locale = 
     })), expireSession: () => { sessionValid = false; },
     failRebalance: value => { rebalanceFailure = value; }, failWallet: value => { walletFailure = value; }, replaceStored: next => { stored = model.normalizeState(next); },
     stored: () => structuredClone(stored), eval: expression => vm.runInContext(expression, dom.getInternalVMContext()) };
+}
+
+for (const native of [false, true]) for (const locale of ['en', 'de', 'uk', 'es', 'pl', 'it']) {
+  test(`portfolio files require explicit export and checked restore in ${native ? 'native' : 'web'} ${locale}`, async t => {
+    const transfer = require('../../shared/portfolio-transfer');
+    const backup = await transfer.createExport(fixture());
+    let selected = JSON.stringify(backup), downloaded = null, saves = 0;
+    const h = await harness(t, { native, locale, initial: model.createEmptyState(), transferPicker: {
+      exportFile: async ({ text }) => { saves++; downloaded = text; return { saved: true }; },
+      importFile: async () => ({ text: selected }),
+    } });
+    h.window.URL.createObjectURL = blob => { downloaded = blob; return 'blob:synthetic-export'; };
+    h.window.URL.revokeObjectURL = () => {};
+    h.window.HTMLAnchorElement.prototype.click = function () { assert.match(this.download, /^fino-portfolio-.*\.json$/); saves++; };
+    const settle = async () => {
+      for (let i = 0; i < 100; i++) {
+        await flush();
+        if (!h.document.querySelector('#portfolio-import').disabled || h.document.querySelector('#notice-modal').classList.contains('open')) return;
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
+      assert.fail('Portfolio transfer did not settle');
+    };
+    const choose = async text => {
+      selected = text;
+      h.document.querySelector('#portfolio-import').click();
+      if (!native) {
+        const input = h.document.querySelector('#portfolio-import-file');
+        Object.defineProperty(input, 'files', { configurable: true, value: [new h.window.File([text], 'synthetic.json', { type: 'application/json' })] });
+        input.dispatchEvent(new h.window.Event('change', { bubbles: true }));
+      }
+      await settle();
+    };
+    const tr = h.window.FinoI18n.t, preview = h.document.querySelector('#portfolio-import-preview');
+    assert.equal(saves, 0); assert.equal(downloaded, null);
+    assert.equal(h.requests.filter(request => request.route.startsWith('/api/portfolio/')).length, 0);
+    h.document.querySelector('[data-open-settings]').click();
+    assert.equal(h.document.querySelector('#portfolio-transfer h3').textContent, tr('Portfolio file'));
+    await choose(JSON.stringify(backup));
+    assert.equal(preview.hidden, false);
+    assert.equal(h.eval('stateStore.getData().assets.length'), 0);
+    assert.match(h.document.querySelector('#portfolio-import-checksum').textContent, new RegExp(backup.checksum));
+    assert.equal(h.document.querySelector('#portfolio-transfer-status').textContent, tr('Checksum and document validation passed. Nothing has been restored yet.'));
+    h.document.querySelector('#portfolio-import-cancel').click(); assert.equal(preview.hidden, true);
+    assert.equal(h.eval('stateStore.getData().assets.length'), 0);
+    await choose(JSON.stringify(backup));
+    h.document.querySelector('#portfolio-import-confirm').click(); await settle();
+    assert.equal(h.eval('stateStore.getData().assets.length'), 1, h.document.querySelector('#notice-message').textContent);
+    assert.equal(h.eval('stateStore.getData().assets[0].name'), 'Smoke Stock');
+    assert.equal(preview.hidden, true);
+    assert.equal(h.document.querySelector('#portfolio-transfer-status').textContent, tr('Portfolio saved locally. Google Drive upload is not confirmed.'));
+    const before = JSON.stringify(h.eval('stateStore.getData()'));
+    h.document.querySelector('#portfolio-export').click(); await flush();
+    assert.equal(h.document.querySelector('#notice-modal').classList.contains('open'), true);
+    assert.equal(downloaded, null); assert.equal(saves, 0);
+    assert.match(h.document.querySelector('#notice-message').textContent, new RegExp(tr('This file contains unencrypted financial data. Save it in a trusted location and check it before removing the app. Continue?').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    h.document.querySelector('#notice-cancel').click(); await settle(); assert.equal(saves, 0);
+    h.document.querySelector('#portfolio-export').click(); await flush();
+    h.document.querySelector('#notice-ok').click(); await settle();
+    assert.equal(saves, 1);
+    const text = typeof downloaded === 'string' ? downloaded : await new Promise((resolve, reject) => {
+      const reader = new h.window.FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsText(downloaded);
+    });
+    assert.equal((await transfer.validateExport(text)).data.assets[0].name, 'Smoke Stock');
+    assert.equal(JSON.stringify(h.eval('stateStore.getData()')), before, 'Export must be read-only');
+    const damaged = JSON.parse(selected); damaged.document.assets[0].quantity++;
+    await choose(JSON.stringify(damaged));
+    assert.equal(preview.hidden, true);
+    assert.ok(h.document.querySelector('#notice-message').textContent.includes(tr('Portfolio checksum does not match. The file may be damaged.')));
+    assert.equal(JSON.stringify(h.eval('stateStore.getData()')), before);
+    h.document.querySelector('#notice-ok').click(); await settle();
+    await choose(JSON.stringify(backup));
+    assert.equal(preview.hidden, true);
+    assert.ok(h.document.querySelector('#notice-message').textContent.includes(tr('Restore requires an empty portfolio. Existing data was preserved.')));
+    assert.equal(JSON.stringify(h.eval('stateStore.getData()')), before);
+    assert.deepEqual(h.errors, []);
+  });
+}
+
+for (const native of [false, true]) {
+  test(`FX refresh renders only the visible screen and hidden screens refresh on entry in ${native ? 'native' : 'web'}`, async t => {
+    const h = await harness(t, { native });
+    const before = JSON.stringify(h.eval('stateStore.getData()'));
+    const counts = {};
+    for (const [owner, method] of [['asset', 'render'], ['dashboard', 'render'], ['portfolio', 'render'], ['transactions', 'render'], ['wallet', 'render'], ['calculators', 'render'], ['calculators', 'rebalance']]) {
+      const render = h.window.ui[owner][method];
+      h.window.ui[owner][method] = (...args) => { const key = owner + '.' + method; counts[key] = (counts[key] || 0) + 1; return render(...args); };
+    }
+    const refresh = () => {
+      for (const key of Object.keys(counts)) delete counts[key];
+      h.eval('stateStore.setUI({ marketRevision: (stateStore.getState().marketRevision || 0) + 1 })');
+    };
+    refresh(); assert.deepEqual(counts, { 'wallet.render': 1 });
+    h.document.querySelector('#open-investments').click();
+    for (const [section, renderer] of [['dashboard', 'dashboard.render'], ['portfolio', 'portfolio.render'], ['transactions', 'transactions.render'], ['analytics', 'calculators.render'], ['rebalance', 'calculators.rebalance']]) {
+      h.document.querySelector(`[data-section="${section}"]`).click();
+      refresh(); assert.deepEqual(counts, { [renderer]: 1 }, section);
+    }
+    h.window.ui.asset.open(['stock']);
+    refresh(); assert.deepEqual(counts, { 'asset.render': 1 });
+    h.document.querySelector('[data-section="dashboard"]').click();
+    const previous = h.document.querySelector('#stat-value').textContent;
+    // FX data is external UI metadata. A hidden financial view stays untouched
+    // until selected; selecting it must use the newest FX and not stale markup.
+    h.document.querySelectorAll('#investments-app .page-section').forEach(page => page.classList.toggle('active', page.id === 'market-section'));
+    h.eval('EXCHANGE_RATES.USD = 55'); refresh();
+    assert.deepEqual(counts, {});
+    assert.equal(h.document.querySelector('#stat-value').textContent, previous);
+    h.document.querySelector('[data-section="dashboard"]').click();
+    assert.notEqual(h.document.querySelector('#stat-value').textContent, previous);
+    h.document.querySelector('[data-section="portfolio"]').click();
+    assert.equal(counts['portfolio.render'], 1);
+    h.document.querySelector('[data-section="transactions"]').click();
+    assert.equal(counts['transactions.render'], 1);
+    assert.equal(JSON.stringify(h.eval('stateStore.getData()')), before);
+    assert.deepEqual(h.errors, []);
+  });
+  for (const locale of ['en', 'de', 'uk', 'es', 'pl', 'it']) {
+    test(`command recovery translates complete messages and preserves original actions in ${native ? 'native' : 'web'} ${locale}`, async t => {
+      const methods = ['createAsset', 'buyMoreAsset', 'createSale', 'createTransaction', 'createPayment', 'markPaymentReceived', 'createCalendarNote', 'mergeAssets'];
+      const labels = ['Create asset', 'Buy asset', 'Sell asset', 'Create transaction', 'Create payment', 'Receive payment', 'Create calendar note', 'Merge assets'];
+      const states = ['queued', 'in-flight', 'outcome-unknown', 'confirmed', 'rejected', 'conflict', 'confirmed', 'confirmed'];
+      const messages = ['Saved locally; not sent', 'Waiting for confirmation', 'Result unknown; recover the original request', 'Confirmed; saved response retained locally', 'Rejected; review the request', 'Conflict; review before continuing', 'Already recorded; replay result expired. Reload the portfolio to review it.', 'Confirmed; saved response retained locally'];
+      let result = { scope: 'recovery-test', entries: methods.map((method, i) => ({ operationId: 'original-' + i, method, state: states[i], ...(i === 6 ? { lastErrorCode: 'OPERATION_RESULT_EXPIRED' } : {}) })) };
+      const retries = [], dismissed = [];
+      const h = await harness(t, { native, locale, outbox: {
+        list: async () => result,
+        retry: async (id, scope) => { retries.push([id, scope]); },
+        dismiss: async (id, scope) => { dismissed.push([id, scope]); },
+      } });
+      const panel = h.document.querySelector('#command-recovery'), tr = h.window.FinoI18n.t;
+      assert.equal(panel.querySelector('strong').textContent, tr('Command recovery'));
+      const rows = [...panel.querySelectorAll('.command-recovery-row')];
+      assert.equal(rows.length, 8);
+      rows.forEach((row, i) => {
+        assert.ok(row.querySelector('span').textContent.startsWith(tr(labels[i]) + ' — ' + tr(messages[i])));
+        if (locale !== 'en') { assert.notEqual(tr(labels[i]), labels[i]); assert.notEqual(tr(messages[i]), messages[i]); }
+      });
+      assert.equal(rows[1].querySelector('button'), null);
+      assert.equal(rows[0].querySelector('button').textContent, tr('Retry original command'));
+      rows[0].querySelector('button').click(); await flush();
+      assert.deepEqual(retries, [['original-0', 'recovery-test']]);
+      panel.querySelectorAll('.command-recovery-row')[6].querySelector('button').click(); await flush();
+      assert.deepEqual(dismissed, [['original-6', 'recovery-test']]);
+      assert.ok(panel.textContent.includes('OPERATION_RESULT_EXPIRED'));
+      result = { corrupt: true, code: '<probe>', entries: [] };
+      h.document.dispatchEvent(new h.window.CustomEvent('fino:outbox-changed')); await flush();
+      assert.equal(panel.querySelector('p').textContent, h.window.FinoI18n.format('Local recovery data is damaged and has been preserved. No commands will be sent. Code: {code}', { code: '<probe>' }));
+      assert.equal(panel.querySelector('probe'), null);
+      assert.equal(panel.querySelector('button'), null);
+      assert.equal(h.eval('stateStore.getData().assets.length'), 1);
+      assert.deepEqual(h.errors, []);
+    });
+  }
 }
 
 for (const native of [false, true]) {

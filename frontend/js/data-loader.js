@@ -1,6 +1,6 @@
 async function refreshApplicationData() {
   const context = stateStore.capture();
-  if (!stateStore.getState().portfolioLoaded) stateStore.setUI({ portfolioLoadState: 'loading' });
+  if (!stateStore.selectUI('portfolioLoaded')) stateStore.setUI({ portfolioLoadState: 'loading' });
   let result;
   try { result = await stateStore.loadData(() => api.getData({ sync: false })); }
   catch (error) {
@@ -18,7 +18,7 @@ async function refreshApplicationData() {
     return null;
   }), history]).then(([exchangeData]) => {
     if (!stateStore.isCurrent(snapshot)) return;
-    const update = { marketRevision: (state.marketRevision || 0) + 1 };
+    const update = { marketRevision: (stateStore.selectUI('marketRevision') || 0) + 1 };
     if (exchangeData?.rates) {
       for (const [currency, rate] of Object.entries(exchangeData.rates)) if (/^[A-Z]{3}$/.test(currency) && Number.isFinite(Number(rate)) && Number(rate) > 0) EXCHANGE_RATES[currency] = Number(rate);
       Object.assign(update, { exchangeRateDate: exchangeData.exchangeDate || null, exchangeRateSource: exchangeData.source || null, exchangeRateStale: Boolean(exchangeData.stale) });
@@ -43,17 +43,17 @@ async function loadPurchaseExchangeRates() {
   }
 
   const allPurchaseDates = [
-    ...(state.data.assets || []).map((asset) => asset.purchaseDate),
-    ...(state.data.transactions || [])
+    ...(stateStore.selectAssets() || []).map((asset) => asset.purchaseDate),
+    ...(stateStore.selectTransactions() || [])
       .filter((transaction) => transaction.type === "BUY" && FinoStateContract.isTransactionCompleted(transaction))
       .map((transaction) => transaction.date),
   ].filter(Boolean);
   const purchaseRecords = [
-    ...(state.data.assets || []).map((asset) => ({
+    ...(stateStore.selectAssets() || []).map((asset) => ({
       currency: asset.currency,
       date: asset.purchaseDate,
     })),
-    ...(state.data.transactions || [])
+    ...(stateStore.selectTransactions() || [])
       .filter((transaction) => transaction.type === "BUY" && FinoStateContract.isTransactionCompleted(transaction))
       .map((transaction) => ({ currency: transaction.currency, date: transaction.date })),
   ].filter(
@@ -82,8 +82,8 @@ async function loadPurchaseExchangeRates() {
         .map((item) => ({ date: String(item.datetime || "").slice(0, 10), rate: normalizeNumber(item.close) }))
         .filter((item) => item.date && item.rate > 0)
         .sort((a, b) => a.date.localeCompare(b.date));
-      stateStore.setUI({ purchaseExchangeRates: { ...state.purchaseExchangeRates, [currency]: rates } });
-      localStorage.setItem(cacheKey, JSON.stringify(state.purchaseExchangeRates));
+      stateStore.setUI({ purchaseExchangeRates: { ...stateStore.selectUI('purchaseExchangeRates'), [currency]: rates } });
+      localStorage.setItem(cacheKey, JSON.stringify(stateStore.selectUI('purchaseExchangeRates')));
     } catch (error) {
       console.warn(`Could not load historical ${currency}/UAH rates:`, window.FinoErrors.diagnostics(error));
     }
@@ -92,7 +92,7 @@ async function loadPurchaseExchangeRates() {
 
 async function updateSp500Benchmark() {
   const snapshot = stateStore.capture();
-  const data = stateStore.getData();
+  const data = stateStore.selectData();
   const isDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value + 'T00:00:00Z')) && new Date(value + 'T00:00:00Z').toISOString().slice(0, 10) === value;
   const savings = new Set((data.assets || []).filter(item => item.type === 'savings').map(item => item.id));
   const buys = (data.transactions || []).filter(item => item.type === 'BUY' &&
@@ -100,8 +100,8 @@ async function updateSp500Benchmark() {
   const recorded = new Set(buys.map(item => item.assetId));
   const dates = [...buys.map(item => item.date), ...(data.assets || []).filter(item => item.type !== 'savings' && !recorded.has(item.id)).map(item => item.purchaseDate).filter(isDate)].sort();
   const start = dates[0], end = getDateString(new Date());
-  const samePeriod = state.sp500BenchmarkPeriod === `${start}:${end}`;
-  stateStore.setUI({ sp500Benchmark: samePeriod ? state.sp500Benchmark : null, sp500BenchmarkStatus: start && start <= end ? 'loading' : 'empty',
+  const samePeriod = stateStore.selectUI('sp500BenchmarkPeriod') === `${start}:${end}`;
+  stateStore.setUI({ sp500Benchmark: samePeriod ? stateStore.selectUI('sp500Benchmark') : null, sp500BenchmarkStatus: start && start <= end ? 'loading' : 'empty',
     sp500BenchmarkPeriod: `${start}:${end}`, sp500BenchmarkStart: start || null, sp500BenchmarkEnd: end });
   if (!start || start > end) return;
   try {

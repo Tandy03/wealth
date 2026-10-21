@@ -11,23 +11,25 @@ function createService(sources = {}) {
         updatedAt: 0,
         assets: null,
     };
-    async function getInzhurCatalogAssets() {
+    async function loadInzhurCatalog() {
         const cacheIsFresh = inzhurAssetsCache.assets &&
             Date.now() - inzhurAssetsCache.updatedAt < INZHUR_CACHE_TTL_MS;
-        if (cacheIsFresh) {
-            return inzhurAssetsCache.assets;
+        if (!cacheIsFresh) {
+            const payload = await requestJson(INZHUR_ASSETS_URL, {
+                headers: { Accept: "application/json" },
+            });
+            if (!Array.isArray(payload)) {
+                throw new Error("Inzhur API returned an invalid payload.");
+            }
+            inzhurAssetsCache = {
+                updatedAt: Date.now(),
+                assets: require('../../shared/market-model').inzhurCatalog(payload),
+            };
         }
-        const payload = await requestJson(INZHUR_ASSETS_URL, {
-            headers: { Accept: "application/json" },
-        });
-        if (!Array.isArray(payload)) {
-            throw new Error("Inzhur API returned an invalid payload.");
-        }
-        inzhurAssetsCache = {
-            updatedAt: Date.now(),
-            assets: require('../../shared/market-model').inzhurCatalog(payload),
-        };
-        return inzhurAssetsCache.assets;
+        return { ...inzhurAssetsCache, cached: cacheIsFresh };
+    }
+    async function getInzhurCatalogAssets() {
+        return (await loadInzhurCatalog()).assets;
     }
     async function getExchangeRates() { return nbu.getExchangeRates(); }
     async function getTimeSeriesOperation(query = {}) {
@@ -57,24 +59,11 @@ function createService(sources = {}) {
         return { policyRate: await macro.getPolicyRate() };
     }
     async function getInzhurAssets(query = {}) {
-        const cacheIsFresh = inzhurAssetsCache.assets &&
-            Date.now() - inzhurAssetsCache.updatedAt < INZHUR_CACHE_TTL_MS;
-        if (!cacheIsFresh) {
-            const payload = await requestJson(INZHUR_ASSETS_URL, {
-                headers: { Accept: "application/json" },
-            });
-            if (!Array.isArray(payload)) {
-                throw new Error("Inzhur API returned an invalid payload.");
-            }
-            inzhurAssetsCache = {
-                updatedAt: Date.now(),
-                assets: require('../../shared/market-model').inzhurCatalog(payload),
-            };
-        }
+        const catalog = await loadInzhurCatalog();
         return {
-            updatedAt: new Date(inzhurAssetsCache.updatedAt).toISOString(),
-            cached: cacheIsFresh,
-            assets: inzhurAssetsCache.assets,
+            updatedAt: new Date(catalog.updatedAt).toISOString(),
+            cached: catalog.cached,
+            assets: catalog.assets,
         };
     }
     return { getExchangeRates, getTimeSeries: getTimeSeriesOperation, getCurrencies, getCurrencyHistory, getFrankfurterHistory, getIndexHistory: getIndexHistoryOperation, getMacroeconomics: getMacroeconomicsOperation, getPolicyRate: getPolicyRateOperation, getInzhurAssets, getInzhurCatalogAssets };

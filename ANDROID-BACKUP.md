@@ -1,5 +1,7 @@
 # Android: фінансові дані й системний backup
 
+Незалежний шлях перенесення — [явний файл портфеля](PORTFOLIO-FILES.md): попередження про приватні незашифровані дані → системний document picker → перевірка SHA-256/документа → підтвердження відновлення в порожнє сховище. Він не потребує Drive та не змінює правила системного backup нижче. Файл, який користувач сам зберіг через document picker, лежить поза приватним сховищем додатка; його потрібно зберегти й захистити окремо. `npm run test:recovery` регулярно перевіряє synthetic end-to-end відновлення через desktop journal/native journal і цей формат файлу; входить також у `npm test` та CI.
+
 Політика: стан Fino прив'язаний до інсталяції; системний Android backup та перенесення між пристроями не мають копіювати фінансові документи, журнал, outbox, Drive baseline/file ID, вибраний акаунт, WebView storage, PIN чи біометричні налаштування. `ConfirmedPreferences` продовжує підтверджувати локальний commit у `CapacitorStorage`; саме місце зберігання й наявні дані не мігрують.
 
 У manifest явно встановлено `allowBackup="false"`. `res/xml/backup_rules.xml` виключає всі файлові, database, sharedpref, external та device-protected домени для старих версій Android. `res/xml/data_extraction_rules.xml` задає такі самі виключення окремо для `cloud-backup` та `device-transfer` на Android 12+. Це потрібно, оскільки поведінка `allowBackup=false` для перенесення між пристроями може відрізнятися у виробників. Формати й обмеження описано в [офіційній документації Android](https://developer.android.com/identity/data/autobackup).

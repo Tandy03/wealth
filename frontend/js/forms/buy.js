@@ -1,8 +1,7 @@
 (function () {
-const state = stateStore.getState();
 // Buy form and modal lifecycle.
 function openBuyMoreModal(assetId) {
-  const asset = state.data?.assets?.find((item) => item.id === assetId);
+  const asset = stateStore.selectAssets()?.find((item) => item.id === assetId);
 
   if (!asset) {
     showNotice("Asset not found.");
@@ -20,7 +19,7 @@ function openBuyMoreModal(assetId) {
     return;
   }
 
-  state.buyingAssetId = assetId;
+  stateStore.setUI({ buyingAssetId: assetId });
   const buyQuantityInput = form.querySelector('[name="quantity"]');
   if (buyQuantityInput) {
     const supportsFractions = ["etf", "stock", "crypto_earn"].includes(asset.type);
@@ -86,7 +85,7 @@ function setupBuyMoreModal() {
   const close = () => {
     modal.classList.remove("open");
 
-    state.buyingAssetId = null;
+    stateStore.setUI({ buyingAssetId: null });
 
     form.reset();
   };
@@ -130,7 +129,7 @@ function setupBuyMoreModal() {
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
 
-    const assetId = state.buyingAssetId;
+    const assetId = stateStore.selectUI('buyingAssetId');
 
     if (!assetId) {
       showNotice("Asset was not selected.");
@@ -160,7 +159,7 @@ function setupBuyMoreModal() {
       return;
     }
 
-    const purchasedAsset = state.data.assets.find((asset) => asset.id === assetId);
+    const purchasedAsset = stateStore.selectAssets().find((asset) => asset.id === assetId);
     if (!["etf", "stock", "crypto_earn"].includes(purchasedAsset?.type) && !Number.isInteger(purchase.quantity)) {
       showNotice("Quantity must be a whole number.");
 

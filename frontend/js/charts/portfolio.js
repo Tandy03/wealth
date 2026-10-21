@@ -1,5 +1,4 @@
 (function () {
-const state = stateStore.getState();
 let assetAllocationChart = null, allocationMode = null;
 const stackedDoughnutLegendPlugin = window.FinoChartPlugins.stackedDoughnutLegend;
 function renderAssetAllocationChart(state = stateStore.getState()) {
@@ -8,7 +7,7 @@ function renderAssetAllocationChart(state = stateStore.getState()) {
   const { toUAH, getAvailableQuantity, getCurrentPrice } = createRenderServices(state);
   const mode = document.querySelector('#asset-allocation-mode')?.value || 'assets';
   const allocation = new Map();
-  for (const asset of state.data?.assets || []) {
+  for (const asset of stateStore.selectAssets(state) || []) {
     if (asset.type === 'savings') continue;
     const value = toUAH(getAvailableQuantity(asset.id) * getCurrentPrice(asset), asset.currency);
     const label = mode === 'tools' ? String(asset.instrumentName || '').trim() || window.FinoI18n.t('Unassigned') : window.FinoI18n.t(typeLabels[asset.type] || asset.type);
@@ -69,8 +68,8 @@ function renderPortfolioHistoryChart(state = stateStore.getState()) {
 
   const mode = document.querySelector("#portfolio-history-mode")?.value || "value";
   const description = document.querySelector("#portfolio-history-description");
-  const assetsById = new Map((state.data.assets || []).map((asset) => [asset.id, asset]));
-  const movements = (state.data.transactions || [])
+  const assetsById = new Map((stateStore.selectAssets(state) || []).map((asset) => [asset.id, asset]));
+  const movements = (stateStore.selectTransactions(state) || [])
     .filter((transaction) => {
       const asset = assetsById.get(transaction.assetId);
       return asset?.type !== "savings" && transaction.date && ["BUY", "SELL"].includes(transaction.type);
@@ -96,14 +95,14 @@ function renderPortfolioHistoryChart(state = stateStore.getState()) {
   }
 
   const earnedEvents = [
-    ...(state.data.payments || [])
+    ...(stateStore.selectPayments(state) || [])
       .filter((payment) => payment.status === "received" || payment.status === "paid")
       .map((payment) => {
         const date = payment.receivedDate || String(payment.receivedAt || "").slice(0, 10) || payment.date;
         const maturityBasis = payment.type === "MATURITY" ? getMaturityCostBasis(payment.assetId) : 0;
         return { date, amount: toUAH(normalizeNumber(payment.amount) - maturityBasis, payment.currency) };
       }),
-    ...(state.data.sales || [])
+    ...(stateStore.selectSales(state) || [])
       .filter((sale) => sale.type !== "savings" && sale.sellDate)
       .map((sale) => ({
         date: sale.sellDate,
@@ -178,7 +177,7 @@ function renderPortfolioHistoryChart(state = stateStore.getState()) {
     const point = [...rates].reverse().find((item) => item.date <= date);
     return point && normalizeNumber(point.rate) > 0 ? normalizeNumber(point.rate) : null;
   };
-  const weeklyPerformance = window.PortfolioPerformance.buildWeeklyPerformance(state.data, {
+  const weeklyPerformance = window.PortfolioPerformance.buildWeeklyPerformance(stateStore.selectData(state), {
     today: getDateString(new Date()),
     exchangeRateOnDate: strictHistoricalRate,
   });
@@ -284,7 +283,7 @@ function renderAssetPriceHistoryChart(state = stateStore.getState()) {
   const maxTime = endDate ? endDate.getTime() - 1 : null;
 
   const groups = new Map();
-  (state.data.assets || [])
+  (stateStore.selectAssets(state) || [])
     .filter((asset) => getAvailableQuantity(asset.id) > 0 && asset.type !== "savings")
     .filter((asset) => ![asset.name, asset.symbol].some((value) => String(value || "").trim().toUpperCase() === "USDT"))
     .forEach((asset) => {
@@ -302,7 +301,7 @@ function renderAssetPriceHistoryChart(state = stateStore.getState()) {
   assetPriceHistoryChart?.destroy();
   assetPriceHistoryChart = null;
   const group = groups.get(select.value);
-  const history = group ? (state.data.priceHistory || [])
+  const history = group ? (stateStore.selectPriceHistory(state) || [])
     .filter((point) => group.assetIds.includes(point.assetId) && normalizeNumber(point.price) > 0)
     .map((point) => ({ ...point, timestamp: new Date(point.recordedAt || `${point.date}T00:00:00`).getTime() }))
     .filter((point) => Number.isFinite(point.timestamp))

@@ -1,5 +1,4 @@
 (function () {
-const state = stateStore.getState();
 // forms/sales.js
 function populateSellAssetSelect() {
   const select = document.querySelector("#sell-asset");
@@ -14,7 +13,7 @@ function populateSellAssetSelect() {
         </option>
     `;
 
-  const groups = Object.values(state.data.assets.reduce((result, asset) => {
+  const groups = Object.values(stateStore.selectAssets().reduce((result, asset) => {
     const available = getAvailableQuantity(asset.id);
     if (available <= 0 || asset.type === "novapay" || (asset.type === "deposit" && !asset.earlyWithdrawal)) return result;
     const key = `${asset.type}::${String(asset.name).trim().toLowerCase()}::${String(asset.currency || "UAH").toUpperCase()}`;
@@ -38,7 +37,7 @@ function populateSellAssetSelect() {
 
 function getSelectedSellAssets() {
   const ids = String(document.querySelector("#sell-asset")?.value || "").split(",").filter(Boolean);
-  return state.data.assets
+  return stateStore.selectAssets()
     .filter((asset) => ids.includes(asset.id))
     .sort((a, b) => String(a.purchaseDate || "").localeCompare(String(b.purchaseDate || "")));
 }
@@ -148,7 +147,7 @@ function openSellAssetModal(assetId = null) {
   if (!select || !modal) return;
   if (assetId) {
     const ids = Array.isArray(assetId) ? assetId : [assetId];
-    const assets = state.data.assets.filter(item => ids.includes(item.id) && getAvailableQuantity(item.id) > 0 && item.type !== 'novapay' && (item.type !== 'deposit' || item.earlyWithdrawal));
+    const assets = stateStore.selectAssets().filter(item => ids.includes(item.id) && getAvailableQuantity(item.id) > 0 && item.type !== 'novapay' && (item.type !== 'deposit' || item.earlyWithdrawal));
     if (!assets.length) return;
     // Existing sale commands require a single currency; let the existing select
     // choose that currency when the displayed card spans several currencies.

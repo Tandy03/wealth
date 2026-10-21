@@ -64,6 +64,34 @@ test('partial sale then purchase preserves remaining cost, averages and the next
   assert.equal(point.unrealized, 400);
 });
 
+test('a purchase after a partial sale rebuilds planned payouts without changing receipts or historical sales', async () => {
+  const h = memory(), service = createService(h.repository);
+  const asset = await service.createAsset({ ...stock(), name: 'Bond', type: 'ovdp', currency: 'UAH',
+    isin: 'UA1234567890', purchasePrice: 1000, maturityDate: '2027-12-01',
+    coupons: [{ date: '2026-01-20', amountPerUnit: 50 }, { date: '2027-06-01', amountPerUnit: 50 }] });
+  const data = h.snapshot();
+  const receipt = data.payments.find(payment => payment.type === 'COUPON' && payment.date === '2026-01-20');
+  receipt.status = 'received'; receipt.receivedDate = '2026-01-20';
+  await h.repository.saveData(data);
+  await service.sellAsset({ assetId: asset.id, quantity: 5, sellPrice: 1200, sellDate: '2026-02-01' });
+  const before = h.snapshot();
+  const plannedCoupon = payments => payments.find(payment => payment.type === 'COUPON' && payment.date === '2027-06-01');
+  assert.equal(plannedCoupon(before.payments).amount, 250);
+  assert.equal(before.sales[0].costBasis, 5000);
+  assert.equal(before.sales[0].profit, 1000);
+  assert.equal(before.sales[0].roi, 20);
+  const bought = await service.buyMoreAsset(asset.id, { quantity: 5, purchasePrice: 2000, purchaseDate: '2026-03-01' });
+  const after = h.snapshot();
+  assert.equal(bought.asset.remainingQuantity, 10);
+  assert.equal(bought.asset.remainingCostBasis, 15000);
+  assert.equal(plannedCoupon(after.payments).amount, 500);
+  assert.equal(plannedCoupon(after.payments).id, plannedCoupon(before.payments).id);
+  assert.equal(after.payments.find(payment => payment.type === 'MATURITY').amount, 10000);
+  assert.deepEqual(after.payments.filter(rules.received), before.payments.filter(rules.received));
+  assert.deepEqual(after.sales, before.sales);
+  assert.deepEqual(after.transactions.filter(transaction => transaction.type === 'SELL'), before.transactions.filter(transaction => transaction.type === 'SELL'));
+});
+
 test('legacy purchase fallback stays stable across a later purchase and repeated normalization', async () => {
   const h = memory();
   const data = model.createEmptyState();

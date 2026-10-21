@@ -8,6 +8,18 @@ Outbox не додає endpoint-ів. Локальні помилки `OUTBOX_ST
 
 Публікацію відповіді у frontend контролюють store-команди, описані у [FRONTEND-STATE.md](FRONTEND-STATE.md). Локальний `STALE_STATE` (`conflict`, 409) означає, що save acknowledgement застарів для поточного snapshot/account; це не нова HTTP-відповідь сервера. Помилка містить `applied:false` та явні save metadata, тож UI не очищає draft і не повторює запис автоматично.
 
+## Явні файли портфеля
+
+| Метод / шлях | Facade web/native | Вхід | Успіх |
+| --- | --- | --- | --- |
+| `GET /api/portfolio/export` | `exportPortfolio()` | Без параметрів | `200` JSON envelope `format/version/createdAt/document/checksum`, `Cache-Control: no-store` |
+| `POST /api/portfolio/import/preview` | `previewPortfolioImport(backup)` | `{backup: envelope}` | `200 {checksum, createdAt, counts, expected}`; без фінансового запису |
+| `POST /api/portfolio/import` | `restorePortfolio({backup, expected})` | Envelope та hash призначення з preview | `200 {success:true, checksum, persistence:{savedLocally, savedRemotely, backupSaved}}` |
+
+Спільна валідація — `shared/portfolio-transfer.js`: UTF-8 JSON до 1 MiB, format/version, SHA-256 canonical envelope, document validation й legacy-нормалізація. Domain-перевірки restore: порожній фінансовий документ, scope та checksum поточного призначення; backend бере queue лише через `domain/mutation.runMutation`, native — через свою `queued`. Нормальний GET не перетворюється на експорт і не записує файл. UI попереджає й запитує згоду перед початком експорту; browser download та Android Storage Access Framework потребують явної дії користувача.
+
+Помилки: `400 VALIDATION_FAILURE / validation` (формат, розмір, hash, некоректна історія), `409 RESTORE_NOT_EMPTY / conflict`, `409 RESTORE_PREVIEW_STALE / conflict`, `503 STORAGE_FAILURE / storage_failure`; транспорт зберігає чинні host/origin/session та body-limit помилки. HTTP має заголовок request ID, native зберігає той самий публічний error contract. Restore не включено в outbox як replayable фінансовий факт: повтор після вже виконаного запису відхиляється як непорожнє призначення, не створює дублів. Повідомлення про локальний успіх не підтверджує upload у Drive. Формат і сценарії: [PORTFOLIO-FILES.md](PORTFOLIO-FILES.md).
+
 ## Відповідальність перевірок
 
 | Рівень | Модулі / перевірки | Відповідальність |

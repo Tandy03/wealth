@@ -1,16 +1,17 @@
-// Bind DOM-free services to the application's single state object.
+// Bind live services to store readers; render services stay bound to their supplied snapshot.
 function createRenderServices(snapshot) {
-  const market = FinoMarketData.createService({ state: snapshot, exchangeRates: EXCHANGE_RATES, historicalRates: HISTORICAL_RATE_FALLBACKS, values: FinoValues, getCustomRange: () => snapshot.marketCustomRange });
-  const finance = FinoPortfolioFinance.createService({ state: snapshot, market, values: FinoValues });
+  const readers = { selectData: () => stateStore.selectData(snapshot), selectUI: key => stateStore.selectUI(key, snapshot) };
+  const market = FinoMarketData.createService({ ...readers, exchangeRates: EXCHANGE_RATES, historicalRates: HISTORICAL_RATE_FALLBACKS, values: FinoValues, getCustomRange: () => readers.selectUI('marketCustomRange') });
+  const finance = FinoPortfolioFinance.createService({ ...readers, market, values: FinoValues });
   return { ...market, ...finance,
-    ...FinoCashflow.createService({ state: snapshot, market, finance, values: FinoValues }),
-    ...FinoWalletAnalytics.createService({ state: snapshot, values: FinoValues, categories: WALLET_CATEGORIES }),
+    ...FinoCashflow.createService({ ...readers, market, finance, values: FinoValues }),
+    ...FinoWalletAnalytics.createService({ ...readers, values: FinoValues, categories: WALLET_CATEGORIES }),
   };
 }
-const marketData = FinoMarketData.createService({ state, exchangeRates: EXCHANGE_RATES, historicalRates: HISTORICAL_RATE_FALLBACKS, values: FinoValues, getCustomRange: () => state.marketCustomRange });
-const portfolioFinance = FinoPortfolioFinance.createService({ state, market: marketData, values: FinoValues });
-const cashflow = FinoCashflow.createService({ state, market: marketData, finance: portfolioFinance, values: FinoValues });
-const walletAnalytics = FinoWalletAnalytics.createService({ state, values: FinoValues, categories: WALLET_CATEGORIES });
+const marketData = FinoMarketData.createService({ selectData: stateStore.selectData, selectUI: stateStore.selectUI, exchangeRates: EXCHANGE_RATES, historicalRates: HISTORICAL_RATE_FALLBACKS, values: FinoValues, getCustomRange: () => stateStore.selectUI('marketCustomRange') });
+const portfolioFinance = FinoPortfolioFinance.createService({ selectData: stateStore.selectData, selectUI: stateStore.selectUI, market: marketData, values: FinoValues });
+const cashflow = FinoCashflow.createService({ selectData: stateStore.selectData, selectUI: stateStore.selectUI, market: marketData, finance: portfolioFinance, values: FinoValues });
+const walletAnalytics = FinoWalletAnalytics.createService({ selectData: stateStore.selectData, selectUI: stateStore.selectUI, values: FinoValues, categories: WALLET_CATEGORIES });
 const { normalizeNumber, getDateString, isDateInRange } = FinoValues;
 const { toUAH, getExchangeRateOnDate, toUAHAtDate, getAssetPurchaseDate, getAssetPurchaseExchangeRate, toUAHPurchaseCost, convertCurrency, marketParamsForRange, dateDaysAgo, currencyParamsForRange, resolveMarketSymbol, valuesForDates } = marketData;
 const { getRebalanceGroups, calculateRebalancePlan, getAssetInvestedUah, getAssetInvestedUsd, getSoldQuantity, getCryptoEarnQuantity, getAvailableQuantity, getMaturityCostBasis, calculateInvested, calculateInvestedUsd, getCurrentPrice, calculatePortfolioValue, getUnrealizedPriceGrowth, getGroupedSaleCost } = portfolioFinance;

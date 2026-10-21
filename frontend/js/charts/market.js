@@ -1,5 +1,4 @@
 (function () {
-const state = stateStore.getState();
 // charts/market.js
 let marketPriceChart = null;
 
@@ -19,7 +18,7 @@ function populateMarketSymbols() {
   const datalist = document.querySelector("#market-symbols");
   if (!datalist) return;
   const suggestions = new Set([".INX", ".DJI", ".IXIC", "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "SPY", "QQQ", "SMH"]);
-  (state.data?.assets || [])
+  (stateStore.selectAssets() || [])
     .filter((asset) => ["stock", "etf"].includes(asset.type))
     .forEach((asset) => suggestions.add(String(asset.underlyingSymbol || asset.ticker || asset.symbol || asset.name || "").trim().toUpperCase()));
   const currencyOptions = [...marketCurrencies].map(([code, name]) => `<option value="${escapeHtml(code)}">${escapeHtml(name)} · ${escapeHtml(code)}/UAH · NBU</option>`);

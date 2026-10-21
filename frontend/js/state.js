@@ -21,8 +21,6 @@ const stateStore = FinoStateStore.createStore({ model: FinoStateModel,
   portfolioLoaded: false,
   purchaseExchangeRates: {},
 } });
-// Compatibility alias for existing forms and DOM-free services during incremental extraction.
-const state = stateStore.getState();
 
 const EXCHANGE_RATES = { ...window.FinoConstants.DEFAULT_EXCHANGE_RATES };
 

@@ -1,5 +1,4 @@
 (function () {
-const state = stateStore.getState();
 // forms/calculators.js
 function setupProfitCalculator() {
   const calculateButton = document.querySelector("#calculate-profit");
@@ -97,7 +96,7 @@ function setupRebalanceCalculator() {
     event.preventDefault();
     const name = String(new FormData(assetForm).get("name") || "").trim();
     if (!name) { assetForm.elements.name.setCustomValidity(window.FinoI18n.t('Asset name is required.')); assetForm.elements.name.reportValidity(); return; }
-    state.rebalanceDrafts.push({ id: `planned-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, label: name });
+    stateStore.setUI({ rebalanceDrafts: [...stateStore.selectUI('rebalanceDrafts'), { id: `planned-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, label: name }] });
     closeModal();
     renderRebalanceCalculator();
     window.FinoRebalanceDashboard.changed();

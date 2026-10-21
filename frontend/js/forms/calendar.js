@@ -1,9 +1,8 @@
 (function () {
-const state = stateStore.getState();
 // forms/calendar.js
 async function markPaymentAsReceived(paymentIds, button = null) {
   const ids = Array.isArray(paymentIds) ? paymentIds : [paymentIds];
-  const payments = ids.map((id) => state.data.payments.find((item) => item.id === id)).filter(Boolean);
+  const payments = ids.map((id) => stateStore.selectPayments().find((item) => item.id === id)).filter(Boolean);
 
   if (!payments.length) {
     showNotice("Payment not found.");
@@ -108,7 +107,9 @@ function setupCalendarNavigation() {
 
   if (previous) {
     previous.addEventListener("click", () => {
-      state.calendarDate.setMonth(state.calendarDate.getMonth() - 1);
+      const date = new Date(stateStore.selectUI('calendarDate'));
+      date.setMonth(date.getMonth() - 1);
+      stateStore.setUI({ calendarDate: date });
 
       renderCalendar();
     });
@@ -116,7 +117,9 @@ function setupCalendarNavigation() {
 
   if (next) {
     next.addEventListener("click", () => {
-      state.calendarDate.setMonth(state.calendarDate.getMonth() + 1);
+      const date = new Date(stateStore.selectUI('calendarDate'));
+      date.setMonth(date.getMonth() + 1);
+      stateStore.setUI({ calendarDate: date });
 
       renderCalendar();
     });
@@ -124,7 +127,7 @@ function setupCalendarNavigation() {
 
   if (today) {
     today.addEventListener("click", () => {
-      state.calendarDate = new Date();
+      stateStore.setUI({ calendarDate: new Date() });
 
       renderCalendar();
     });
@@ -144,7 +147,7 @@ function populateAssetSelect() {
         </option>
     `;
 
-  state.data.assets.forEach((asset) => {
+  stateStore.selectAssets().forEach((asset) => {
     const option = document.createElement("option");
 
     option.value = asset.id;
@@ -230,7 +233,7 @@ function setupNoteModal() {
 
     const assetId = formData.get("assetId");
 
-    const asset = state.data.assets.find((item) => item.id === assetId);
+    const asset = stateStore.selectAssets().find((item) => item.id === assetId);
 
     const note = {
       date: formData.get("date"),

@@ -58,6 +58,11 @@
       "bindings": []
     },
     {
+      "src": "/shared/portfolio-transfer.js",
+      "globals": ["FinoPortfolioTransfer"],
+      "bindings": []
+    },
+    {
       "src": "/shared/market-model.js",
       "globals": [
         "FinoMarketModel"
@@ -204,7 +209,6 @@
         "EXCHANGE_RATES",
         "HISTORICAL_RATE_FALLBACKS",
         "WALLET_CATEGORIES",
-        "state",
         "stateStore"
       ]
     },

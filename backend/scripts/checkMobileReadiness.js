@@ -21,6 +21,7 @@ async function main() {
   assert.equal(config.server.androidScheme, 'https', 'WebCrypto requires the HTTPS native origin.');
   assert.ok(!config.server.url, 'Native build must load its bundled assets.');
   assert.equal(config.android.allowMixedContent, false);
+  assert.equal(config.loggingBehavior, 'none', 'Native bridge payload logging must be disabled for financial records.');
   const frontend = path.join(root, 'frontend');
   const bundle = path.join(root, config.webDir);
   const entries = verifyAssets(root, bundle);
@@ -52,7 +53,7 @@ async function main() {
   const manifest = fs.readFileSync(path.join(root, 'android/app/src/main/AndroidManifest.xml'), 'utf8');
   assert.ok(manifest.includes('android:allowBackup="false"') && manifest.includes('android:fullBackupContent="@xml/backup_rules"') && manifest.includes('android:dataExtractionRules="@xml/data_extraction_rules"'), 'Android financial backup policy is missing.');
   for (const file of ['backup_rules.xml', 'data_extraction_rules.xml']) assert.ok(fs.existsSync(path.join(root, 'android/app/src/main/res/xml', file)), 'Android backup exclusion rules are missing.');
-  for (const plugin of ['GoogleDriveAuthPlugin', 'AppLockPlugin', 'FinoStoragePlugin']) {
+  for (const plugin of ['GoogleDriveAuthPlugin', 'AppLockPlugin', 'FinoStoragePlugin', 'PortfolioTransferPlugin']) {
     assert.ok(activity.includes('registerPlugin(' + plugin + '.class)'), 'A required Android plugin is not registered.');
   }
   console.log(`Mobile preflight passed: ${references} asset references, ${scripts.length + 1} JavaScript sources, native configuration and plugin registration.`);

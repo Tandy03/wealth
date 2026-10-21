@@ -1,9 +1,10 @@
 (function (root, factory) {
-  const api = factory();
+  const api = factory(typeof module === 'object' && module.exports ? require('./state-store') : root.FinoStateStore);
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.FinoWalletAnalytics = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
-  function createService({ state, values, categories }) {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (readers) {
+  function createService({ state, selectData, selectUI, values, categories }) {
+    ({ selectData, selectUI } = readers.createReader({ state, selectData, selectUI }));
     const { normalizeNumber, getDateString } = values;
     const WALLET_CATEGORIES = categories;
 function walletMonthKey(date = new Date()) {
@@ -14,12 +15,12 @@ function walletCategories(key) {
   return [...new Set([...WALLET_CATEGORIES, ...walletMonthView(key).customCategories])];
 }
 function walletMonthView(key) {
-  const month = state.data.wallet.months?.[key] || {};
+  const month = selectData().wallet.months?.[key] || {};
   return { ...month, plans: month.plans || {}, customCategories: month.customCategories || [], notes: month.notes || [] };
 }
 
 function walletExpenses(key) {
-  return (state.data.wallet.expenses || []).filter((expense) => String(expense.date).slice(0, 7) === key);
+  return (selectData().wallet.expenses || []).filter((expense) => String(expense.date).slice(0, 7) === key);
 }
 
 function walletCategoryTotal(key, category) {
@@ -29,7 +30,7 @@ function walletCategoryTotal(key, category) {
 }
 
 function walletExpenseDateBounds() {
-  const dates = (state.data.wallet.expenses || [])
+  const dates = (selectData().wallet.expenses || [])
     .filter((expense) => expense.category !== "Salary" && /^\d{4}-\d{2}-\d{2}$/.test(String(expense.date)))
     .map((expense) => expense.date)
     .sort();

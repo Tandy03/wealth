@@ -1,10 +1,9 @@
 (function () {
-const state = stateStore.getState();
 // forms/assets.js
 function populateInstrumentSelect(selectedName = "") {
   const select = document.querySelector("#asset-instrument");
   if (!select) return;
-  const instruments = [...DEFAULT_INSTRUMENTS, ...(state.data.instruments || [])]
+  const instruments = [...DEFAULT_INSTRUMENTS, ...(stateStore.selectInstruments() || [])]
     .filter((item, index, all) => all.findIndex((candidate) => candidate.name.toLowerCase() === item.name.toLowerCase()) === index);
   select.innerHTML = instruments.map((item) => `<option translate="no" value="${escapeHtml(item.name)}" data-instrument-type="${escapeHtml(item.type)}">${escapeHtml(item.name)} — ${escapeHtml(window.FinoI18n.t(item.type))}</option>`).join("") + '<option value="__new__">New instrument...</option>';
   if (selectedName && instruments.some((item) => item.name === selectedName)) select.value = selectedName;
@@ -20,8 +19,8 @@ function updateNewInstrumentFields() {
 }
 
 function openAssetTransactions(assetIds) {
-  state.assetDetailIds = assetIds;
-  const assets = state.data.assets.filter((asset) => assetIds.includes(asset.id));
+  stateStore.setUI({ assetDetailIds: assetIds });
+  const assets = stateStore.selectAssets().filter((asset) => assetIds.includes(asset.id));
   document.querySelector("#asset-transactions-title").textContent = assets[0]?.name || "Transactions";
   document.querySelector("#asset-transactions-title").setAttribute("translate", assets[0]?.name ? "no" : "yes");
   document.querySelector("#asset-hide-sales").checked = false;
@@ -38,7 +37,7 @@ function setupAssetTransactionsModal() {
 }
 
 async function executeHoldingAction(assetIds, action) {
-  const assets = state.data.assets.filter((asset) => assetIds.includes(asset.id));
+  const assets = stateStore.selectAssets().filter((asset) => assetIds.includes(asset.id));
   if (!assets.length) return showNotice("Holding not found.");
   if (action === "buy") {
     openBuyMoreModal(assets[0].id);
@@ -64,7 +63,7 @@ async function executeHoldingAction(assetIds, action) {
 }
 
 function openHoldingSelectionModal(assetIds, action) {
-  const holdings = state.data.assets.filter((asset) => assetIds.includes(asset.id) && getAvailableQuantity(asset.id) > 0);
+  const holdings = stateStore.selectAssets().filter((asset) => assetIds.includes(asset.id) && getAvailableQuantity(asset.id) > 0);
   if (!holdings.length) return showNotice("No available holdings found.");
   const instrumentGroups = groupHoldingsByInstrument(holdings);
   if (instrumentGroups.length === 1) {
@@ -74,7 +73,7 @@ function openHoldingSelectionModal(assetIds, action) {
   const modal = document.querySelector("#delete-holding-modal");
   const select = document.querySelector("#delete-holding-asset");
   if (!modal || !select) return;
-  state.holdingSelectionAction = action;
+  stateStore.setUI({ holdingSelectionAction: action });
   select.innerHTML = instrumentGroups.map((group) => `<option translate="no" value="${escapeHtml(group.assets.map((asset) => asset.id).join(","))}">${escapeHtml(holdingGroupLabel(group))}</option>`).join("");
   document.querySelector("#holding-selection-title").textContent = action === "buy" ? "Buy holding" : action === "edit" ? "Edit holding" : "Delete holding";
   const submit = document.querySelector("#holding-selection-submit");
@@ -94,13 +93,13 @@ function setupDeleteHoldingModal() {
     const assetIds = String(document.querySelector("#delete-holding-asset")?.value || "").split(",").filter(Boolean);
     if (!assetIds.length) return showNotice("Please select a holding.");
     close();
-    await executeHoldingAction(assetIds, state.holdingSelectionAction);
+    await executeHoldingAction(assetIds, stateStore.selectUI('holdingSelectionAction'));
   });
 }
 
 function openEditAssetModal(assetIds) {
   const ids = Array.isArray(assetIds) ? assetIds : [assetIds];
-  const assets = state.data.assets.filter((item) => ids.includes(item.id));
+  const assets = stateStore.selectAssets().filter((item) => ids.includes(item.id));
   const firstAsset = assets[0];
   const totalQuantity = assets.reduce((sum, item) => sum + normalizeNumber(item.quantity), 0);
   const totalCost = assets.reduce((sum, item) => sum + normalizeNumber(item.quantity) * normalizeNumber(item.purchasePrice), 0);
@@ -127,8 +126,8 @@ function openEditAssetModal(assetIds) {
     return;
   }
 
-  state.editingAssetId = asset.id;
-  state.editingAssetIds = assets.map((item) => item.id);
+  stateStore.setUI({ editingAssetId: asset.id });
+  stateStore.setUI({ editingAssetIds: assets.map((item) => item.id) });
 
   /*
    * Modal title
@@ -334,8 +333,8 @@ function setupModal() {
      * Reset editing state.
      */
 
-    state.editingAssetId = null;
-    state.editingAssetIds = [];
+    stateStore.setUI({ editingAssetId: null });
+    stateStore.setUI({ editingAssetIds: [] });
 
     setModalMode("add");
 
@@ -376,8 +375,8 @@ function setupModal() {
      * editing state remains.
      */
 
-    state.editingAssetId = null;
-    state.editingAssetIds = [];
+    stateStore.setUI({ editingAssetId: null });
+    stateStore.setUI({ editingAssetIds: [] });
 
     /*
      * Completely reset form.
@@ -437,7 +436,7 @@ function setupModal() {
      * Store ID of asset being edited.
      */
 
-    state.editingAssetId = asset.id;
+    stateStore.setUI({ editingAssetId: asset.id });
 
     /*
      * Reset form before
@@ -824,7 +823,7 @@ function setupModal() {
 
       submitButton.disabled = true;
 
-      submitButton.textContent = state.editingAssetId
+      submitButton.textContent = stateStore.selectUI('editingAssetId')
         ? "Saving changes..."
         : "Saving...";
     }
@@ -836,17 +835,17 @@ function setupModal() {
      */
 
     try {
-      if (state.editingAssetId) {
+      if (stateStore.selectUI('editingAssetId')) {
         /*
          * EDIT EXISTING ASSET
          */
 
-        if (state.editingAssetIds.length > 1) {
-          const command = financialCommand(form, 'mergeAssets', { assetIds: state.editingAssetIds });
+        if (stateStore.selectUI('editingAssetIds').length > 1) {
+          const command = financialCommand(form, 'mergeAssets', { assetIds: stateStore.selectUI('editingAssetIds') });
           const merged = await api.mergeAssets(command.body.assetIds, { operationId: command.body.operationId });
-          state.editingAssetId = merged.id;
+          stateStore.setUI({ editingAssetId: merged.id });
         }
-        await api.updateAsset(state.editingAssetId, asset);
+        await api.updateAsset(stateStore.selectUI('editingAssetId'), asset);
       } else {
         /*
          * CREATE NEW ASSET
@@ -858,7 +857,7 @@ function setupModal() {
           item.instrumentType || "",
           item.currency || "UAH",
         ].map((value) => String(value).trim().toLocaleLowerCase()).join("::");
-        const existingAsset = state.data.assets.find((item) => identity(item) === identity(asset));
+        const existingAsset = stateStore.selectAssets().find((item) => identity(item) === identity(asset));
         const body = existingAsset ? {
             quantity: asset.quantity,
             purchasePrice: asset.purchasePrice,
@@ -881,8 +880,8 @@ function setupModal() {
 
       clearCoupons();
 
-      state.editingAssetId = null;
-      state.editingAssetIds = [];
+      stateStore.setUI({ editingAssetId: null });
+      stateStore.setUI({ editingAssetIds: [] });
 
       setModalMode("add");
 
@@ -916,8 +915,8 @@ function setupModal() {
    * ==========================================================
    */
 
-  state.editingAssetId = null;
-  state.editingAssetIds = [];
+  stateStore.setUI({ editingAssetId: null });
+  stateStore.setUI({ editingAssetIds: [] });
 
   setModalMode("add");
 }

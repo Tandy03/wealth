@@ -2,6 +2,7 @@
   "appId": "com.tandy03.fino",
   "appName": "fino",
   "webDir": ".tmp/mobile-web",
+  "loggingBehavior": "none",
   "server": {
     "androidScheme": "https"
   },
