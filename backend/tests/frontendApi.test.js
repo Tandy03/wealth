@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fetchers = require('../../frontend/js/api/fetchers');
 const desktopApi = require('../../frontend/js/api/desktop');
 const mobileApi = require('../../frontend/js/api/mobile');
-const errors = require('../../frontend/js/errors');
+const errors = require('../../shared/errors');
 
 test('desktop and native failures expose the same metadata and diagnostic display', async () => {
   for (const failure of [new errors.ValidationError(), new errors.AuthRequiredError(), new errors.ConflictError(), new errors.StorageError(), new errors.RemoteUnavailableError({ status: 504, code: 'EXTERNAL_API_TIMEOUT' })]) {

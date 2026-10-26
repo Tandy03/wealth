@@ -1,4 +1,29 @@
-(function () {
+// Explicit ports are wired once by composition.js; this module publishes no browser globals.
+export function createControllersWallet({
+  window,
+  FinoWalletActions,
+  applyWalletPeriodPreset,
+  document,
+  getDateString,
+  normalizeNumber,
+  openExpenseModal,
+  openLoanModal,
+  renderDashboard,
+  renderLoans,
+  renderWallet,
+  renderWalletArchive,
+  renderWalletCharts,
+  renderWalletCurrent,
+  renderWalletExpenseList,
+  renderWalletMonthlyChart,
+  renderWalletNotes,
+  renderWalletPeriodChart,
+  runUiAction,
+  showConfirm,
+  showNotice,
+  stateStore,
+  walletActions,
+}) {
 const state = stateStore.getState();
 // Wallet mutations are committed through actions after a successful save.
 function bindWalletPlanActions(body, key) {
@@ -53,6 +78,21 @@ function bindWalletNoteActions(list, key) {
   })));
 }
 function bindLoanActions(list) {
+  for (const [action, archived] of [['archive', true], ['restore', false]]) {
+    list.querySelectorAll(`[data-${action}-loan]`).forEach(button => button.addEventListener('click', () => runUiAction(async () => {
+      if (button.disabled) return;
+      button.disabled = true;
+      try {
+        await walletActions.mutate(wallet => {
+          const loan = wallet.loans.find(item => item.id === button.dataset[`${action}Loan`]);
+          if (!loan) throw new Error('Loan not found.');
+          if (archived && (loan.status !== 'paid' || normalizeNumber(loan.balance) > 0)) return;
+          loan.archived = archived;
+        });
+        renderLoans();
+      } finally { button.disabled = false; }
+    })));
+  }
   list.querySelectorAll('[data-repay-loan]').forEach(button => button.addEventListener('click', () => runUiAction(async () => {
     const id = button.dataset.repayLoan;
     const amount = normalizeNumber(list.querySelector(`[data-loan-payment="${id}"]`)?.value);
@@ -90,13 +130,20 @@ function setupWalletNavigation() {
   document.querySelector("#open-wallet")?.addEventListener("click", () => {
     investments.hidden = true;
     walletApp.hidden = false;
-    document.querySelectorAll(".wallet-tab").forEach((item) => item.classList.toggle("active", item.dataset.walletTab === "current"));
-    document.querySelectorAll(".wallet-page").forEach((page) => page.classList.toggle("active", page.id === "wallet-current"));
+    if (!window.matchMedia('(max-width: 700px)').matches) {
+      document.querySelectorAll(".wallet-tab").forEach((item) => item.classList.toggle("active", item.dataset.walletTab === "current"));
+      document.querySelectorAll(".wallet-page").forEach((page) => page.classList.toggle("active", page.id === "wallet-current"));
+    }
     renderWallet();
+    if (window.matchMedia('(max-width: 700px)').matches) walletApp.querySelector('.wallet-tab.active')?.click();
   });
   document.querySelector("#open-investments")?.addEventListener("click", () => {
     walletApp.hidden = true;
     investments.hidden = false;
+    if (window.matchMedia('(max-width: 700px)').matches) {
+      (investments.querySelector('.nav-item.active') || investments.querySelector('[data-section="dashboard"]'))?.click();
+      return;
+    }
     document.querySelectorAll("#investments-app .nav-item").forEach((item) => item.classList.toggle("active", item.dataset.section === "dashboard"));
     document.querySelectorAll("#investments-app .page-section").forEach((page) => page.classList.toggle("active", page.id === "dashboard-section"));
     const title = document.querySelector("#page-title");
@@ -128,5 +175,5 @@ function setupWalletNavigation() {
   });
 
 }
-Object.assign(window, { bindWalletPlanActions, bindWalletExpenseActions, bindWalletNoteActions, bindLoanActions, setupWalletNavigation });
-})();
+return { bindLoanActions, bindWalletExpenseActions, bindWalletNoteActions, bindWalletPlanActions, setupWalletNavigation };
+}

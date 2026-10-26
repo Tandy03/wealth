@@ -1,8 +1,5 @@
-(function (root, factory) {
-  const api = factory(typeof module === 'object' && module.exports ? require('./state-store') : root.FinoStateStore);
-  if (typeof module === 'object' && module.exports) module.exports = api;
-  else root.FinoWalletAnalytics = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (readers) {
+import readers from './state-store.js';
+const implementation = (function (readers) {
   function createService({ state, selectData, selectUI, values, categories }) {
     ({ selectData, selectUI } = readers.createReader({ state, selectData, selectUI }));
     const { normalizeNumber, getDateString } = values;
@@ -65,4 +62,6 @@ function getLoanSchedule(loan) {
     return { walletMonthKey, walletMonth: walletMonthView, walletMonthView, walletCategories, walletExpenses, walletCategoryTotal, walletExpenseDateBounds, shiftWalletDate, getLoanSchedule };
   }
   return { createService };
-});
+})(readers);
+export default implementation;
+export const { createService } = implementation;

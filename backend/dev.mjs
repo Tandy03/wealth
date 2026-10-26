@@ -1,0 +1,12 @@
+import { createServer } from 'vite';
+import { createRequire } from 'node:module';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+const require=createRequire(import.meta.url);
+require('./config/loadEnv');
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const vite=await createServer({configFile:path.join(root,'vite.config.mjs'),configLoader:'native',appType:'custom'});
+const app=require('./app').createApp({frontend:{directory:path.join(root,'frontend'),middleware:vite.middlewares,transformHtml:(url,html)=>vite.transformIndexHtml(url,html)}});
+const server=app.listen(Number(process.env.PORT||3000),'127.0.0.1',()=>console.log('Fino with Vite: http://localhost:'+server.address().port));
+server.on('error',error=>{console.error('Could not start the local dev server:',error.code);void vite.close();process.exitCode=1;});
+for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>{server.close();void vite.close().then(()=>process.exit());});

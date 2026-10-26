@@ -1,8 +1,5 @@
-(function (root, factory) {
-  const api = factory();
-  if (typeof module === 'object' && module.exports) module.exports = api;
-  else root.FinoWalletActions = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+
+const implementation = (function () {
   function month(wallet, key) {
     wallet.months ||= {};
     const result = wallet.months[key] ||= {};
@@ -40,4 +37,6 @@
     }
   }
   return { createService, month, normalizeCategories, cleanupCategories };
-});
+})();
+export default implementation;
+export const { cleanupCategories, createService, month, normalizeCategories } = implementation;

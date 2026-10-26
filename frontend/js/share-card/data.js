@@ -1,12 +1,9 @@
-(function (root, factory) {
-  const node = typeof module === 'object' && module.exports;
-  const api = factory(node ? require('../../../shared/state-model') : root.FinoStateModel,
-    node ? require('../market-data') : root.FinoMarketData,
-    node ? require('../analytics/portfolio-finance') : root.FinoPortfolioFinance,
-    node ? require('../cashflow') : root.FinoCashflow, node ? require('../analytics/values') : root.FinoValues);
-  if (node) module.exports = api;
-  else root.FinoPortfolioShare = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (model, marketModule, financeModule, cashflowModule, values) {
+import model from '../../../shared/state-model.js';
+import marketModule from '../market-data.js';
+import financeModule from '../analytics/portfolio-finance.js';
+import cashflowModule from '../cashflow.js';
+import values from '../analytics/values.js';
+const implementation = (function (model, marketModule, financeModule, cashflowModule, values) {
   const periods = ['current', '1m', '3m', '6m', '1y', 'ytd', 'all', 'custom'];
   const metrics = ['value', 'invested', 'profit', 'return', 'xirr', 'realized', 'unrealized', 'count'];
   function range(period, today, custom = {}) {
@@ -83,4 +80,6 @@
     };
   }
   return { periods, metrics, range, createReport };
-});
+})(model, marketModule, financeModule, cashflowModule, values);
+export default implementation;
+export const { createReport, metrics, periods, range } = implementation;

@@ -1,8 +1,5 @@
-(function (root, factory) {
-  const api = factory();
-  if (typeof module === 'object' && module.exports) module.exports = api;
-  else if (root.FinoPortfolioShare) root.FinoPortfolioShare.card = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+
+const implementation = (function () {
   const labels = { value: 'Portfolio value', invested: 'Total invested', profit: 'Profit', return: 'Return', xirr: 'XIRR', realized: 'Realized result', unrealized: 'Unrealized result', count: 'Asset count' };
   const periodLabels = { current: 'Current', '1m': '1 month', '3m': '3 months', '6m': '6 months', '1y': '1 year', ytd: 'Year to date', all: 'All time', custom: 'Custom period' };
   const xml = text => String(text).replace(/[<>&"']/g, char => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' })[char]);
@@ -71,7 +68,7 @@
         offset += share * circumference;
         const column = Math.floor(i / Math.max(1, legendRows)), x = 428 + column * 294, ly = y + 44 + i % Math.max(1, legendRows) * lineHeight;
         out.push(`<circle cx="${x}" cy="${ly - 6}" r="6" fill="${fill}"/>`);
-        const label = locale === 'uk' && item.type === 'stock' ? 'Stocks' : typeLabels[item.type] || t('Other');
+        const label = typeLabels[item.type] || t('Other');
         text(t(label), x + 18, ly, 20, c.text, 400, legendColumns === 2 ? 172 : 392);
         text(new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(share * 100) + '%', legendColumns === 2 ? x + 202 : 927, ly, 18, c.muted, 400, 76);
       });
@@ -95,4 +92,6 @@
     return out.join('');
   }
   return { labels, periodLabels, themeTokens, render };
-});
+})();
+export default implementation;
+export const { labels, periodLabels, render, themeTokens } = implementation;

@@ -1,9 +1,7 @@
-(function (root, factory) {
-  const node = typeof module === 'object' && module.exports;
-  const api = factory(node ? require('../../../shared/portfolio-rules') : root.FinoPortfolioRules, node ? require('../../../shared/state-contract') : root.FinoStateContract, typeof module === 'object' && module.exports ? require('../state-store') : root.FinoStateStore);
-  if (typeof module === 'object' && module.exports) module.exports = api;
-  else root.FinoPortfolioFinance = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (rules, contract, readers) {
+import rules from '../../../shared/portfolio-rules.js';
+import contract from '../../../shared/state-contract.js';
+import readers from '../state-store.js';
+const implementation = (function (rules, contract, readers) {
   function createService({ state, selectData, selectUI, market, values }) {
     ({ selectData, selectUI } = readers.createReader({ state, selectData, selectUI }));
     const { normalizeNumber, getDateString } = values;
@@ -192,4 +190,6 @@ function calculateRebalancePlan(targets) {
     return { valuation, concentration, getRebalanceGroups, calculateRebalancePlan, getAssetInvestedUah, getAssetInvestedUsd, getSoldQuantity, getCryptoEarnQuantity, getAvailableQuantity, getMaturityCostBasis, calculateInvested, calculateInvestedUsd, getCurrentPrice, calculatePortfolioValue, getUnrealizedPriceGrowth, getGroupedSaleCost };
   }
   return { createService };
-});
+})(rules, contract, readers);
+export default implementation;
+export const { createService } = implementation;

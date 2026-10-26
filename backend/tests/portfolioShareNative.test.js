@@ -16,7 +16,7 @@ class Reader {
 function setup(plugin, extra = {}) {
   const window = { Blob, File, FileReader: Reader, navigator: { share() { assert.fail('Native path used browser share'); } }, Capacitor: { isNativePlatform: () => true, isPluginAvailable: id => id === 'PortfolioShare', Plugins: { PortfolioShare: plugin } }, ...extra };
   const document = { createElement() { assert.fail('Native path created browser download'); } };
-  return { adapter: platform.create({ window, document }), window, document };
+  return { adapter: platform.create({ window, document, nativeApi: extra.mobileApi }), window, document };
 }
 const saved = { status: 'saved', saved: true, cancelled: false };
 const shared = { status: 'dialog-closed', opened: true, deliveryConfirmed: false };

@@ -133,7 +133,7 @@ test('platform fallback never treats Android WebView as a browser download and s
   assert.equal(platform.canShare(file), true); await platform.share(file);
   assert.deepEqual(Object.keys(shared), ['files']); assert.equal(shared.files[0].name, file.name);
   platform.download(file, file.name); assert.equal(clicked, 1); platform.release(); assert.deepEqual(revoked, ['blob:test']);
-  const native = platformModule.create({ window: { ...window, mobileApi: {} }, document });
+  const native = platformModule.create({ window, nativeApi: {}, document });
   assert.equal(native.supported, false); assert.equal(native.canShare(file), false);
 });
 test('PNG rasterization waits for the font promise, uses one 1080 canvas and releases temporary resources on completion and cancellation', async () => {

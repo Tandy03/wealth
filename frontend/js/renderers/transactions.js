@@ -1,3 +1,15 @@
+// Explicit ports are wired once by composition.js; this module publishes no browser globals.
+export function createRenderersTransactions({
+  FinoI18n,
+  createRenderServices,
+  document,
+  escapeHtml,
+  formatDate,
+  money,
+  normalizeNumber,
+  paymentTypeLabel,
+  stateStore,
+}) {
 // renderers/transactions.js
 function renderTransactions(state = stateStore.getState()) {
   const { getMaturityCostBasis, getTransactionEffectiveDate } = createRenderServices(state);
@@ -61,7 +73,7 @@ function renderTransactions(state = stateStore.getState()) {
     .map((tx) => {
       const payment = paymentsById.get(tx.paymentId);
       const asset = assetsById.get(tx.assetId) || assetsById.get(payment?.assetId);
-      const assetName = name(tx.assetName) || name(asset?.name) || name(payment?.assetName) || window.FinoI18n.t('Asset unavailable');
+      const assetName = name(tx.assetName) || name(asset?.name) || name(payment?.assetName) || FinoI18n.t('Asset unavailable');
       const isSale = tx.type === "SELL";
       const isPayment = tx.isPayment || ["DIVIDEND", "COUPON", "MATURITY"].includes(tx.type);
 
@@ -142,4 +154,6 @@ function renderTransactions(state = stateStore.getState()) {
                 `;
     })
     .join("");
+}
+return { renderTransactions };
 }

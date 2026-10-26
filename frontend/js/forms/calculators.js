@@ -1,4 +1,17 @@
-(function () {
+// Explicit ports are wired once by composition.js; this module publishes no browser globals.
+export function createFormsCalculators({
+  FinoI18n,
+  FinoRebalanceDashboard,
+  FormData,
+  document,
+  renderAssetAllocationChart,
+  renderAssetPriceHistoryChart,
+  renderPortfolioHistoryChart,
+  renderProfitCalculator,
+  renderRebalanceCalculator,
+  requestAnimationFrame,
+  stateStore,
+}) {
 // forms/calculators.js
 function setupProfitCalculator() {
   const calculateButton = document.querySelector("#calculate-profit");
@@ -52,6 +65,13 @@ function setupProfitCalculator() {
   allocationMode?.addEventListener("change", () => renderAssetAllocationChart());
   document.querySelector('#concentration-basis')?.addEventListener('change', () => renderProfitCalculator());
   document.querySelector("#asset-price-history-select")?.addEventListener("change", () => renderAssetPriceHistoryChart());
+  const priceAppearance = document.querySelector('#asset-price-history-appearance');
+  priceAppearance?.addEventListener('click', event => {
+    const button = event.target.closest('[data-price-chart-style]');
+    if (!button || button.getAttribute('aria-pressed') === 'true' || !['real', 'smooth'].includes(button.dataset.priceChartStyle)) return;
+    priceAppearance.querySelectorAll('[data-price-chart-style]').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+    renderAssetPriceHistoryChart(stateStore.getState(), true);
+  });
   const priceFrom = document.querySelector("#asset-price-history-from");
   const priceTo = document.querySelector("#asset-price-history-to");
   [priceFrom, priceTo].forEach(input => input?.addEventListener("change", () => renderAssetPriceHistoryChart()));
@@ -63,11 +83,11 @@ function setupProfitCalculator() {
 }
 
 function updateRebalanceTotal() {
-  window.FinoRebalanceDashboard.update();
+  FinoRebalanceDashboard.update();
 }
 
 function calculateRebalance(event) {
-  window.FinoRebalanceDashboard.calculate(event);
+  FinoRebalanceDashboard.calculate(event);
 }
 
 function setupRebalanceCalculator() {
@@ -82,7 +102,7 @@ function setupRebalanceCalculator() {
   if (form) {
     form.addEventListener("submit", calculateRebalance);
   }
-  document.querySelector('#normalize-rebalance')?.addEventListener('click', () => window.FinoRebalanceDashboard.normalize());
+  document.querySelector('#normalize-rebalance')?.addEventListener('click', () => FinoRebalanceDashboard.normalize());
 
   document.querySelector("#add-rebalance-asset")?.addEventListener("click", () => {
     modal?.classList.add("open");
@@ -95,12 +115,12 @@ function setupRebalanceCalculator() {
   assetForm?.addEventListener("submit", (event) => {
     event.preventDefault();
     const name = String(new FormData(assetForm).get("name") || "").trim();
-    if (!name) { assetForm.elements.name.setCustomValidity(window.FinoI18n.t('Asset name is required.')); assetForm.elements.name.reportValidity(); return; }
+    if (!name) { assetForm.elements.name.setCustomValidity(FinoI18n.t('Asset name is required.')); assetForm.elements.name.reportValidity(); return; }
     stateStore.setUI({ rebalanceDrafts: [...stateStore.selectUI('rebalanceDrafts'), { id: `planned-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, label: name }] });
     closeModal();
     renderRebalanceCalculator();
-    window.FinoRebalanceDashboard.changed();
+    FinoRebalanceDashboard.changed();
   });
 }
-Object.assign(window, { setupProfitCalculator, updateRebalanceTotal, calculateRebalance, setupRebalanceCalculator });
-})();
+return { calculateRebalance, setupProfitCalculator, setupRebalanceCalculator, updateRebalanceTotal };
+}

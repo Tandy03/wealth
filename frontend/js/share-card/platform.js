@@ -1,8 +1,5 @@
-(function (root, factory) {
-  const api = factory();
-  if (typeof module === 'object' && module.exports) module.exports = api;
-  else if (root.FinoPortfolioShare) root.FinoPortfolioShare.platform = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+
+const implementation = (function () {
   const active = new WeakSet(), maxBytes = 5 * 1024 * 1024;
   const cancelled = () => Object.assign(new Error('Export cancelled.'), { name: 'AbortError' });
   function nativePlugin(window) {
@@ -93,9 +90,9 @@
       if (canvas) { canvas.width = 0; canvas.height = 0; }
     }
   }
-  function create({ window, document, nativeBridge = null }) {
+  function create({ window, document, nativeBridge = null, nativeApi = null }) {
     let downloadUrl = null;
-    const native = Boolean(window.Capacitor?.isNativePlatform?.() || window.mobileApi);
+    const native = Boolean(window.Capacitor?.isNativePlatform?.() || nativeApi);
     const plugin = native && !nativeBridge ? nativePlugin(window) : null;
     if (plugin) nativeBridge = nativeAdapter(window, plugin);
     const supported = !native || Boolean(nativeBridge);
@@ -119,4 +116,6 @@
     return { native, supported, canShare, file, download, share, release };
   }
   return { png, create };
-});
+})();
+export default implementation;
+export const { create, png } = implementation;

@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const model = require('../../frontend/js/state-model');
+const model = require('../../shared/state-model');
 const { createStore } = require('../../frontend/js/state-store');
 const { createService, month } = require('../../frontend/js/controllers/wallet-actions');
 test('wallet actions serialize writes and failed storage never mutates the UI snapshot', async () => {

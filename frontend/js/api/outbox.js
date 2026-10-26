@@ -1,10 +1,7 @@
-(function (root, factory) {
-  const api = factory(typeof module === 'object' && module.exports ? require('../../../shared/operations') : root.FinoOperations,
-    typeof module === 'object' && module.exports ? require('../../../shared/errors') : root.FinoErrors,
-    typeof module === 'object' && module.exports ? require('../../../shared/state-model') : root.FinoStateModel);
-  if (typeof module === 'object' && module.exports) module.exports = api;
-  else root.FinoOutbox = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (operations, errors, model) {
+import operations from '../../../shared/operations.js';
+import errors from '../../../shared/errors.js';
+import model from '../../../shared/state-model.js';
+const implementation = (function (operations, errors, model) {
   const clone = value => JSON.parse(JSON.stringify(value));
   const states = ['queued', 'in-flight', 'outcome-unknown', 'confirmed', 'rejected', 'conflict'];
   const pending = entry => ['queued', 'in-flight', 'outcome-unknown'].includes(entry.state);
@@ -211,4 +208,6 @@
     };
   }
   return { createOutbox };
-});
+})(operations, errors, model);
+export default implementation;
+export const { createOutbox } = implementation;

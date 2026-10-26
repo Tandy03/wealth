@@ -1,12 +1,12 @@
-// Current-day USD display only; never changes the rebalance calculation or ledger.
-(function () {
-  const records = new Map();
+// Explicit ports are wired once by composition.js; this module publishes no browser globals.
+export function createRebalanceCurrencyHover({ FinoI18n, api, document }) {
+const records = new Map();
   const formatters = new Map();
   let value = null, quote = null, pending = null, failedDay = null, failedAt = 0, sequence = 0;
-  const t = key => window.FinoI18n.t(key);
+  const t = key => FinoI18n.t(key);
   function currency(amount, code) {
-    const key = window.FinoI18n.locale + ':' + code;
-    if (!formatters.has(key)) formatters.set(key, new Intl.NumberFormat(window.FinoI18n.locale, {
+    const key = FinoI18n.locale + ':' + code;
+    if (!formatters.has(key)) formatters.set(key, new Intl.NumberFormat(FinoI18n.locale, {
       style: 'currency', currency: code, currencyDisplay: 'narrowSymbol', minimumFractionDigits: 2, maximumFractionDigits: 2,
     }));
     return formatters.get(key).format(amount);
@@ -37,9 +37,9 @@
     host.setAttribute('aria-label', t('Total to invest') + ': ' + number.textContent + '. ' + t('Hover or tap to view today’s USD equivalent.'));
     if (!record.active) return;
     if (currentQuote) {
-      const date = new Intl.DateTimeFormat(window.FinoI18n.locale, { dateStyle: 'medium' }).format(new Date(currentQuote.day + 'T12:00:00Z'));
-      const rate = new Intl.NumberFormat(window.FinoI18n.locale, { maximumFractionDigits: 4 }).format(currentQuote.rate);
-      hint.textContent = window.FinoI18n.format('NBU rate for {date}: 1 USD = {rate} UAH.', { date, rate });
+      const date = new Intl.DateTimeFormat(FinoI18n.locale, { dateStyle: 'medium' }).format(new Date(currentQuote.day + 'T12:00:00Z'));
+      const rate = new Intl.NumberFormat(FinoI18n.locale, { maximumFractionDigits: 4 }).format(currentQuote.rate);
+      hint.textContent = FinoI18n.format('NBU rate for {date}: 1 USD = {rate} UAH.', { date, rate });
     } else hint.textContent = t(pending?.day === today() ? 'Loading today’s USD rate…' : 'Today’s USD rate is unavailable.');
   }
   function renderAll() { for (const record of records.values()) if (record.host.isConnected) render(record); }
@@ -94,5 +94,6 @@
   document.addEventListener('pointerdown', event => {
     for (const record of records.values()) if ((record.active || record.pinned) && !record.host.contains(event.target)) { record.pinned = false; show(record, false); }
   });
-  window.FinoRebalanceCurrencyHover = { update };
-})();
+  const FinoRebalanceCurrencyHover = { update };
+return { FinoRebalanceCurrencyHover };
+}

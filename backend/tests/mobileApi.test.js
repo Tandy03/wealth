@@ -330,7 +330,7 @@ test('compact journals migrate legacy entries, survive rollover and reject alter
   const local = fixture();
   local.priceHistory = Array.from({ length: 100 }, (_, index) => ({ assetId: 'bond', date: '2026-01-01', price: 1000 + index }));
   const metadata = { baseline: JSON.stringify(local), pendingUpload: true };
-  const entry = { snapshot: local, metadata, checksum: await require('../../frontend/js/sync-model').checksum({ snapshot: local, metadata }) };
+  const entry = { snapshot: local, metadata, checksum: await require('../../shared/sync-model').checksum({ snapshot: local, metadata }) };
   const h = harness({ local, metadata: false });
   h.storage.set('fino-journal-v1:test%40example.com', JSON.stringify({ version: 1, entries: [entry] }));
   await h.api.getData({ sync: false }); h.offline(true);
@@ -359,7 +359,7 @@ test('legacy journals with large full-document baselines remain recoverable', as
   local.priceHistory = Array.from({ length: 2500 }, (_, index) => ({ assetId: 'bond', date: '2026-01-01', price: 1000 + index }));
   const metadata = { baseline: JSON.stringify(local), pendingUpload: true };
   assert.ok(metadata.baseline.length > 100000);
-  const entry = { snapshot: local, metadata, checksum: await require('../../frontend/js/sync-model').checksum({ snapshot: local, metadata }) };
+  const entry = { snapshot: local, metadata, checksum: await require('../../shared/sync-model').checksum({ snapshot: local, metadata }) };
   const h = harness({ metadata: false });
   h.storage.set('fino-journal-v1:test%40example.com', JSON.stringify({ version: 1, entries: [entry] }));
   assert.equal((await h.api.getData({ sync: false })).priceHistory.length, 2500);

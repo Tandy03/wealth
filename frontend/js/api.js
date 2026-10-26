@@ -1,18 +1,32 @@
+// Explicit ports are wired once by composition.js; this module publishes no browser globals.
+export function createApi({
+  CustomEvent,
+  FinoDesktopApi,
+  FinoFetchers,
+  FinoMobileApi,
+  FinoOperations,
+  FinoOutbox,
+  FinoRequest,
+  document,
+  loadData,
+  mobileApi,
+  window,
+}) {
 // Compatibility facade: forms and controllers retain the existing api methods.
 const apiFetchers = FinoFetchers.createService({
-  fetch: (...args) => window.mobileApi ? window.FinoRequest.fetchWithTimeout(...args) : window.fetch(...args),
-  recoverSession: () => !window.mobileApi,
+  fetch: (...args) => mobileApi ? FinoRequest.fetchWithTimeout(...args) : window.fetch(...args),
+  recoverSession: () => !mobileApi,
 });
 const api = FinoMobileApi.createFacade({
   desktop: FinoDesktopApi.createService(apiFetchers),
-  mobile: FinoMobileApi.createService({ getAdapter: () => window.mobileApi, ...apiFetchers }),
-  isNative: () => Boolean(window.mobileApi),
+  mobile: FinoMobileApi.createService({ getAdapter: () => mobileApi, ...apiFetchers }),
+  isNative: () => Boolean(mobileApi),
   outbox: FinoOutbox.createOutbox({
-    getScope: () => window.mobileApi ? window.mobileApi.localCommandScope : 'desktop:' + window.location.origin,
+    getScope: () => mobileApi ? mobileApi.localCommandScope : 'desktop:' + window.location.origin,
     getContext: async () => {
-      if (window.mobileApi) {
-        const context = await window.mobileApi.getCommandContext();
-        return { ...context, storage: window.mobileApi.commandStorage, isCurrent: () => window.mobileApi.localAccountScope === context.account };
+      if (mobileApi) {
+        const context = await mobileApi.getCommandContext();
+        return { ...context, storage: mobileApi.commandStorage, isCurrent: () => mobileApi.localAccountScope === context.account };
       }
       return { scope: 'desktop:' + window.location.origin, storage: window.localStorage,
         lock: window.navigator.locks ? (key, action) => window.navigator.locks.request(key, action) : null };
@@ -26,11 +40,11 @@ const readApiJson = FinoFetchers.readJson;
 // A form retry keeps its command identity; an explicit reset starts a new intent.
 const financialCommandDrafts = new WeakMap(), financialCommandForms = new WeakSet();
 function financialCommand(form, method, body, target = null, options = {}) {
-  const operations = window.FinoOperations;
+  const operations = FinoOperations;
   const preview = { ...body, operationId: 'preview' };
   const args = method === 'mergeAssets' ? [body.assetIds, preview] : ['buyMoreAsset', 'markPaymentReceived'].includes(method) ? [target, preview] : [preview];
   const identity = options.identity || [method, target, operations.describe(method, args).command];
-  const scope = window.mobileApi ? window.mobileApi.localAccountScope || null : 'desktop';
+  const scope = mobileApi ? mobileApi.localAccountScope || null : 'desktop';
   const signature = operations.canonical([scope, identity]);
   if (!financialCommandForms.has(form)) {
     financialCommandForms.add(form);
@@ -48,4 +62,6 @@ function financialCommand(form, method, body, target = null, options = {}) {
   const command = { method, target, body: JSON.parse(JSON.stringify({ ...body, operationId: operations.newId() })) };
   drafts.set(slot, { signature, command });
   return expose(command);
+}
+return { financialCommand, api, apiFetchers, financialCommandDrafts, financialCommandForms, readApiJson };
 }

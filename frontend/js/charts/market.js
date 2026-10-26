@@ -1,4 +1,21 @@
-(function () {
+// Explicit ports are wired once by composition.js; this module publishes no browser globals.
+export function createChartsMarket({
+  FinoErrors,
+  FinoI18n,
+  api,
+  charts,
+  console,
+  currencyParamsForRange,
+  dateDaysAgo,
+  document,
+  escapeHtml,
+  formatMarketPrice,
+  getComputedStyle,
+  marketParamsForRange,
+  resolveMarketSymbol,
+  showNotice,
+  stateStore,
+}) {
 // charts/market.js
 let marketPriceChart = null;
 
@@ -86,7 +103,7 @@ async function renderMarketChart() {
     const textColor = styles.getPropertyValue("--muted").trim();
     const context = document.querySelector("#market-price-chart").getContext("2d");
     marketPriceChart?.destroy();
-    marketPriceChart = new Chart(context, {
+    marketPriceChart = new charts.current(context, {
       type: "line",
       data: {
         labels: values.map((point) => point.datetime),
@@ -119,7 +136,7 @@ async function renderMarketChart() {
         },
         scales: {
           x: { grid: { display: false }, ticks: { color: textColor, maxTicksLimit: 7, maxRotation: 0 } },
-          y: { position: "right", grid: { color: gridColor }, ticks: { color: textColor, callback: (value) => Number(value).toLocaleString(window.FinoI18n?.locale || "en") } },
+          y: { position: "right", grid: { color: gridColor }, ticks: { color: textColor, callback: (value) => Number(value).toLocaleString(FinoI18n?.locale || "en") } },
         },
       },
     });
@@ -138,7 +155,7 @@ function setupMarket() {
   api.getMarketCurrencies().then((result) => {
     (result.currencies || []).forEach((currency) => marketCurrencies.set(currency.code, currency.name));
     populateMarketSymbols();
-  }).catch((error) => console.warn("Could not load NBU currency list:", window.FinoErrors.diagnostics(error)));
+  }).catch((error) => console.warn("Could not load NBU currency list:", FinoErrors.diagnostics(error)));
   document.querySelector("#market-symbol-form")?.addEventListener("submit", (event) => {
     event.preventDefault();
     renderMarketChart();
@@ -169,6 +186,5 @@ function setupMarket() {
     renderMarketChart();
   });
 }
-
-Object.assign(window, { populateMarketSymbols, renderMarketChart, setupMarket });
-})();
+return { populateMarketSymbols, renderMarketChart, setupMarket };
+}

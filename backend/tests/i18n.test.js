@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { JSDOM } = require('jsdom');
-const source = fs.readFileSync(path.join(__dirname, '../../frontend/js/i18n.js'), 'utf8');
+const { createI18n } = require('../../frontend/js/i18n');
 const html = fs.readFileSync(path.join(__dirname, '../../frontend/index.html'), 'utf8');
 const flush = () => new Promise(setImmediate);
 async function setup(t, locale) {
@@ -12,7 +12,12 @@ async function setup(t, locale) {
   t.after(() => window.close());
   window.localStorage.setItem('fino-language', locale);
   window.Chart = class { constructor(canvas, config) { this.config = config; } };
-  window.eval(source.replace('  const dictionaries =', '  window.__translationRows = rows;\n  const dictionaries ='));
+  const charts = { current: window.Chart };
+  const localization = createI18n({ document: window.document, localStorage: window.localStorage, location: window.location, MutationObserver: window.MutationObserver, NodeFilter: window.NodeFilter, charts });
+  localization.initializeI18n();
+  window.FinoI18n = localization.FinoI18n;
+  window.__translationRows = localization.translationRows;
+  window.Chart = charts.current;
   await flush();
   return window;
 }

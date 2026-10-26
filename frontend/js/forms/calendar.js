@@ -1,4 +1,20 @@
-(function () {
+// Explicit ports are wired once by composition.js; this module publishes no browser globals.
+export function createFormsCalendar({
+  FinoErrors,
+  FormData,
+  api,
+  console,
+  document,
+  financialCommand,
+  getDateString,
+  loadData,
+  normalizeNumber,
+  renderCalendar,
+  renderDashboard,
+  renderProfitCalculator,
+  showNotice,
+  stateStore,
+}) {
 // forms/calendar.js
 async function markPaymentAsReceived(paymentIds, button = null) {
   const ids = Array.isArray(paymentIds) ? paymentIds : [paymentIds];
@@ -56,7 +72,7 @@ async function markPaymentAsReceived(paymentIds, button = null) {
     renderCalendar();
     renderProfitCalculator();
   } catch (error) {
-    console.error("MARK PAYMENT RECEIVED ERROR:", window.FinoErrors.diagnostics(error));
+    console.error("MARK PAYMENT RECEIVED ERROR:", FinoErrors.diagnostics(error));
 
     showNotice(error || "Failed to mark payment as received.");
 
@@ -104,34 +120,52 @@ function setupCalendarNavigation() {
   const next = document.querySelector("#next-month");
 
   const today = document.querySelector("#today-btn");
+  const moveToMonth = (year, month) => {
+    const current = stateStore.selectUI('calendarDate');
+    const selected = stateStore.selectUI('calendarSelectedDate');
+    const day = selected ? Number(selected.slice(-2)) : current.getDate();
+    const date = new Date(year, month, 1);
+    const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+    const selection = new Date(date.getFullYear(), date.getMonth(), Math.min(day, lastDay));
+    stateStore.setUI({ calendarDate: date, calendarSelectedDate: getDateString(selection) });
+    renderCalendar();
+  };
 
   if (previous) {
     previous.addEventListener("click", () => {
-      const date = new Date(stateStore.selectUI('calendarDate'));
-      date.setMonth(date.getMonth() - 1);
-      stateStore.setUI({ calendarDate: date });
-
-      renderCalendar();
+      const date = stateStore.selectUI('calendarDate');
+      moveToMonth(date.getFullYear(), date.getMonth() - 1);
     });
   }
 
   if (next) {
     next.addEventListener("click", () => {
-      const date = new Date(stateStore.selectUI('calendarDate'));
-      date.setMonth(date.getMonth() + 1);
-      stateStore.setUI({ calendarDate: date });
-
-      renderCalendar();
+      const date = stateStore.selectUI('calendarDate');
+      moveToMonth(date.getFullYear(), date.getMonth() + 1);
     });
   }
 
   if (today) {
     today.addEventListener("click", () => {
-      stateStore.setUI({ calendarDate: new Date() });
+      stateStore.setUI({ calendarDate: new Date(), calendarSelectedDate: getDateString(new Date()) });
 
       renderCalendar();
     });
   }
+  const picker = document.querySelector('#calendar-month-picker');
+  picker?.addEventListener('click', () => { try { picker.showPicker?.(); } catch (_) { /* Native input remains keyboard-accessible. */ } });
+  picker?.addEventListener('change', () => {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(picker.value)) return;
+    const [year, month] = picker.value.split('-').map(Number);
+    moveToMonth(year, month - 1);
+  });
+  document.querySelector('#calendar-help-btn')?.addEventListener('click', () => {
+    const title = document.querySelector('#event-modal-title');
+    title.textContent = 'Calendar guide';
+    title.setAttribute('translate', 'yes');
+    document.querySelector('#event-modal-content').innerHTML = document.querySelector('#calendar-help-template').innerHTML;
+    document.querySelector('#event-modal').classList.add('open');
+  });
 }
 
 function populateAssetSelect() {
@@ -199,7 +233,7 @@ function setupNoteModal() {
   const addButton = document.querySelector("#add-note-btn");
 
   if (addButton) {
-    addButton.addEventListener("click", () => openNoteModal());
+    addButton.addEventListener("click", () => openNoteModal(stateStore.selectUI('calendarSelectedDate') || getDateString(stateStore.selectUI('calendarDate'))));
   }
 
   const closeButton = document.querySelector("#close-note-modal");
@@ -262,11 +296,11 @@ function setupNoteModal() {
 
       await loadData();
     } catch (error) {
-      console.error(window.FinoErrors.diagnostics(error));
+      console.error(FinoErrors.diagnostics(error));
 
       showNotice(error || "Failed to save note.");
     }
   });
 }
-Object.assign(window, { markPaymentAsReceived, setupEventModal, setupCalendarNavigation, populateAssetSelect, openNoteModal, setupNoteModal });
-})();
+return { markPaymentAsReceived, openNoteModal, populateAssetSelect, setupCalendarNavigation, setupEventModal, setupNoteModal };
+}

@@ -32,6 +32,8 @@ Fino має вебверсію з локальним Node.js backend та Androi
 
 ## Запуск вебверсії
 
+Frontend використовує ES modules і Vite: `npm.cmd run dev` запускає Express + Vite на одному origin; `npm.cmd start` спочатку збирає frontend і віддає production-ресурси. Окрема збірка: `npm.cmd run build:frontend`. Архітектура, команди, UI-тести та порівняння завантаження — у [FRONTEND-MODULES.md](FRONTEND-MODULES.md).
+
 З кореня проєкту:
 
 ~~~powershell
@@ -189,6 +191,8 @@ API приймає JSON, відхиляє чужий `Origin`, міжсайто�
 Незалежне перенесення без Google Drive: **Налаштування → Файл портфеля**. Явний JSON-експорт містить приватні незашифровані дані; створюється тільки після підтвердження. Перед відновленням перевіряються формат v1, SHA-256 і document validation та показується preview; відновлення можливе лише в порожній портфель. На чистому Android створюється локальний профіль без Google-авторизації. Формат, обмеження, безпечні кроки перенесення й recovery drill: [PORTFOLIO-FILES.md](PORTFOLIO-FILES.md). Новий native document picker потребує наступної окремо дозволеної збірки APK.
 
 Перед перескладанням виконайте `npm.cmd test`, `npm.cmd run mobile:prepare` і `npm.cmd run mobile:check`. Prepare готує лише `.tmp/mobile-web/`, не змінюючи Android assets або APK. Preflight перевіряє синтаксис, HTML-посилання, SHA-256 frontend/shared ресурсів для Android, конфігурацію проксі та реєстрацію плагінів. Детальний результат перевірки й кроки на телефоні: [MOBILE-READINESS.md](MOBILE-READINESS.md).
+
+На екранах до 700 px Fino використовує спільну нижню навігацію для Investment / Wallet із меню «Ще». Архітектура, вкладки, підтримка Android та перевірки: [MOBILE-NAVIGATION.md](MOBILE-NAVIGATION.md).
 
 ~~~powershell
 npm run mobile:sync

@@ -1,9 +1,5 @@
-// Allocation editing and rounding only. Financial recommendations use portfolio-finance.js.
-(function (root, factory) {
-  const api = factory();
-  if (typeof module === 'object' && module.exports) module.exports = api;
-  else root.FinoRebalanceModel = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+
+const implementation = (function () {
   function inspect(rawValues) {
     const values = rawValues.map(value => !['number', 'string'].includes(typeof value) || value === '' || String(value).trim() === '' ? NaN : Number(value));
     const invalid = values.map(value => !Number.isFinite(value) || value < 0 || value > 100 || Math.abs(value * 10 - Math.round(value * 10)) > 1e-6);
@@ -23,4 +19,6 @@
     return units.map(value => value / 10);
   }
   return { inspect, normalize };
-});
+})();
+export default implementation;
+export const { inspect, normalize } = implementation;

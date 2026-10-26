@@ -1,8 +1,26 @@
-// Rebalance UI state and charts. Portfolio-finance owns every financial calculation.
-(function () {
-  const weights = new Map();
+// Explicit ports are wired once by composition.js; this module publishes no browser globals.
+export function createRebalanceDashboard({
+  FinoErrors,
+  FinoI18n,
+  FinoRebalanceCurrencyHover,
+  FinoRebalanceModel,
+  FinoStateModel,
+  api,
+  charts,
+  clearTimeout,
+  createRenderServices,
+  document,
+  escapeHtml,
+  getComputedStyle,
+  mobileApi,
+  sessionStorage,
+  setTimeout,
+  stateStore,
+  window,
+}) {
+const weights = new Map();
   const colorIndexes = new Map();
-  const charts = new Map();
+  const chartInstances = new Map();
   const bound = new WeakSet();
   let snapshot, savedPlan = null, editorSignature = '', notice = '', baseView = null, palette = null;
   let hydrated = false, expected = null, pending = false, timer = null, saving = null, saveError = null, lastPersistence = null;
@@ -10,14 +28,14 @@
   let inflight = null, restoredScope = null;
   let renderedAccount = null, generation = 0;
   const element = id => document.getElementById(id);
-  const t = key => window.FinoI18n.t(key);
-  const format = (key, value) => window.FinoI18n.format(key, { value });
-  const percent = value => new Intl.NumberFormat(window.FinoI18n.locale, { style: 'percent', maximumFractionDigits: 1 }).format(value / 100);
-  const amount = value => new Intl.NumberFormat(window.FinoI18n.locale, { style: 'currency', currency: 'UAH', currencyDisplay: 'narrowSymbol', maximumFractionDigits: 2 }).format(value);
+  const t = key => FinoI18n.t(key);
+  const format = (key, value) => FinoI18n.format(key, { value });
+  const percent = value => new Intl.NumberFormat(FinoI18n.locale, { style: 'percent', maximumFractionDigits: 1 }).format(value / 100);
+  const amount = value => new Intl.NumberFormat(FinoI18n.locale, { style: 'currency', currency: 'UAH', currencyDisplay: 'narrowSymbol', maximumFractionDigits: 2 }).format(value);
   const setText = (id, value) => { const node = element(id); if (node && node.textContent !== value) node.textContent = value; };
-  const signature = plan => window.FinoStateModel.rebalanceSignature(plan);
+  const signature = plan => FinoStateModel.rebalanceSignature(plan);
   const copy = value => value == null ? null : JSON.parse(JSON.stringify(value));
-  const account = () => window.mobileApi?.localAccountScope || 'desktop';
+  const account = () => mobileApi?.localAccountScope || 'desktop';
   const scope = () => JSON.stringify([window.location.origin, account(),
     (stateStore.selectAssets(snapshot) || []).map(asset => asset.id).sort()]);
   function cacheDraft() {
@@ -33,15 +51,15 @@
     try {
       const recovery = JSON.parse(sessionStorage.getItem(recoveryKey) || 'null');
       if (!recovery || recovery.scope !== scope()) return;
-      window.FinoStateModel.validateJson(recovery);
-      window.FinoStateModel.validateRebalance(recovery.plan);
+      FinoStateModel.validateJson(recovery);
+      FinoStateModel.validateRebalance(recovery.plan);
       const actual = signature(stateStore.selectRebalance(snapshot));
       const acceptable = [recovery.expected, recovery.plan, ...(recovery.inflight ? [recovery.inflight] : [])].some(plan => signature(plan) === actual);
       restoredScope = scope();
       if (signature(recovery.plan) === actual) { clearDraft(); return; }
       // Recover the editor, but never overwrite a different saved plan implicitly.
       hydrate(recovery.plan); expected = copy(acceptable ? stateStore.selectRebalance(snapshot) : recovery.expected); pending = true;
-      if (!acceptable) saveError = new window.FinoErrors.ConflictError();
+      if (!acceptable) saveError = new FinoErrors.ConflictError();
       else { timer = setTimeout(() => { timer = null; void flush(); }, 200); }
     } catch (_) { /* An invalid recovery draft cannot enter the shared document. */ }
   }
@@ -57,7 +75,7 @@
     const current = view();
     return { targets: Object.fromEntries(current.groups.map(group => {
       const raw = weights.get(group.id) ?? '0';
-      const valid = !window.FinoRebalanceModel.inspect([raw]).invalid[0];
+      const valid = !FinoRebalanceModel.inspect([raw]).invalid[0];
       return [group.id, valid ? Number(raw) : expected?.targets[group.id] || 0];
     })), plannedAssets: copy(snapshot.rebalanceDrafts || []), excluded: [...(snapshot.rebalanceExcluded || [])] };
   }
@@ -66,7 +84,7 @@
     setText('rebalance-save-status', t(saveError ? conflict ? 'The rebalance plan changed. Reload before editing it again.' : 'Could not save the rebalance plan. Try again.'
       : pending ? 'Saving rebalance plan…' : lastPersistence?.savedRemotely ? 'Rebalance plan saved to Drive.' : 'Rebalance plan saved locally. Drive sync has its own status.'));
     const status = element('rebalance-save-status');
-    const requestId = window.FinoErrors.safeRequestId(saveError?.requestId);
+    const requestId = FinoErrors.safeRequestId(saveError?.requestId);
     if (status && requestId) status.textContent += ' ' + format('Request ID: {value}', requestId);
     if (status) { status.hidden = !pending && !lastPersistence && !expected; status.dataset.state = saveError ? 'error' : pending ? 'pending' : 'saved'; }
     const retry = element('rebalance-save-retry');
@@ -136,7 +154,7 @@
     const { services, groups, totalValue } = baseView;
     const visible = groups.filter(group => !(snapshot.rebalanceExcluded || []).includes(group.id));
     for (const group of visible) if (!weights.has(group.id)) weights.set(group.id, '0');
-    const allocation = window.FinoRebalanceModel.inspect(visible.map(group => weights.get(group.id)));
+    const allocation = FinoRebalanceModel.inspect(visible.map(group => weights.get(group.id)));
     const basis = JSON.stringify([groups.map(group => [group.id, group.assets.map(asset => asset.id), group.value]), visible.map(group => [group.id, weights.get(group.id)])]);
     return { services, groups, visible, allocation, totalValue, basis };
   }
@@ -179,9 +197,9 @@
   }
   function updateChart(id, data, options, animate) {
     const canvas = element(id);
-    if (!canvas || typeof Chart === 'undefined') return;
+    if (!canvas || typeof charts.current === 'undefined') return;
     const signature = JSON.stringify([data, options.backgroundColor, options.borderColor, options.color, options.contextKey]);
-    let entry = charts.get(id);
+    let entry = chartInstances.get(id);
     if (entry && entry.signature === signature) return;
     const config = {
       type: 'doughnut', data,
@@ -197,8 +215,8 @@
       },
     };
     if (!entry) {
-      entry = { chart: new Chart(canvas, config), signature };
-      charts.set(id, entry);
+      entry = { chart: new charts.current(canvas, config), signature };
+      chartInstances.set(id, entry);
     } else {
       entry.chart.data = data;
       Object.assign(entry.chart.options.plugins.tooltip, config.options.plugins.tooltip);
@@ -208,7 +226,7 @@
   }
   function renderCharts(current, animate) {
     const theme = palette.theme;
-    element('rebalance-chart-status').hidden = typeof Chart !== 'undefined';
+    element('rebalance-chart-status').hidden = typeof charts.current !== 'undefined';
     const labels = current.groups.map(group => group.label);
     const colors = current.groups.map(group => color(group.id));
     const currentValues = current.groups.map(group => group.value);
@@ -262,7 +280,7 @@
     clearStalePlan(current);
     renderEditor(current, editingId);
     setText('rebalance-portfolio-value', amount(current.totalValue));
-    setText('rebalance-asset-count', new Intl.NumberFormat(window.FinoI18n.locale).format(current.visible.length));
+    setText('rebalance-asset-count', new Intl.NumberFormat(FinoI18n.locale).format(current.visible.length));
     setText('rebalance-total', percent(current.allocation.total));
     const invalid = current.allocation.invalid.some(Boolean);
     const status = element('rebalance-allocation-status');
@@ -274,7 +292,7 @@
     element('calculate-rebalance').disabled = !current.allocation.valid;
     element('normalize-rebalance').disabled = !current.visible.length || invalid;
     renderResults(current);
-    window.FinoRebalanceCurrencyHover.update(savedPlan ? savedPlan.plan.totalToInvest : null);
+    FinoRebalanceCurrencyHover.update(savedPlan ? savedPlan.plan.totalToInvest : null);
     renderCharts(current, animate);
   }
   function render(next = stateStore.getState()) {
@@ -314,7 +332,7 @@
     if (!snapshot) return;
     const current = view();
     try {
-      const values = window.FinoRebalanceModel.normalize(current.visible.map(group => weights.get(group.id)));
+      const values = FinoRebalanceModel.normalize(current.visible.map(group => weights.get(group.id)));
       current.visible.forEach((group, index) => weights.set(group.id, String(values[index])));
       notice = '';
       changed();
@@ -336,5 +354,6 @@
   }
   window.addEventListener('pagehide', () => { if (pending && !saveError) void flush(); });
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && pending && !saveError) void flush(); });
-  window.FinoRebalanceDashboard = { render, update, bind, normalize, calculate, changed, flush };
-})();
+  const FinoRebalanceDashboard = { render, update, bind, normalize, calculate, changed, flush };
+return { FinoRebalanceDashboard };
+}

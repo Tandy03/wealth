@@ -1,9 +1,6 @@
-(function (root, factory) {
-  const api = factory(typeof module === 'object' && module.exports ? require('./controllers/wallet-actions') : root.FinoWalletActions,
-    typeof module === 'object' && module.exports ? require('../../shared/errors') : root.FinoErrors);
-  if (typeof module === 'object' && module.exports) module.exports = api;
-  else root.FinoStateStore = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (walletRules, errors) {
+import walletRules from './controllers/wallet-actions.js';
+import errors from '../../shared/errors.js';
+const implementation = (function (walletRules, errors) {
   const clone = value => JSON.parse(JSON.stringify(value));
   // Named, allocation-free reads. An explicit snapshot never falls back to live data.
   const financialSelectors = {
@@ -95,7 +92,7 @@
     function notify(type, keys = [], details = {}) {
       for (const listener of [...subscribers]) {
         try { listener({ type, keys, state, ...details }); }
-        catch (error) { console.error('State subscriber failed:', globalThis.FinoErrors?.diagnostics(error) || { code: 'STATE_SUBSCRIBER_FAILURE' }); }
+        catch (error) { console.error('State subscriber failed:', errors?.diagnostics(error) || { code: 'STATE_SUBSCRIBER_FAILURE' }); }
       }
     }
     function publish(data, keys, command, persistence) {
@@ -194,4 +191,6 @@
     return guard ? guardFinancialReads(store, { mode: guard, onViolation }) : store;
   }
   return { createStore, guardFinancialReads, createReader };
-});
+})(walletRules, errors);
+export default implementation;
+export const { createReader, createStore, guardFinancialReads } = implementation;

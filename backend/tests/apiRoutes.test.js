@@ -40,8 +40,10 @@ test("HTTP API retains portfolio, payment, calendar, wallet and sync behavior", 
     await reset();
     const page = await fetch(base + "/");
     assert.equal(page.status, 200);
-    assert.match(await page.text(), /<html/i);
-    assert.equal((await fetch(base + "/js/api.js")).status, 200);
+    const html = await page.text();
+    assert.match(html, /<html/i);
+    const entry = html.match(/<script[^>]*src="([^"]+)"/)[1];
+    assert.equal((await fetch(base + entry)).status, 200);
     const data = await request("GET", "/api/data");
     assert.equal(data.status, 200);
     for (const collection of ["assets", "sales", "transactions", "payments", "calendar-notes"]) {

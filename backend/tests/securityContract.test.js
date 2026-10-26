@@ -2,12 +2,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const { createApp } = require('../app');
-const model = require('../../frontend/js/state-model');
+const model = require('../../shared/state-model');
 const { protectApi } = require('../utils/apiAccess');
 const { createRequestPolicy } = require('../services/market/policy');
 const { retryOperation } = require('../services/googleDrive/storage');
 const { logEvent, redact } = require('../utils/observability');
-const { ConflictError, AuthRequiredError, ValidationError, StorageError } = require('../../frontend/js/errors');
+const { ConflictError, AuthRequiredError, ValidationError, StorageError } = require('../../shared/errors');
 test('state contract validates external financial records, identities and wallet values', () => {
   for (const patch of [
     { payments: [{ type: '<img>', amount: 1 }] }, { transactions: [{ type: 'UNKNOWN' }] },

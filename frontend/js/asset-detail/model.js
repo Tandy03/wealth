@@ -1,10 +1,7 @@
-(function (root, factory) {
-  const api = factory(typeof module === 'object' && module.exports ? require('../../../shared/portfolio-rules') : root.FinoPortfolioRules,
-    typeof module === 'object' && module.exports ? require('../../../shared/state-contract') : root.FinoStateContract,
-    typeof module === 'object' && module.exports ? require('../../../shared/state-model') : root.FinoStateModel);
-  if (typeof module === 'object' && module.exports) module.exports = api;
-  else root.FinoAssetDetail = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (rules, contract, stateModel) {
+import rules from '../../../shared/portfolio-rules.js';
+import contract from '../../../shared/state-contract.js';
+import stateModel from '../../../shared/state-model.js';
+const implementation = (function (rules, contract, stateModel) {
   const finite = value => !['number', 'string'].includes(typeof value) || String(value).trim() === '' || !Number.isFinite(Number(value)) ? null : Number(value);
   const sumKnown = values => values.some(value => value === null) ? null : values.reduce((sum, value) => sum + value, 0);
   const paymentDate = payment => payment.receivedDate || String(payment.receivedAt || '').slice(0, 10) || null;
@@ -181,4 +178,6 @@
       actions: { edit: true, buy: members.some(member => member.actions.buy), sell: members.some(member => member.actions.sell) } };
   }
   return { createModel, createGroupModel, groupKey, chartSeries, finite, paymentDate };
-});
+})(rules, contract, stateModel);
+export default implementation;
+export const { chartSeries, createGroupModel, createModel, finite, groupKey, paymentDate } = implementation;

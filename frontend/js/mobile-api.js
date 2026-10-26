@@ -1,26 +1,46 @@
-﻿(function () {
-  const isNative = Boolean(window.Capacitor?.isNativePlatform?.());
-  if (!isNative) return;
+// Explicit ports are wired once by composition.js; this module publishes no browser globals.
+export function createMobileApi({
+  FinoConstants,
+  FinoErrors,
+  FinoMarketModel,
+  FinoOperationValidation,
+  FinoOperations,
+  FinoPortfolioRules,
+  FinoPortfolioTransfer,
+  FinoRequest,
+  FinoStateModel,
+  FinoSyncModel,
+  FinoValidation,
+  URLSearchParams,
+  clearTimeout,
+  config,
+  console,
+  crypto,
+  setTimeout,
+  window,
+}) {
+const isNative = Boolean(window.Capacitor?.isNativePlatform?.());
+  if (!isNative) return { mobileApi: null };
 
-  const proxyConfig = window.FINO_MOBILE_CONFIG || {};
+  const proxyConfig = config || {};
   let proxyCompatibility = { state: 'unverified', apiVersion: null, release: null };
   let deviceId = null;
-  const validation = window.FinoValidation;
-  const rules = window.FinoPortfolioRules;
-  const errors = window.FinoErrors;
-  const syncModel = window.FinoSyncModel;
-  const operations = window.FinoOperations;
-  const transfer = window.FinoPortfolioTransfer;
+  const validation = FinoValidation;
+  const rules = FinoPortfolioRules;
+  const errors = FinoErrors;
+  const syncModel = FinoSyncModel;
+  const operations = FinoOperations;
+  const transfer = FinoPortfolioTransfer;
   const fetch = async (...args) => {
-    const response = await window.FinoRequest.fetchWithTimeout(...args);
+    const response = await FinoRequest.fetchWithTimeout(...args);
     if (response.status === 401) { try { await response.json(); } catch {} throw new errors.AuthRequiredError(); }
     return response;
   };
-  const { DAYS_PER_YEAR, MILLISECONDS_PER_DAY, QUANTITY_EPSILON, DEFAULT_BOND_REDEMPTION } = window.FinoConstants;
+  const { DAYS_PER_YEAR, MILLISECONDS_PER_DAY, QUANTITY_EPSILON, DEFAULT_BOND_REDEMPTION } = FinoConstants;
   const LEGACY_STORAGE_KEY = "fino-data-v1";
   const MIGRATION_OWNER_KEY = "fino-account-migration-owner";
   const emptyData = () => ({
-    ...window.FinoStateModel.createEmptyState(),
+    ...FinoStateModel.createEmptyState(),
     sync: { revision: 0, updatedAt: new Date().toISOString(), deviceId },
   });
   const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -43,9 +63,9 @@
   }
 
   function refreshPlannedPaymentAmounts(state) { rules.refreshPayments(state); }
-  function validateSnapshot(state) { return window.FinoStateModel.validateState(state); }
+  function validateSnapshot(state) { return FinoStateModel.validateState(state); }
   function normalizeData(state) {
-    Object.assign(state, window.FinoStateModel.normalizeState(state));
+    Object.assign(state, FinoStateModel.normalizeState(state));
     const renamed = new Map();
     (state.assets || []).forEach((asset) => {
       if (String(asset.name || "").trim().toLowerCase() === "ovdp 1") {
@@ -188,12 +208,12 @@
         for (const record of document.entries) {
           const previous = entries.at(-1);
           if (record.delta) {
-            window.FinoStateModel.validateJson(record.delta.snapshot);
-            window.FinoStateModel.validateJson({ ...record.delta.metadata, set: { ...record.delta.metadata?.set, baseline: null } });
+            FinoStateModel.validateJson(record.delta.snapshot);
+            FinoStateModel.validateJson({ ...record.delta.metadata, set: { ...record.delta.metadata?.set, baseline: null } });
           }
           const entry = record.delta ? { ...record, snapshot: applyChanges(previous?.snapshot, record.delta.snapshot), metadata: applyChanges(previous?.metadata, record.delta.metadata) } : record;
           validateSnapshot(entry.snapshot);
-          window.FinoStateModel.validateJson({ ...entry.metadata, baseline: null });
+          FinoStateModel.validateJson({ ...entry.metadata, baseline: null });
           if (entry.metadata?.baseline != null && typeof entry.metadata.baseline !== 'string') throw new Error('Invalid journal baseline');
           if (!entry.metadata || typeof entry.metadata.pendingUpload !== 'boolean' || entry.checksum !== await syncModel.checksum({ snapshot: entry.snapshot, metadata: entry.metadata })) throw new Error('Invalid journal checksum');
           if (previous && !entry.delta) entry.delta = { snapshot: changes(previous.snapshot, entry.snapshot), metadata: changes(previous.metadata, entry.metadata) };
@@ -244,7 +264,7 @@
       if (!stored && !journal) {
         if ((await Preferences.get({ key: LEGACY_STORAGE_KEY })).value)
           throw new errors.ConflictError({ code: 'RESTORE_NOT_EMPTY', message: 'Restore requires an empty portfolio. Existing data was preserved.' });
-        return { scope, data: window.FinoStateModel.createEmptyState(), fresh: true };
+        return { scope, data: FinoStateModel.createEmptyState(), fresh: true };
       }
     }
     await loadLocal();
@@ -677,26 +697,26 @@
 
   async function proxy(action, parameters = {}) {
     parameters = validation.queryParameters(parameters, action === 'twelve' ? '/api/market-data/time-series' : action === 'fred' ? '/api/market-data/index-history' : undefined);
-    window.FinoStateModel.validateJson(parameters);
+    FinoStateModel.validateJson(parameters);
     for (const key of Object.keys(parameters)) if (!['symbol', 'interval', 'outputsize', 'startDate', 'endDate'].includes(key)) throw new errors.ValidationError({ message: 'Unsupported market parameter.' });
-    for (const key of ['startDate', 'endDate']) if (parameters[key] && !window.FinoStateModel.isDate(parameters[key])) throw new errors.ValidationError({ message: 'A valid calendar date is required.' });
+    for (const key of ['startDate', 'endDate']) if (parameters[key] && !FinoStateModel.isDate(parameters[key])) throw new errors.ValidationError({ message: 'A valid calendar date is required.' });
     if (parameters.startDate && parameters.endDate && parameters.startDate > parameters.endDate) throw new errors.ValidationError({ message: 'The date range is reversed.' });
     if (parameters.outputsize != null && (!Number.isInteger(Number(parameters.outputsize)) || Number(parameters.outputsize) < 1 || Number(parameters.outputsize) > 5000)) throw new errors.ValidationError({ message: 'Invalid output size.' });
     if (!proxyConfig.proxyUrl || !proxyConfig.proxyToken) throw new Error("The market-data proxy is not configured in this APK.");
     const response = await fetch(proxyConfig.proxyUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: proxyConfig.proxyToken, apiVersion: window.FinoMarketModel.proxyApiVersion, action, ...parameters }),
-    }, { timeoutMs: action === 'policyRate' ? window.FinoMarketModel.policyTimeoutMs : 10000 });
+      body: JSON.stringify({ token: proxyConfig.proxyToken, apiVersion: FinoMarketModel.proxyApiVersion, action, ...parameters }),
+    }, { timeoutMs: action === 'policyRate' ? FinoMarketModel.policyTimeoutMs : 10000 });
     const payload = await response.json();
-    try { proxyCompatibility = window.FinoMarketModel.proxyCompatibility(payload?.api, action); }
+    try { proxyCompatibility = FinoMarketModel.proxyCompatibility(payload?.api, action); }
     catch (cause) {
       proxyCompatibility = { state: 'incompatible', apiVersion: null, release: null };
       throw new errors.RemoteUnavailableError({ code: 'PROXY_API_INCOMPATIBLE', message: cause.message });
     }
     if (!payload?.ok) throw new errors.RemoteUnavailableError({ message: 'Market-data proxy request failed.' });
-    window.FinoStateModel.validateJson(payload.data);
-    if (['twelve', 'fred'].includes(action)) return window.FinoMarketModel.history(payload.data);
+    FinoStateModel.validateJson(payload.data);
+    if (['twelve', 'fred'].includes(action)) return FinoMarketModel.history(payload.data);
     return payload.data;
   }
 
@@ -739,8 +759,8 @@
 
     try {
       const [ratesResponse, inflationResponse] = await Promise.all([
-        fetch(`${nbuBase}/exchange?json`, {}, { timeoutMs: window.FinoMarketModel.macroTimeoutMs }),
-        fetch(`${nbuBase}/inflation?period=m&start=${dateToken(start)}&end=${dateToken(now)}&json`, {}, { timeoutMs: window.FinoMarketModel.macroTimeoutMs }),
+        fetch(`${nbuBase}/exchange?json`, {}, { timeoutMs: FinoMarketModel.macroTimeoutMs }),
+        fetch(`${nbuBase}/inflation?period=m&start=${dateToken(start)}&end=${dateToken(now)}&json`, {}, { timeoutMs: FinoMarketModel.macroTimeoutMs }),
       ]);
       if (!ratesResponse.ok || !inflationResponse.ok) throw new Error("NBU data is temporarily unavailable.");
       const [rates, inflation] = await Promise.all([ratesResponse.json(), inflationResponse.json()]);
@@ -761,9 +781,9 @@
     } catch (error) { result.errors.nbu = errors.publicError(error, { fallbackCategory: 'remote_unavailable' }).payload.error; }
 
     try {
-      const response = await fetch(window.FinoMarketModel.gdpUrl, { headers: { Accept: "text/csv" } }, { timeoutMs: window.FinoMarketModel.macroTimeoutMs });
+      const response = await fetch(FinoMarketModel.gdpUrl, { headers: { Accept: "text/csv" } }, { timeoutMs: FinoMarketModel.macroTimeoutMs });
       if (!response.ok) throw new Error(`State Statistics Service returned ${response.status}.`);
-      result.gdp = window.FinoMarketModel.gdp(await response.text());
+      result.gdp = FinoMarketModel.gdp(await response.text());
     } catch (error) { result.errors.gdp = errors.publicError(error, { fallbackCategory: 'remote_unavailable' }).payload.error; }
 
     if (!result.exchangeRates.length && !Object.values(result.inflation).some((series) => series.length) && !result.gdp.nominal.length) {
@@ -783,7 +803,7 @@
     if (proxyConfig.proxyUrl && proxyConfig.proxyToken) {
       try {
         const result = await proxy("policyRate");
-        const data = window.FinoMarketModel.policyRate(result?.policyRate, { normalized: true });
+        const data = FinoMarketModel.policyRate(result?.policyRate, { normalized: true });
         policyRateCache = { data, updatedAt: Date.now() };
         return { policyRate: clone(data) };
       } catch (_) { /* Older proxy deployments fall back to the official NBU API. */ }
@@ -791,9 +811,9 @@
     const now = new Date();
     const start = new Date(now.getFullYear() - 3, 0, 1);
     const dateToken = (date) => `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
-    const response = await fetch(`https://bank.gov.ua/NBUStatService/v1/statdirectory/key?period=d&start=${dateToken(start)}&end=${dateToken(now)}&json`, {}, { timeoutMs: window.FinoMarketModel.policyTimeoutMs });
+    const response = await fetch(`https://bank.gov.ua/NBUStatService/v1/statdirectory/key?period=d&start=${dateToken(start)}&end=${dateToken(now)}&json`, {}, { timeoutMs: FinoMarketModel.policyTimeoutMs });
     if (!response.ok) throw new errors.RemoteUnavailableError({ message: 'NBU policy-rate data is temporarily unavailable.' });
-    const data = window.FinoMarketModel.policyRate(await response.json());
+    const data = FinoMarketModel.policyRate(await response.json());
     policyRateCache = { data, updatedAt: Date.now() };
     return { policyRate: clone(data) };
   }
@@ -801,7 +821,7 @@
   async function mobileMarketCurrencies() {
     const response = await fetch("https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?json");
     if (!response.ok) throw new Error(`NBU API returned ${response.status}.`);
-    const payload = window.FinoMarketModel.nbuRates(await response.json());
+    const payload = FinoMarketModel.nbuRates(await response.json());
     const excluded = new Set(["UAH", "XAU", "XAG", "XPT", "XPD"]);
     const currencies = (Array.isArray(payload) ? payload : []).filter((item) => {
       const code = String(item.cc || "").toUpperCase();
@@ -814,7 +834,7 @@
     parameters = validation.queryParameters(parameters, '/api/market-data/currency-history');
     const code = String(parameters.code || "").trim().toUpperCase();
     const { startDate, endDate } = validation.currencyHistoryRange(parameters);
-    if (!/^[A-Z]{3}$/.test(code) || code === 'UAH' || !window.FinoStateModel.isDate(startDate) || startDate > endDate) throw new errors.ValidationError({ message: 'A valid currency and date range are required.' });
+    if (!/^[A-Z]{3}$/.test(code) || code === 'UAH' || !FinoStateModel.isDate(startDate) || startDate > endDate) throw new errors.ValidationError({ message: 'A valid currency and date range are required.' });
     const compact = (value) => value.replaceAll("-", "");
     const query = new URLSearchParams({ start: compact(startDate), end: compact(endDate), valcode: code, sort: "exchangedate", order: "asc", json: "" });
     const response = await fetch(`https://bank.gov.ua/NBU_Exchange/exchange_site?${query}`);
@@ -831,7 +851,7 @@
 
   async function mobileFrankfurterHistory(parameters = {}) {
     parameters = validation.queryParameters(parameters, '/api/market-data/frankfurter-history');
-    if (!window.FinoStateModel.isDate(parameters.startDate) || !window.FinoStateModel.isDate(parameters.endDate)) throw new errors.ValidationError({ message: 'A valid currency and date range are required.' });
+    if (!FinoStateModel.isDate(parameters.startDate) || !FinoStateModel.isDate(parameters.endDate)) throw new errors.ValidationError({ message: 'A valid currency and date range are required.' });
     const ticker = String(parameters.ticker || "USEU").trim().toUpperCase();
     const pairs = { USEU: { base: "USD", quote: "EUR" }, EUUS: { base: "EUR", quote: "USD" } };
     const pair = pairs[ticker];
@@ -845,7 +865,7 @@
     return { provider: "Frankfurter", meta: { symbol: `${pair.base}/${pair.quote}`, currency: pair.quote, interval: "1day", type: "Exchange rate", exchange: "Frankfurter", marketTicker: ticker }, values, cached: false, fetchedAt: new Date().toISOString() };
   }
 
-  window.mobileApi = {
+  const mobileApi = {
     isNative: true,
     exportPortfolio: () => queued(async () => { await loadLocal(); return transfer.createExport(data); }),
     previewPortfolioImport: async backup => {
@@ -926,7 +946,7 @@
         if (!catalogResponse.ok) throw new Error(`Inzhur API returned ${catalogResponse.status}.`);
         const catalogPayload = await catalogResponse.json();
         if (!Array.isArray(catalogPayload)) throw new Error("Inzhur API returned an invalid response.");
-        const catalog = window.FinoMarketModel.inzhurCatalog(catalogPayload);
+        const catalog = FinoMarketModel.inzhurCatalog(catalogPayload);
         const today = new Date().toISOString().slice(0, 10);
         for (const asset of stagedData.assets.filter((item) => ["ovdp", "inzhur_reit", "inzhur_miltech"].includes(item.type))) {
           let remoteAsset;
@@ -1143,12 +1163,12 @@
     }, operations.describe('createSale', [sale])); },
     async getTransactions() { return queued(async () => clone((await loadLocal()).transactions || [])); },
     async createTransaction(body) { return mutate(state => {
-      const transaction = window.FinoOperationValidation.createTransaction(state, body, id);
+      const transaction = FinoOperationValidation.createTransaction(state, body, id);
       return rules.recordTransaction(state, state.assets.find(asset => asset.id === transaction.assetId), transaction, id);
     }, operations.describe('createTransaction', [body])); },
     async getPayments() { return queued(async () => clone((await loadLocal()).payments || [])); },
     async createPayment(body) { return mutate(state => {
-      const payment = window.FinoOperationValidation.createPayment(state, body, id);
+      const payment = FinoOperationValidation.createPayment(state, body, id);
       state.payments.push(payment); return payment;
     }, operations.describe('createPayment', [body])); },
     async markPaymentReceived(paymentId, options = {}) { return mutate((state) => {
@@ -1172,20 +1192,20 @@
       return payment;
     }, operations.describe('markPaymentReceived', [paymentId, options])); },
     async getCalendarNotes() { return queued(async () => clone((await loadLocal()).calendarNotes || [])); },
-    async createCalendarNote(note) { return mutate((state) => { const created = window.FinoOperationValidation.createNote(state, note, id); state.calendarNotes.push(created); return created; }, operations.describe('createCalendarNote', [note])); },
+    async createCalendarNote(note) { return mutate((state) => { const created = FinoOperationValidation.createNote(state, note, id); state.calendarNotes.push(created); return created; }, operations.describe('createCalendarNote', [note])); },
     async saveWallet(wallet) { return mutate((state) => { state.wallet = clone(validation.normalizeWallet(wallet, id)); return state.wallet; }); },
     async saveRebalance(request) {
       const account = activeEmail;
       return mutate(state => {
         if (account && account !== activeEmail) throw new errors.AuthRequiredError();
-        return window.FinoStateModel.applyRebalance(state, request);
+        return FinoStateModel.applyRebalance(state, request);
       });
     },
   };
   // Validate before entering the mutation queue; failed raw input never touches local state.
   // Synchronous identity for isolating UI recovery drafts; never exposes a token.
-  Object.defineProperty(window.mobileApi, 'localAccountScope', { get: () => activeEmail });
-  Object.defineProperty(window.mobileApi, 'localCommandScope', { get: () => activeEmail ? 'android:' + activeEmail + ':' + storageKey : null });
+  Object.defineProperty(mobileApi, 'localAccountScope', { get: () => activeEmail });
+  Object.defineProperty(mobileApi, 'localCommandScope', { get: () => activeEmail ? 'android:' + activeEmail + ':' + storageKey : null });
   for (const [method, check] of Object.entries({
     createAsset: asset => validation.validateAssetInput(asset),
     updateAsset: (assetId, patch) => { validation.validateIdentifier(assetId); validation.validateAssetInput(patch); },
@@ -1201,15 +1221,16 @@
     syncGoogleDrive: (action = 'sync', options = {}) => validation.validateSyncOptions(action, options),
     mergeAssets: assetIds => validation.validateRequest('merge', { assetIds }),
   })) {
-    const operation = window.mobileApi[method];
-    window.mobileApi[method] = async function (...args) { for (const value of args) if (value !== undefined) window.FinoStateModel.validateJson(value); check(...args); return operation.apply(this, args); };
+    const operation = mobileApi[method];
+    mobileApi[method] = async function (...args) { for (const value of args) if (value !== undefined) FinoStateModel.validateJson(value); check(...args); return operation.apply(this, args); };
   }
   // Normalize only at the API boundary, after local rollback/sync recovery has completed.
-  for (const [method, operation] of Object.entries(window.mobileApi)) {
+  for (const [method, operation] of Object.entries(mobileApi)) {
     if (typeof operation !== 'function') continue;
-    window.mobileApi[method] = async function (...args) {
+    mobileApi[method] = async function (...args) {
       try { return await operation.apply(this, args); }
       catch (error) { throw errors.clientError(error, { fallbackCategory: /Market|Currency|Exchange|Index|Macroeconomics|PolicyRate|syncApi/.test(method) ? 'remote_unavailable' : 'internal_error' }); }
     };
   }
-})();
+return { mobileApi };
+}

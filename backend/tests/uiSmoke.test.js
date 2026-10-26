@@ -5,11 +5,10 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { JSDOM, VirtualConsole } = require('jsdom');
 const { guardFinancialReads } = require('./helpers/readonlyStore');
-const { manifest, scriptSources, sourcePath, validateFrontend, assertReviewedGlobals } = require('../scripts/frontendContract');
-const model = require('../../frontend/js/state-model');
+const { loadModules, exposeRuntime } = require('./helpers/frontendModules');
+const model = require('../../shared/state-model');
 const frontend = path.join(__dirname, '../../frontend');
 const html = fs.readFileSync(path.join(frontend, 'index.html'), 'utf8');
-validateFrontend(html);
 const fixture = () => ({ ...model.createEmptyState(), assets: [{ id: 'stock', name: 'Smoke Stock', type: 'stock', quantity: 2, purchasePrice: 100, currentPrice: 120, purchaseDate: '2026-01-01', currency: 'USD' }], transactions: [{ id: 'buy', assetId: 'stock', type: 'BUY', quantity: 2, amount: 200, date: '2026-01-01', currency: 'USD' }] });
 for (const native of [false, true]) for (const locale of ['en', 'uk', 'de', 'es', 'pl', 'it']) {
   test(`portfolio share stays local, isolated and translated in ${native ? 'native' : 'web'} ${locale}`, async t => {
@@ -146,6 +145,19 @@ for (const locale of ['en', 'uk', 'de', 'es', 'pl', 'it']) {
   });
 }
 const flush = async () => { for (let i = 0; i < 8; i++) await new Promise(setImmediate); };
+function registerHarnessCleanup(t, dom, observers) {
+  // Test hooks outlive individual cases. Release their only DOM reference after
+  // teardown instead of retaining the complete application closure until EOF.
+  let resources = { dom, observers };
+  t.after(async () => {
+    const closing = resources; resources = null;
+    await closing.dom.window.FinoRebalanceDashboard?.flush();
+    closing.observers.forEach(observer => observer.disconnect());
+    closing.observers.length = 0;
+    await new Promise(resolve => setTimeout(resolve, 40));
+    closing.dom.window.close();
+  });
+}
 async function harness(t, { initial = fixture(), blockMarkets = false, locale = 'en', charts = false, failWallet = false, failRebalance = false, failPayments = false, sessionDraft, native = false, nativeStorage: restoredStorage, macroFailureOnce = false, styles = false, compact = false, bootFromEvent = false, browserStorage, syncPreview, outbox, transferPicker, pngPlugin } = {}) {
   const errors = [];
   const console = new VirtualConsole();
@@ -156,7 +168,7 @@ async function harness(t, { initial = fixture(), blockMarkets = false, locale = 
   window.TextEncoder = TextEncoder;
   if (styles) {
     const style = window.document.createElement('style');
-    style.textContent = ['style.css', 'rebalance.css', 'asset-detail.css', 'portfolio-share.css'].map(file => fs.readFileSync(path.join(frontend, 'css', file), 'utf8')).join('\n');
+    style.textContent = ['style.css', 'rebalance.css', 'asset-detail.css', 'portfolio-share.css', 'calendar.css', 'mobile-navigation.css'].map(file => fs.readFileSync(path.join(frontend, 'css', file), 'utf8')).join('\n');
     window.document.head.append(style);
   }
   window.localStorage.setItem('fino-language', locale);
@@ -167,12 +179,7 @@ async function harness(t, { initial = fixture(), blockMarkets = false, locale = 
   window.MutationObserver = class extends NativeObserver {
     constructor(callback) { super(callback); observers.push(this); }
   };
-  t.after(async () => {
-    await window.FinoRebalanceDashboard?.flush();
-    observers.forEach(observer => observer.disconnect());
-    await new Promise(resolve => setTimeout(resolve, 40));
-    dom.window.close();
-  });
+  registerHarnessCleanup(t, dom, observers);
   if (window.document.readyState === 'loading') await new Promise(resolve => window.document.addEventListener('DOMContentLoaded', resolve, { once: true }));
   window.console = { log() {}, info() {}, warn() {}, error: (...args) => errors.push(args.map(String).join(' ')) };
   window.matchMedia = query => ({ matches: compact && query === '(max-width: 700px)', addEventListener() {} });
@@ -229,6 +236,7 @@ async function harness(t, { initial = fixture(), blockMarkets = false, locale = 
   };
   const assets = require('../domain/assetService').createService(repository);
   const purchases = require('../domain/purchaseService').createService(repository);
+  const sales = require('../domain/saleService').createService(repository);
   const payments = require('../domain/paymentService').createService(repository);
   const wallet = require('../domain/walletService').createService(repository);
   const rebalance = require('../domain/rebalanceService').createService(repository);
@@ -277,6 +285,7 @@ async function harness(t, { initial = fixture(), blockMarkets = false, locale = 
     }
     else if (route === '/api/assets' && method === 'POST') data = await assets.createAsset(body);
     else if (/\/api\/assets\/.+\/buy$/.test(route)) data = await purchases.buyMoreAsset(route.split('/')[3], body);
+    else if (route === '/api/sales' && method === 'POST') data = await sales.sellAsset(body);
     else if (/\/api\/payments\/.+\/received$/.test(route)) {
       if (failPayments) return new Response(JSON.stringify({ error: 'Storage unavailable.', code: 'STORAGE_FAILURE', category: 'storage' }), { status: 503, headers: { 'Content-Type': 'application/json', 'X-Request-Id': 'payment-test-id' } });
       data = await payments.markPaymentReceived(route.split('/')[3]);
@@ -293,32 +302,26 @@ async function harness(t, { initial = fixture(), blockMarkets = false, locale = 
     else throw new Error('Unexpected UI request: ' + route);
     return new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } });
   };
-  for (const src of scriptSources(html)) {
-    // Chart is loaded above when requested; generated credentials are replaced
-    // with the synthetic native fixture rather than read into UI test reports.
-    if (src.startsWith('/vendor/') || src.endsWith('mobile-config.generated.js')) continue;
-    const before = Object.getOwnPropertyDescriptors(window);
-    vm.runInContext(fs.readFileSync(sourcePath(src), 'utf8'), dom.getInternalVMContext(), { filename: src });
-    assertReviewedGlobals(manifest.scripts.find(script => script.src === src), before, Object.getOwnPropertyDescriptors(window));
-    if (src.endsWith('/state-store.js')) {
-      const createStore = window.FinoStateStore.createStore;
-      window.FinoStateStore.createStore = options => guardFinancialReads(createStore(options));
-    }
-    if (locale !== 'en' && src.endsWith('/i18n.js')) window.document.dispatchEvent(new window.Event('DOMContentLoaded'));
-  }
-  if (outbox) Object.assign(vm.runInContext('api.outbox', dom.getInternalVMContext()), outbox);
+  const modules = loadModules(dom.getInternalVMContext());
+  const beforeGlobals = new Set(Object.keys(window));
+  const runtime = modules.createFrontend(window, { Chart: window.Chart, config: window.FINO_MOBILE_CONFIG || {}, guardStore: guardFinancialReads });
+  const app = exposeRuntime(window, runtime, dom.getInternalVMContext());
+  if (outbox) Object.assign(runtime.api.outbox, outbox);
   if (bootFromEvent) {
+    window.document.addEventListener('DOMContentLoaded', runtime.init, { once: true });
     window.document.dispatchEvent(new window.Event('DOMContentLoaded'));
     await flush();
-  } else await window.init();
-  if (native) await window.mobileApi.waitForSync();
+  } else await runtime.init();
+  if (native) await runtime.mobileApi.waitForSync();
   await flush();
-  return { window, document: window.document, errors, requests, chartCalls, nativeStorage,
+  const leaked = Object.keys(window).filter(key => !beforeGlobals.has(key) && Object.hasOwn(runtime, key));
+  assert.deepEqual(leaked, [], 'Application services must remain module-scoped.');
+  return { window: app.window, document: window.document, errors, requests, chartCalls, nativeStorage,
     browserStorage: () => new Map(Array.from({ length: window.localStorage.length }, (_, index) => {
       const key = window.localStorage.key(index); return [key, window.localStorage.getItem(key)];
     })), expireSession: () => { sessionValid = false; },
     failRebalance: value => { rebalanceFailure = value; }, failWallet: value => { walletFailure = value; }, replaceStored: next => { stored = model.normalizeState(next); },
-    stored: () => structuredClone(stored), eval: expression => vm.runInContext(expression, dom.getInternalVMContext()) };
+    stored: () => structuredClone(stored), eval: app.eval };
 }
 
 for (const native of [false, true]) for (const locale of ['en', 'de', 'uk', 'es', 'pl', 'it']) {
@@ -486,8 +489,7 @@ for (const native of [false, true]) {
       { id:'later', assetId:'stock', type:'COUPON', date:'2026-01-01', receivedDate:'2026-03-01', status:'paid', amount:5, currency:'USD' });
     const h = await harness(t, { initial, native, compact:true });
     assert.equal(h.document.querySelector('#stat-return').textContent, 'Incomplete');
-    assert.match(h.document.querySelector('#stat-xirr-note').textContent, /Unvalued: 1/);
-    assert.match(h.document.querySelector('#stat-xirr-note').textContent, /Sources:/);
+    assert.equal(h.document.querySelector('#stat-xirr-label').textContent, 'XIRR');
     assert.equal(h.document.querySelectorAll('#reinvestment-scenarios li').length, 0);
     assert.match(h.document.querySelector('#reinvestment-status').textContent, /Incomplete data/);
     assert.match(h.document.querySelector('#reinvestment-observation').textContent, /365 calendar days/);
@@ -639,7 +641,7 @@ for (const native of [false, true]) {
     more.querySelector('summary').click();
     assert.equal(more.open, true); assert.ok(more.querySelector('#stat-roi'));
     h.document.querySelector('#open-investments').click();
-    assert.match(h.document.querySelector('#investments-app .nav-scroll-hint').textContent, /Swipe/);
+    assert.equal(h.document.querySelector('#investments-app .nav-scroll-hint'), null);
     h.document.querySelector('[data-section="macroeconomics"]').click(); await flush();
     assert.equal(h.document.querySelector('#macroeconomics-section').classList.contains('active'), true);
     assert.deepEqual(h.errors, []);
@@ -801,29 +803,20 @@ test('dashboard separates unrealized and realized results without counting pendi
 });
 
 for (const native of [false, true]) {
-  test(`Return hover updates immediately when S&P 500 loads and after snapshots change in ${native ? 'native' : 'desktop'} UI`, async t => {
+  test(`Return stays a static portfolio result regardless of pointer or benchmark state in ${native ? 'native' : 'desktop'} UI`, async t => {
     const h = await harness(t, { native });
-    let resolveIndex;
-    const facade = h.eval('api');
-    facade.getIndexHistory = async parameters => {
-      assert.equal(parameters.symbol, '.INX'); assert.equal(parameters.startDate, '2026-01-01');
-      return new Promise(resolve => { resolveIndex = resolve; });
-    };
-    const request = h.window.updateSp500Benchmark();
     const value = h.document.querySelector('#stat-roi'), card = value.closest('.stat-card');
-    const portfolioReturn = value.dataset.portfolioReturn;
+    const portfolioReturn = value.textContent;
+    assert.match(portfolioReturn, /^-?\d+\.\d{2}%$/);
+    assert.equal(h.document.querySelector('#stat-roi-label').textContent, 'Return');
     card.dispatchEvent(new h.window.Event('mouseenter'));
-    assert.equal(value.textContent, 'Loading…');
-    resolveIndex({ values: [{ datetime: '2026-02-01', close: 110 }, { datetime: '2026-01-02', close: 100 }, { datetime: '2025-01-01', close: 1 }, { datetime: '2026-01-01', close: 'invalid' }] });
-    await request; await flush();
-    assert.equal(value.textContent, '+10.00%', 'Already hovered card must update without moving the pointer.');
-    assert.equal(h.document.querySelector('#stat-roi-label').textContent, 'S&P 500');
-    h.window.renderDashboard({ ...h.eval('stateStore.getState()'), sp500Benchmark: 20 });
-    assert.equal(value.textContent, '+20.00%', 'Handlers must not retain the first render snapshot.');
+    assert.equal(value.textContent, portfolioReturn);
+    h.eval("stateStore.setUI({ sp500Benchmark: 20, sp500BenchmarkStatus: 'ready' }); renderDashboard();");
+    assert.equal(value.textContent, portfolioReturn, 'Benchmark data must not replace portfolio Return.');
     card.dispatchEvent(new h.window.Event('mouseleave'));
     assert.equal(value.textContent, portfolioReturn);
     assert.equal(h.document.querySelector('#stat-roi-label').textContent, 'Return');
-    card.dispatchEvent(new h.window.Event('focus')); assert.equal(value.textContent, '+20.00%');
+    card.dispatchEvent(new h.window.Event('focus')); assert.equal(value.textContent, portfolioReturn);
     card.dispatchEvent(new h.window.Event('blur')); assert.equal(value.textContent, portfolioReturn);
     assert.deepEqual(h.errors, []);
   });
@@ -939,7 +932,7 @@ test('UI smoke: bundled Chart.js builds wallet charts and interactive legends wi
   initial.wallet.expenses = [{ id: 'food', date: '2026-10-02', category: 'Health', amount: 125 }];
   const h = await harness(t, { initial, charts: 'real' });
   assert.equal(h.window.Chart.version, '4.5.1');
-  assert.match(html, /<script src="\/vendor\/chart\.umd\.js"><\/script>/);
+  assert.match(fs.readFileSync(path.join(frontend, 'js/main.js'), 'utf8'), /import Chart from ['"]\.\.\/vendor\/chart\.umd\.js['"]/);
   assert.doesNotMatch(html, /<script[^>]+https?:/);
   h.document.querySelector('#wallet-chart-month').value = '2026-10';
   h.document.querySelector('[data-wallet-tab="charts"]').click();
@@ -1302,7 +1295,8 @@ test('UI smoke: populated portfolio renders every main section and navigation wo
   assert.match(h.document.querySelector('#portfolio-table').textContent, /Smoke Stock/);
   assert.notEqual(h.document.querySelector('#profit-total').textContent.trim(), '');
   assert.ok(h.document.querySelector('#wallet-current-body tr'));
-  assert.equal(h.document.querySelectorAll('#calendar-grid .calendar-day').length, 42);
+  const calendarDays = h.document.querySelectorAll('#calendar-grid .calendar-day').length;
+  assert.ok(calendarDays >= 28 && calendarDays <= 42 && calendarDays % 7 === 0);
   h.document.querySelector('#open-investments').click();
   h.document.querySelector('[data-section="portfolio"]').click();
   assert.equal(h.document.querySelector('#portfolio-section').classList.contains('active'), true);
@@ -1335,6 +1329,82 @@ test('UI smoke: extracted buy form submits once and refreshes the portfolio', as
   assert.equal(h.document.querySelector('#buy-more-modal').classList.contains('open'), false);
   assert.deepEqual(h.errors, []);
 });
+
+for (const native of [false, true]) {
+  test(`module expense form retains a failed draft and persists exactly one retry in ${native ? 'offline native' : 'web'}`, async t => {
+    const h = await harness(t, { native });
+    h.eval(`(() => {
+      const save = api.saveWallet; let fail = true;
+      api.saveWallet = (...args) => {
+        if (fail) { fail = false; return Promise.reject(new window.FinoErrors.StorageError()); }
+        return save(...args);
+      };
+    })()`);
+    const before = JSON.stringify(h.eval('stateStore.selectData()'));
+    h.window.ui.forms.wallet.expense();
+    const form = h.document.querySelector('#expense-form');
+    form.elements.date.value = '2026-10-26'; form.elements.category.value = 'Health';
+    form.elements.amount.value = '20.50'; form.elements.note.value = 'Keep this expense';
+    const submit = () => form.dispatchEvent(new h.window.Event('submit', { bubbles: true, cancelable: true }));
+    submit(); await flush();
+    assert.equal(h.document.querySelector('#expense-modal').classList.contains('open'), true);
+    assert.equal(form.elements.amount.value, '20.50'); assert.equal(form.elements.note.value, 'Keep this expense');
+    assert.equal(JSON.stringify(h.eval('stateStore.selectData()')), before);
+    h.document.querySelector('#notice-ok').click(); await flush();
+    assert.equal(form.querySelector('[type="submit"]').disabled, false); submit();
+    for (let attempt = 0; attempt < 100; attempt++) {
+      await flush(); if (h.eval('stateStore.selectWallet().expenses.length') === 1) break;
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    const saved = native ? await h.window.mobileApi.getData({ sync: false }) : h.stored();
+    assert.equal(saved.wallet.expenses.length, 1); assert.equal(saved.wallet.expenses[0].amount, 20.5);
+    assert.equal(saved.wallet.expenses[0].note, 'Keep this expense');
+    const restarted = await harness(t, { native, initial: saved, nativeStorage: h.nativeStorage });
+    assert.equal(restarted.eval('stateStore.selectWallet().expenses.length'), 1);
+    assert.equal(restarted.eval('stateStore.selectWallet().expenses[0].amount'), 20.5);
+    assert.deepEqual(restarted.errors, []);
+    assert.ok(h.errors.every(error => !error.includes('Uncaught') && !error.includes('store command')));
+  });
+
+  test(`module UI persists fractional purchases and sales across restart in ${native ? 'offline native' : 'web'}`, async t => {
+    const h = await harness(t, { native });
+    const settle = async predicate => {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        await flush(); if (predicate()) return;
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
+      assert.fail('The financial command did not publish its saved result.');
+    };
+    h.window.ui.forms.buy.open('stock');
+    const buy = h.document.querySelector('#buy-more-form');
+    buy.elements.quantity.value = '1.5'; buy.elements.purchasePrice.value = '100'; buy.elements.purchaseDate.value = '2026-02-01';
+    buy.dispatchEvent(new h.window.Event('submit', { bubbles: true, cancelable: true }));
+    await settle(() => h.eval("getAvailableQuantity('stock')") === 3.5);
+    assert.equal(h.eval('stateStore.selectTransactions().filter(item => item.type === "BUY").reduce((sum, item) => sum + item.amount, 0)'), 350);
+    h.window.openSellAssetModal('stock');
+    h.document.querySelector('#sell-quantity').value = '1';
+    h.document.querySelector('#sell-price').value = '180';
+    h.document.querySelector('#sell-date').value = '2026-03-01';
+    h.document.querySelector('#sell-form').dispatchEvent(new h.window.Event('submit', { bubbles: true, cancelable: true }));
+    await settle(() => h.eval('stateStore.selectSales().length') === 1);
+    const saved = native ? await h.window.mobileApi.getData({ sync: false }) : h.stored();
+    assert.equal(saved.sales[0].quantity, 1);
+    assert.equal(saved.sales[0].costBasis, 100);
+    assert.equal(saved.sales[0].profit, 80);
+    assert.equal(h.eval("getAvailableQuantity('stock')"), 2.5);
+    const restarted = await harness(t, { native, initial: saved, nativeStorage: h.nativeStorage });
+    assert.equal(restarted.eval("getAvailableQuantity('stock')"), 2.5);
+    assert.equal(restarted.eval('stateStore.selectSales()[0].profit'), 80);
+    const before = JSON.stringify(restarted.eval('stateStore.selectData()'));
+    restarted.document.querySelector('#open-investments').click();
+    for (const section of ['portfolio', 'transactions', 'calendar', 'analytics', 'rebalance', 'dashboard']) {
+      restarted.document.querySelector(`[data-section="${section}"]`).click();
+      assert.equal(restarted.document.querySelector(`#${section}-section`).classList.contains('active'), true);
+    }
+    assert.equal(JSON.stringify(restarted.eval('stateStore.selectData()')), before);
+    assert.deepEqual(h.errors, []); assert.deepEqual(restarted.errors, []);
+  });
+}
 
 test('web and native buy forms reuse operationId after a committed purchase loses its response', async t => {
   for (const native of [false, true]) await t.test(native ? 'native' : 'web', async t => {
@@ -1413,6 +1483,192 @@ test('real web/native HTML recovers the original purchase after client restart a
   });
 });
 
+for (const native of [false, true]) {
+  test(`general calendar selection, details and payment receipt work in ${native ? 'offline native' : 'web'}`, async t => {
+    const initial = fixture();
+    initial.payments = [
+      { id: 'dividend', assetId: 'stock', type: 'DIVIDEND', status: 'planned', date: '2026-10-26', amount: 25, currency: 'USD' },
+      { id: 'coupon', assetId: 'stock', type: 'COUPON', status: 'received', date: '2026-10-26', amount: 10, currency: 'USD' },
+    ];
+    initial.calendarNotes = [{ id: 'note', assetId: 'stock', assetName: 'План <img src=x>', date: '2026-10-26', amount: 50, currency: 'USD', text: 'Не перекладати назву' }];
+    const h = await harness(t, { initial, native, locale: 'uk' });
+    h.eval("stateStore.setUI({ calendarDate: new Date(2026, 9, 1), calendarSelectedDate: '2026-10-26' }); renderCalendar();");
+    await flush();
+    const day = () => h.document.querySelector('[data-calendar-date="2026-10-26"]');
+    assert.equal(h.document.querySelectorAll('#calendar-grid .calendar-day').length, 35);
+    assert.equal(day().getAttribute('aria-pressed'), 'true');
+    assert.equal(day().querySelectorAll('.calendar-event-dot').length, 3);
+    assert.equal(day().querySelectorAll('.calendar-event-dot.received').length, 1);
+    assert.equal(h.document.querySelectorAll('#calendar-day-events .calendar-event').length, 3);
+    assert.match(h.document.querySelector('#calendar-day-events').textContent, /План <img src=x>/);
+    assert.equal(h.document.querySelector('#calendar-day-events img'), null);
+    const financialBefore = JSON.stringify(h.eval('stateStore.selectData()'));
+    assert.equal(h.document.querySelector('.calendar-filters'), null);
+    h.document.querySelector('[data-calendar-date="2026-10-27"]').click(); await flush();
+    assert.match(h.document.querySelector('#calendar-day-events').textContent, /На цей день подій немає/);
+    h.document.querySelector('#add-note-btn').click();
+    assert.equal(h.document.querySelector('#note-date').value, '2026-10-27');
+    h.document.querySelector('#cancel-note').click();
+    h.document.querySelector('[data-calendar-date="2026-10-26"]').click();
+    h.document.querySelector('#calendar-day-events .calendar-event.note').click(); await flush();
+    assert.equal(h.document.querySelector('#event-modal-title').textContent, 'План <img src=x>');
+    assert.equal(h.document.querySelector('#event-modal-content img'), null);
+    h.document.querySelector('#event-modal-close-btn').click();
+    h.document.querySelector('#calendar-help-btn').click(); await flush();
+    assert.equal(h.document.querySelector('#event-modal-title').textContent, 'Позначки календаря');
+    assert.equal(h.document.querySelectorAll('#event-modal-content .legend-dot').length, 4);
+    h.document.querySelector('#event-modal-close-btn').click();
+    assert.equal(JSON.stringify(h.eval('stateStore.selectData()')), financialBefore);
+    assert.equal(h.document.querySelectorAll('#calendar-day-events .calendar-event').length, 3);
+    h.document.querySelector('#calendar-day-events .calendar-event.dividend').click();
+    h.document.querySelector('#mark-payment-received').click();
+    for (let attempt = 0; attempt < 100; attempt++) {
+      await flush();
+      if (h.eval("stateStore.selectPayments().find(payment => payment.id === 'dividend').status") === 'received') break;
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    assert.equal(h.eval("stateStore.selectPayments().find(payment => payment.id === 'dividend').status"), 'received');
+    assert.equal(day().querySelectorAll('.calendar-event-dot.received').length, 2);
+    assert.deepEqual(h.errors, []);
+  });
+}
+
+test('calendar navigation clamps month ends, supports keyboard days and resets to today', async t => {
+  const h = await harness(t);
+  h.eval("stateStore.setUI({ calendarDate: new Date(2026, 0, 31), calendarSelectedDate: '2026-01-31' }); renderCalendar();");
+  h.document.querySelector('#next-month').click();
+  assert.equal(h.document.querySelector('#calendar-month-picker').value, '2026-02');
+  assert.equal(h.eval("stateStore.selectUI('calendarSelectedDate')"), '2026-02-28');
+  h.document.querySelector('#previous-month').click();
+  assert.equal(h.document.querySelector('#calendar-month-picker').value, '2026-01');
+  const picker = h.document.querySelector('#calendar-month-picker');
+  picker.value = '2024-02'; picker.dispatchEvent(new h.window.Event('change'));
+  assert.equal(h.document.querySelectorAll('#calendar-grid .calendar-day').length, 35);
+  h.document.querySelector('[data-calendar-date="2024-02-29"]').click();
+  h.document.activeElement.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+  assert.equal(h.eval("stateStore.selectUI('calendarSelectedDate')"), '2024-03-01');
+  assert.equal(h.document.activeElement.dataset.calendarDate, '2024-03-01');
+  assert.equal(h.document.querySelector('#calendar-month-picker').value, '2024-03');
+  h.document.querySelector('#today-btn').click();
+  assert.equal(h.document.querySelector('.calendar-day[aria-current="date"]').getAttribute('aria-pressed'), 'true');
+  assert.deepEqual(h.errors, []);
+});
+
+async function settleMobileNavigation(h, predicate) {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    await flush(); if (predicate()) return;
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  assert.fail('Mobile navigation did not settle.');
+}
+
+for (const native of [false, true]) {
+  test(`mobile navigation reuses real routes, remembers each mode and preserves finances in ${native ? 'offline native' : 'web'}`, async t => {
+    const h = await harness(t, { native, compact: true, locale: 'uk', charts: true });
+    // Navigation uses deterministic chart doubles; jsdom has no canvas context.
+    h.window.HTMLCanvasElement.prototype.getContext = function () { return { canvas: this }; };
+    const before = JSON.stringify(h.eval('stateStore.selectData()'));
+    const bar = h.document.querySelector('#mobile-bottom-nav');
+    const routes = () => Array.from(bar.querySelectorAll('[data-mobile-route]'), button => button.dataset.mobileRoute);
+    const click = async id => { bar.querySelector(`[data-mobile-route="${id}"]`).click(); await flush(); };
+    assert.equal(bar.dataset.mode, 'wallet');
+    assert.deepEqual(routes(), ['current', 'expenses', 'charts', 'loans', 'more']);
+    for (const id of ['current', 'expenses', 'charts', 'loans']) {
+      await click(id);
+      assert.equal(h.document.querySelector(`#wallet-${id}`).classList.contains('active'), true);
+      assert.equal(bar.querySelector('[aria-current="page"]').dataset.mobileRoute, id);
+    }
+    await click('expenses'); assert.equal(h.document.querySelector('#wallet-expenses').classList.contains('active'), true);
+    h.document.querySelector('#open-investments').click(); await flush();
+    assert.equal(bar.dataset.mode, 'investment');
+    assert.deepEqual(routes(), ['dashboard', 'analytics', 'market', 'macroeconomics', 'calendar', 'more']);
+    for (const id of ['dashboard', 'analytics', 'market', 'macroeconomics', 'calendar']) {
+      await click(id);
+      assert.equal(h.document.querySelector(`#${id}-section`).classList.contains('active'), true);
+      assert.equal(bar.querySelector('[aria-current="page"]').dataset.mobileRoute, id);
+    }
+    await click('analytics');
+    h.document.querySelector('#open-wallet').click(); await flush();
+    assert.equal(h.document.querySelector('#wallet-expenses').classList.contains('active'), true);
+    h.document.querySelector('#open-investments').click(); await flush();
+    assert.equal(h.document.querySelector('#analytics-section').classList.contains('active'), true);
+    assert.equal(bar.querySelector('[aria-current="page"]').dataset.mobileRoute, 'analytics');
+    await click('more');
+    const backdrop = h.document.querySelector('#mobile-more-backdrop');
+    assert.equal(backdrop.hidden, false);
+    assert.deepEqual(Array.from(h.document.querySelectorAll('#mobile-more-items button'), button => button.dataset.mobileRoute), ['portfolio', 'transactions', 'rebalance']);
+    assert.equal(Boolean(h.document.querySelector('#investments-app').inert), false);
+    assert.equal(Boolean(bar.inert), false);
+    assert.equal(h.document.querySelector('#mobile-more-sheet').getAttribute('role'), 'menu');
+    assert.equal(bar.querySelector('[data-mobile-route="more"]').getAttribute('aria-expanded'), 'true');
+    const last = h.document.querySelector('#mobile-more-items button:last-child'); last.focus();
+    last.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    assert.equal(h.document.activeElement.dataset.mobileRoute, 'portfolio');
+    h.window.history.back();
+    await settleMobileNavigation(h, () => backdrop.hidden && !h.window.history.state?.finoMobileMore);
+    assert.equal(Boolean(h.document.querySelector('#investments-app').inert), false);
+    assert.equal(h.document.activeElement.dataset.mobileRoute, 'more');
+    await click('more');
+    h.document.querySelector('#mobile-more-items [data-mobile-route="portfolio"]').click();
+    await settleMobileNavigation(h, () => h.document.querySelector('#portfolio-section').classList.contains('active'));
+    assert.equal(backdrop.hidden, true);
+    assert.equal(bar.querySelector('[aria-current="page"]').dataset.mobileRoute, 'more');
+    await click('more');
+    backdrop.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await settleMobileNavigation(h, () => backdrop.hidden && !h.window.history.state?.finoMobileMore);
+    await click('more'); backdrop.click();
+    await settleMobileNavigation(h, () => backdrop.hidden && !h.window.history.state?.finoMobileMore);
+    await click('more'); await click('more');
+    await settleMobileNavigation(h, () => backdrop.hidden && !h.window.history.state?.finoMobileMore);
+    for (const id of ['transactions', 'rebalance']) {
+      await click('more');
+      h.document.querySelector(`#mobile-more-items [data-mobile-route="${id}"]`).click();
+      await settleMobileNavigation(h, () => h.document.querySelector(`#${id}-section`).classList.contains('active'));
+      assert.equal(bar.querySelector('[aria-current="page"]').dataset.mobileRoute, 'more');
+    }
+    await click('more'); await click('calendar');
+    await settleMobileNavigation(h, () => h.document.querySelector('#calendar-section').classList.contains('active'));
+    assert.equal(backdrop.hidden, true);
+    assert.equal(bar.querySelector('[aria-current="page"]').dataset.mobileRoute, 'calendar');
+    h.document.querySelector('#open-wallet').click(); await flush();
+    await click('more');
+    assert.deepEqual(Array.from(h.document.querySelectorAll('#mobile-more-items button'), button => button.dataset.mobileRoute), ['archive']);
+    h.document.querySelector('#mobile-more-items button').click();
+    await settleMobileNavigation(h, () => h.document.querySelector('#wallet-archive').classList.contains('active'));
+    assert.equal(JSON.stringify(h.eval('stateStore.selectData()')), before);
+    assert.deepEqual(h.errors, []);
+  });
+}
+
+test('mobile More preserves asset-detail history and choosing a section does not reopen the asset', async t => {
+  const h = await harness(t, { compact: true });
+  h.document.querySelector('#open-investments').click(); await flush();
+  h.window.ui.asset.open(['stock']); await flush();
+  assert.match(h.window.location.hash, /^#asset\//);
+  h.document.querySelector('#mobile-bottom-nav [data-mobile-route="more"]').click();
+  h.window.history.back();
+  await settleMobileNavigation(h, () => h.document.querySelector('#mobile-more-backdrop').hidden);
+  assert.equal(h.eval('stateStore.selectUI("assetPage").active'), true);
+  h.document.querySelector('#mobile-bottom-nav [data-mobile-route="more"]').click();
+  h.document.querySelector('#mobile-bottom-nav [data-mobile-route="calendar"]').click();
+  await settleMobileNavigation(h, () => h.document.querySelector('#calendar-section').classList.contains('active'));
+  assert.equal(h.eval('stateStore.selectUI("assetPage").active'), false);
+  assert.equal(h.window.location.hash, '');
+  assert.deepEqual(h.errors, []);
+});
+
+test('desktop mode switching retains the existing Dashboard and Current defaults', async t => {
+  const h = await harness(t);
+  h.document.querySelector('[data-wallet-tab="expenses"]').click();
+  h.document.querySelector('#open-investments').click();
+  h.document.querySelector('[data-section="analytics"]').click();
+  h.document.querySelector('#open-wallet').click();
+  assert.equal(h.document.querySelector('#wallet-current').classList.contains('active'), true);
+  h.document.querySelector('#open-investments').click();
+  assert.equal(h.document.querySelector('#dashboard-section').classList.contains('active'), true);
+  assert.deepEqual(h.errors, []);
+});
+
 test('UI smoke: month, date and detail filters retain their event behavior', async t => {
   const h = await harness(t);
   for (const selector of ['#wallet-archive-month', '#wallet-expenses-month', '#wallet-chart-month', '#wallet-monthly-category', '#wallet-period-mode', '#profit-from', '#profit-to', '#portfolio-history-mode', '#asset-allocation-mode', '#asset-price-history-select', '#asset-hide-sales', '#asset-only-current']) {
@@ -1439,6 +1695,119 @@ test('UI smoke: renderers use explicit snapshots and never fetch or mutate finan
   assert.equal(current.data.assets[0].name, 'Smoke Stock');
   assert.equal(h.requests.length, requestCount);
   assert.deepEqual(h.errors, []);
+});
+
+async function waitForLoanState(h, predicate) {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    await flush();
+    if (predicate(h.eval('stateStore.selectWallet().loans'))) return;
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  assert.fail('Loan save did not reach the expected state.');
+}
+
+for (const native of [false, true]) {
+  test(`paid loans leave the main list without losing repayment history in ${native ? 'native' : 'web'}`, async t => {
+    const initial = fixture();
+    initial.wallet.loans = [{ id: 'loan', name: 'Loan', amount: 100, balance: 100, method: 'flexible', dueDate: '2099-12-01', status: 'active', repayments: [] }];
+    const h = await harness(t, { initial, native, locale: 'uk' });
+    const input = () => h.document.querySelector('[data-loan-payment="loan"]');
+    const button = () => h.document.querySelector('[data-repay-loan="loan"]');
+    assert.equal(button().disabled, false);
+    input().value = '40';
+    button().click(); await waitForLoanState(h, loans => loans[0].balance === 60);
+    let loan = h.eval('stateStore.selectWallet().loans[0]');
+    assert.equal(loan.balance, 60);
+    assert.equal(loan.repayments.length, 1);
+    assert.equal(loan.repayments[0].amount, 40);
+    assert.equal(button().disabled, false);
+    input().value = '60';
+    button().click(); await waitForLoanState(h, loans => loans[0].status === 'paid');
+    loan = h.eval('stateStore.selectWallet().loans[0]');
+    assert.equal(loan.balance, 0);
+    assert.equal(loan.status, 'paid');
+    assert.equal(loan.repayments.length, 2);
+    assert.equal(button(), null);
+    const paid = h.document.querySelector('[data-archive-loan="loan"]');
+    assert.equal(paid.textContent, 'Сплачено');
+    assert.equal(paid.disabled, false);
+    assert.equal(input().disabled, true);
+    paid.click(); paid.click(); await waitForLoanState(h, loans => loans[0].archived === true);
+    assert.equal(h.document.querySelector('#loans-list .loan-row'), null);
+    assert.equal(h.document.querySelector('#paid-loans-list .loan-row strong').textContent, 'Loan');
+    assert.equal(h.document.querySelector('#paid-loans-archive').hidden, false);
+    assert.equal(h.document.querySelector('#paid-loans-archive').open, false);
+    assert.equal(h.document.querySelector('#paid-loans-archive summary').textContent, 'Погашені позики');
+    assert.equal(h.eval('stateStore.selectWallet().loans[0].archived'), true);
+    assert.equal(h.eval('stateStore.selectWallet().loans[0].repayments.length'), 2);
+    assert.equal(h.document.querySelector('#loan-calendar').querySelector('.loan-payment'), null);
+    if (!native) {
+      assert.equal(h.stored().wallet.loans[0].balance, 0);
+      assert.equal(h.stored().wallet.loans[0].repayments.length, 2);
+      assert.equal(h.requests.filter(request => request.route === '/api/wallet' && request.method === 'PUT').length, 3);
+    }
+    const restarted = await harness(t, { native, initial: h.stored(), nativeStorage: h.nativeStorage, locale: 'uk' });
+    assert.equal(restarted.document.querySelector('#loans-list .loan-row'), null);
+    assert.equal(restarted.eval('stateStore.selectWallet().loans[0].archived'), true);
+    assert.equal(restarted.eval('stateStore.selectWallet().loans[0].repayments.length'), 2);
+    const restore = restarted.document.querySelector('[data-restore-loan="loan"]');
+    assert.equal(restore.textContent, 'Повернути до списку');
+    restore.click(); await waitForLoanState(restarted, loans => loans[0].archived === false);
+    assert.ok(restarted.document.querySelector('#loans-list [data-archive-loan="loan"]'));
+    assert.equal(restarted.document.querySelector('#paid-loans-archive').hidden, true);
+    assert.equal(restarted.eval('stateStore.selectWallet().loans[0].repayments.length'), 2);
+    assert.deepEqual(restarted.errors, []);
+    assert.deepEqual(h.errors, []);
+  });
+
+  test(`existing paid loans can be archived and edited in ${native ? 'native' : 'web'}`, async t => {
+    const initial = fixture();
+    initial.wallet.loans = [
+      { id: 'paid', name: 'Paid loan', amount: 100, balance: 0, method: 'flexible', dueDate: '2099-12-01', status: 'paid', repayments: [{ id: 'repayment', date: '2026-10-01', amount: 100 }] },
+      { id: 'active', name: 'Active loan', amount: 200, balance: 200, method: 'once', dueDate: '2099-12-01', status: 'active', repayments: [] },
+    ];
+    const h = await harness(t, { initial, native, compact: native });
+    h.document.querySelector('[data-archive-loan="paid"]').click();
+    await waitForLoanState(h, loans => loans[0].archived === true);
+    assert.equal(h.document.querySelectorAll('#loans-list .loan-row').length, 1);
+    assert.ok(h.document.querySelector('#loans-list [data-repay-loan="active"]'));
+    const edit = () => h.document.querySelector('#paid-loans-list [data-edit-loan="paid"]').click();
+    const form = h.document.querySelector('#loan-form');
+    const submit = async predicate => {
+      form.dispatchEvent(new h.window.Event('submit', { bubbles: true, cancelable: true })); await flush();
+      await waitForLoanState(h, predicate);
+    };
+    edit(); form.elements.name.value = 'Renamed paid loan'; await submit(loans => loans[0].name === 'Renamed paid loan');
+    assert.equal(h.eval('stateStore.selectWallet().loans[0].archived'), true);
+    assert.equal(h.document.querySelectorAll('#loans-list .loan-row').length, 1);
+    edit(); form.elements.amount.value = '150'; await submit(loans => loans[0].balance === 50);
+    assert.equal(h.eval('stateStore.selectWallet().loans[0].balance'), 50);
+    assert.equal(h.eval('stateStore.selectWallet().loans[0].archived'), false);
+    assert.ok(h.document.querySelector('#loans-list [data-repay-loan="paid"]'));
+    assert.equal(h.eval('stateStore.selectWallet().loans[0].repayments.length'), 1);
+    assert.deepEqual(h.errors, []);
+  });
+}
+
+test('failed paid-loan archiving keeps the row and its history until a successful retry', async t => {
+  const initial = fixture();
+  initial.wallet.loans = [{ id: 'loan', name: 'Paid loan', amount: 100, balance: 0, status: 'paid', repayments: [{ id: 'repayment', date: '2026-10-01', amount: 100 }] }];
+  const h = await harness(t, { initial, failWallet: true });
+  const before = JSON.stringify(h.eval('stateStore.selectWallet()'));
+  const button = h.document.querySelector('[data-archive-loan="loan"]');
+  button.click(); await flush();
+  assert.equal(button.disabled, false);
+  assert.ok(h.document.querySelector('#loans-list [data-archive-loan="loan"]'));
+  assert.equal(h.document.querySelector('#paid-loans-archive').hidden, true);
+  assert.equal(JSON.stringify(h.eval('stateStore.selectWallet()')), before);
+  assert.deepEqual(h.stored().wallet, initial.wallet);
+  assert.equal(h.document.querySelector('#notice-modal').classList.contains('open'), true);
+  h.document.querySelector('#notice-ok').click();
+  h.failWallet(false);
+  button.click(); await flush();
+  assert.equal(h.document.querySelector('#loans-list .loan-row'), null);
+  assert.equal(h.stored().wallet.loans[0].archived, true);
+  assert.equal(h.stored().wallet.loans[0].repayments.length, 1);
 });
 
 test('UI smoke: wallet plan and expense form persist through the action layer', async t => {

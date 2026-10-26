@@ -1,8 +1,6 @@
-(function (root, factory) {
-  const api = factory(typeof module === 'object' && module.exports ? require('../../shared/state-contract') : root.FinoStateContract, typeof module === 'object' && module.exports ? require('./state-store') : root.FinoStateStore);
-  if (typeof module === 'object' && module.exports) module.exports = api;
-  else root.FinoMarketData = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (contract, readers) {
+import contract from '../../shared/state-contract.js';
+import readers from './state-store.js';
+const implementation = (function (contract, readers) {
   function createService({ state, selectData, selectUI, exchangeRates, historicalRates, values, getCustomRange = () => null }) {
     ({ selectData, selectUI } = readers.createReader({ state, selectData, selectUI }));
     const { normalizeNumber } = values;
@@ -165,4 +163,6 @@ function valuesForDates(series, labels) {
     return { toUAH, rateInfo, convertWithInfo, getExchangeRateOnDate, toUAHAtDate, getAssetPurchaseDate, getAssetPurchaseExchangeRate, toUAHPurchaseCost, convertCurrency, marketParamsForRange, dateDaysAgo, currencyParamsForRange, resolveMarketSymbol, valuesForDates };
   }
   return { createService };
-});
+})(contract, readers);
+export default implementation;
+export const { createService } = implementation;

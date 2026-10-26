@@ -1,8 +1,5 @@
-(function (root, factory) {
-  const api = factory(typeof module === 'object' && module.exports ? require('../../shared/portfolio-rules') : root.FinoPortfolioRules);
-  if (typeof module === "object" && module.exports) module.exports = api;
-  else root.PortfolioPerformance = api;
-})(typeof globalThis !== "undefined" ? globalThis : this, function (rules) {
+import rules from '../../shared/portfolio-rules.js';
+const implementation = (function (rules) {
   const number = (value) => Number.isFinite(Number(value)) ? Number(value) : 0;
   const day = (value) => String(value || "").slice(0, 10);
   const validDay = (value) => /^\d{4}-\d{2}-\d{2}$/.test(day(value));
@@ -130,4 +127,6 @@
   }
 
   return { buildWeeklyPerformance };
-});
+})(rules);
+export default implementation;
+export const { buildWeeklyPerformance } = implementation;

@@ -1,5 +1,18 @@
-(function () {
-const stackedDoughnutLegendPlugin = window.FinoChartPlugins.stackedDoughnutLegend;
+// Explicit ports are wired once by composition.js; this module publishes no browser globals.
+export function createChartsWallet({
+  FinoChartPlugins,
+  charts,
+  createRenderServices,
+  document,
+  escapeHtml,
+  normalizeNumber,
+  shiftWalletDate,
+  stateStore,
+  walletExpenseDateBounds,
+  walletMoney,
+  window,
+}) {
+const stackedDoughnutLegendPlugin = FinoChartPlugins.stackedDoughnutLegend;
 // charts/wallet.js
 let walletCategoryChart = null;
 
@@ -41,7 +54,7 @@ function applyWalletPeriodPreset() {
 }
 
 function renderWalletPeriodChart(state = stateStore.getState()) {
-  if (typeof Chart === "undefined") return;
+  if (typeof charts.current === "undefined") return;
   const fromInput = document.querySelector("#wallet-period-from");
   const toInput = document.querySelector("#wallet-period-to");
   const totalElement = document.querySelector("#wallet-period-total");
@@ -83,7 +96,7 @@ function renderWalletPeriodChart(state = stateStore.getState()) {
   }
 
   walletPeriodChart?.destroy();
-  walletPeriodChart = new Chart(canvas, {
+  walletPeriodChart = new charts.current(canvas, {
     type: "line",
     data: { labels, datasets: [{ label: mode === "__expenses__" ? "Cumulative expenses" : "Cumulative total", data: cumulativeValues, borderColor: "#49c58b", backgroundColor: "rgba(73,197,139,.14)", fill: true, tension: .22, pointRadius: labels.length > 60 ? 0 : 2, pointHoverRadius: 4, borderWidth: 2 }] },
     options: {
@@ -104,14 +117,14 @@ function renderWalletPeriodChart(state = stateStore.getState()) {
 }
 
 function renderWalletCategoryChart(key, state = stateStore.getState()) {
-  if (typeof Chart === "undefined") return;
+  if (typeof charts.current === "undefined") return;
   const { walletExpenses } = createRenderServices(state);
   const expenses = walletExpenses(key).filter((expense) => expense.category !== "Salary");
   const categories = [...new Set(expenses.map((expense) => expense.category))];
   const categoryValues = categories.map((category) => expenses.filter((expense) => expense.category === category).reduce((sum, expense) => sum + normalizeNumber(expense.amount), 0));
   const chartColors = ["#7395DD", "#F587F0", "#32A328", "#e9a23b", "#7c8cff", "#2bb3a3", "#c76dd8", "#FDBDBA"];
   walletCategoryChart?.destroy();
-  walletCategoryChart = new Chart(document.querySelector("#wallet-category-chart"), {
+  walletCategoryChart = new charts.current(document.querySelector("#wallet-category-chart"), {
     type: "doughnut",
     data: { labels: categories, datasets: [{ data: categoryValues, backgroundColor: chartColors }] },
     plugins: [stackedDoughnutLegendPlugin],
@@ -133,18 +146,18 @@ function renderWalletCategoryChart(key, state = stateStore.getState()) {
 }
 
 function renderWalletDailyChart(key, state = stateStore.getState()) {
-  if (typeof Chart === "undefined") return;
+  if (typeof charts.current === "undefined") return;
   const { walletExpenses } = createRenderServices(state);
   const expenses = walletExpenses(key).filter((expense) => expense.category !== "Salary");
   const dayCount = new Date(Number(key.slice(0, 4)), Number(key.slice(5, 7)), 0).getDate();
   const days = Array.from({ length: dayCount }, (_, index) => index + 1);
   const dailyValues = days.map((day) => expenses.filter((expense) => Number(expense.date.slice(8, 10)) === day).reduce((sum, expense) => sum + normalizeNumber(expense.amount), 0));
   walletDailyChart?.destroy();
-  walletDailyChart = new Chart(document.querySelector("#wallet-daily-chart"), { type: "line", data: { labels: days, datasets: [{ label: "Daily expenses", data: dailyValues, borderColor: "#7395DD", backgroundColor: "rgba(115,149,221,.18)", fill: true, tension: .25 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, title: { display: false } }, scales: { x: { ticks: { autoSkip: true, maxTicksLimit: window.innerWidth <= 700 ? 6 : 10, maxRotation: 0 } } } } });
+  walletDailyChart = new charts.current(document.querySelector("#wallet-daily-chart"), { type: "line", data: { labels: days, datasets: [{ label: "Daily expenses", data: dailyValues, borderColor: "#7395DD", backgroundColor: "rgba(115,149,221,.18)", fill: true, tension: .25 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, title: { display: false } }, scales: { x: { ticks: { autoSkip: true, maxTicksLimit: window.innerWidth <= 700 ? 6 : 10, maxRotation: 0 } } } } });
 }
 
 function renderWalletMonthlyChart(state = stateStore.getState()) {
-  if (typeof Chart === "undefined") return;
+  if (typeof charts.current === "undefined") return;
   const allExpenses = (stateStore.selectWallet(state).expenses || []).filter((expense) => expense.category !== "Salary");
   const monthlyCategorySelect = document.querySelector("#wallet-monthly-category");
   const previousSelection = monthlyCategorySelect?.value || "__total__";
@@ -166,12 +179,12 @@ function renderWalletMonthlyChart(state = stateStore.getState()) {
   const months = Object.keys(monthTotals).sort();
   const seriesLabel = selectedCategory === "__total__" ? "Total expenses" : selectedCategory === "__expenses__" ? "Expenses" : selectedCategory;
   walletMonthlyChart?.destroy();
-  walletMonthlyChart = new Chart(document.querySelector("#wallet-monthly-chart"), { type: "line", data: { labels: months, datasets: [{ label: seriesLabel, data: months.map((month) => monthTotals[month]), borderColor: "#7c8cff", backgroundColor: "rgba(124,140,255,.18)", fill: true, tension: .3, pointRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, title: { display: true, text: `${seriesLabel} by month` } }, scales: { x: { ticks: walletMonthAxisTicks() } } } });
+  walletMonthlyChart = new charts.current(document.querySelector("#wallet-monthly-chart"), { type: "line", data: { labels: months, datasets: [{ label: seriesLabel, data: months.map((month) => monthTotals[month]), borderColor: "#7c8cff", backgroundColor: "rgba(124,140,255,.18)", fill: true, tension: .3, pointRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, title: { display: true, text: `${seriesLabel} by month` } }, scales: { x: { ticks: walletMonthAxisTicks() } } } });
 }
 
 function renderWalletCharts(state = stateStore.getState()) {
   const { walletMonthKey } = createRenderServices(state);
-  if (typeof Chart === "undefined") return;
+  if (typeof charts.current === "undefined") return;
   const input = document.querySelector("#wallet-chart-month");
   if (!input) return;
   input.value ||= walletMonthKey();
@@ -181,6 +194,5 @@ function renderWalletCharts(state = stateStore.getState()) {
   renderWalletMonthlyChart(state);
   renderWalletPeriodChart(state);
 }
-
-Object.assign(window, { walletMonthAxisTicks, applyWalletPeriodPreset, renderWalletPeriodChart, renderWalletCategoryChart, renderWalletDailyChart, renderWalletMonthlyChart, renderWalletCharts });
-})();
+return { applyWalletPeriodPreset, renderWalletCategoryChart, renderWalletCharts, renderWalletDailyChart, renderWalletMonthlyChart, renderWalletPeriodChart, walletMonthAxisTicks };
+}

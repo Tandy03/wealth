@@ -1,6 +1,10 @@
-(function () {
-  const languages = ["en", "de", "uk", "es", "pl", "it"];
+// Explicit ports are wired once by composition.js; this module publishes no browser globals.
+export function createI18n({ MutationObserver, NodeFilter, charts, document, localStorage, location }) {
+const languages = ["en", "de", "uk", "es", "pl", "it"];
   const rows = [
+    ["Chart appearance","Diagrammdarstellung","Відображення графіка","Visualización del gráfico","Wygląd wykresu","Visualizzazione del grafico"],
+    ["Original","Original","Реальний","Original","Rzeczywisty","Originale"],
+    ["Smoothed","Geglättet","Згладжений","Suavizado","Wygładzony","Smussato"],
     ["Share","Teilen","Поділитися","Compartir","Udostępnij","Condividi"],
     ["Preview","Vorschau","Попередній перегляд","Vista previa","Podgląd","Anteprima"],
     ["Download PNG","PNG herunterladen","Завантажити PNG","Descargar PNG","Pobierz PNG","Scarica PNG"],
@@ -321,6 +325,24 @@
     ["No payments yet.","Noch keine Zahlungen.","Платежів ще немає.","Aún no hay pagos.","Brak płatności.","Nessun pagamento."],
     ["All time","Gesamter Zeitraum","За весь час","Todo el tiempo","Cały okres","Tutto il periodo"],
     ["Today","Heute","Сьогодні","Hoy","Dzisiaj","Oggi"],
+    ["More","Mehr","Ще","Más","Więcej","Altro"],
+    ["Main navigation","Hauptnavigation","Основна навігація","Navegación principal","Nawigacja główna","Navigazione principale"],
+    ["Close menu","Menü schließen","Закрити меню","Cerrar menú","Zamknij menu","Chiudi menu"],
+    ["All events","Alle Ereignisse","Усі події","Todos los eventos","Wszystkie wydarzenia","Tutti gli eventi"],
+    ["Planned purchases","Geplante Käufe","Планові купівлі","Compras previstas","Planowane zakupy","Acquisti pianificati"],
+    ["Event filters","Ereignisfilter","Фільтри подій","Filtros de eventos","Filtry wydarzeń","Filtri eventi"],
+    ["Planned","Geplant","Заплановано","Previsto","Planowane","Pianificato"],
+    ["Calendar guide","Kalenderhilfe","Позначки календаря","Guía del calendario","Przewodnik po kalendarzu","Guida al calendario"],
+    ["Event colors","Ereignisfarben","Кольори подій","Colores de eventos","Kolory wydarzeń","Colori degli eventi"],
+    ["Select month","Monat auswählen","Вибрати місяць","Seleccionar mes","Wybierz miesiąc","Seleziona mese"],
+    ["Previous month","Vorheriger Monat","Попередній місяць","Mes anterior","Poprzedni miesiąc","Mese precedente"],
+    ["Next month","Nächster Monat","Наступний місяць","Mes siguiente","Następny miesiąc","Mese successivo"],
+    ["events","Ereignisse","подій","eventos","wydarzeń","eventi"],
+    ["events this month","Ereignisse diesen Monat","подій цього місяця","eventos este mes","wydarzeń w tym miesiącu","eventi questo mese"],
+    ["No events for this day","Keine Ereignisse an diesem Tag","На цей день подій немає","No hay eventos para este día","Brak wydarzeń w tym dniu","Nessun evento per questo giorno"],
+    ["Select another date or add a planned purchase.","Wählen Sie ein anderes Datum oder fügen Sie einen geplanten Kauf hinzu.","Виберіть іншу дату або додайте заплановану купівлю.","Selecciona otra fecha o añade una compra prevista.","Wybierz inną datę lub dodaj planowany zakup.","Seleziona un’altra data o aggiungi un acquisto pianificato."],
+    ["Select a day to see its events. Open an event to view details or mark a payment as received.","Wählen Sie einen Tag, um seine Ereignisse zu sehen. Öffnen Sie ein Ereignis für Details oder um eine Zahlung als erhalten zu markieren.","Виберіть день, щоб побачити його події. Відкрийте подію для перегляду деталей або позначення виплати як отриманої.","Selecciona un día para ver sus eventos. Abre un evento para ver detalles o marcar un pago como recibido.","Wybierz dzień, aby zobaczyć wydarzenia. Otwórz wydarzenie, aby zobaczyć szczegóły lub oznaczyć płatność jako otrzymaną.","Seleziona un giorno per vedere gli eventi. Apri un evento per i dettagli o per segnare un pagamento come ricevuto."],
+    ["Dots under a date show events for that day. Outlined dots indicate received payments. A number shows additional events.","Punkte unter einem Datum zeigen seine Ereignisse. Umrandete Punkte kennzeichnen erhaltene Zahlungen. Eine Zahl zeigt weitere Ereignisse.","Крапки під числом позначають події цього дня. Контурні крапки — отримані виплати. Число показує додаткові події.","Los puntos bajo una fecha indican sus eventos. Los puntos de contorno indican pagos recibidos. Un número muestra eventos adicionales.","Kropki pod datą oznaczają wydarzenia tego dnia. Obrysowane kropki to otrzymane płatności. Liczba oznacza dodatkowe wydarzenia.","I punti sotto una data indicano gli eventi del giorno. I punti vuoti indicano pagamenti ricevuti. Un numero indica altri eventi."],
     ["From","Von","Від","Desde","Od","Da"],
     ["To","Bis","До","Hasta","Do","A"],
     ["Category","Kategorie","Категорія","Categoría","Kategoria","Categoria"],
@@ -398,6 +420,10 @@
     ["Upcoming loan payments","Bevorstehende Kreditraten","Майбутні платежі за позиками","Próximos pagos de préstamos","Nadchodzące spłaty pożyczek","Prossimi pagamenti prestiti"],
     ["Repay","Zurückzahlen","Погасити","Reembolsar","Spłać","Rimborsa"],
     ["Paid","Bezahlt","Сплачено","Pagado","Spłacono","Pagato"],
+    ["Paid loans","Bezahlte Kredite","Погашені позики","Préstamos pagados","Spłacone pożyczki","Prestiti saldati"],
+    ["Move to paid loans","Zu bezahlten Krediten verschieben","Перемістити до погашених позик","Mover a préstamos pagados","Przenieś do spłaconych pożyczek","Sposta nei prestiti saldati"],
+    ["Return to list","Zurück zur Liste","Повернути до списку","Volver a la lista","Przywróć na listę","Torna all’elenco"],
+    ["Repayment amount","Rückzahlungsbetrag","Сума погашення","Importe de reembolso","Kwota spłaty","Importo del rimborso"],
     ["No loans.","Keine Kredite.","Позик немає.","No hay préstamos.","Brak pożyczek.","Nessun prestito."],
     ["Additional investment for $1,000/month","Zusätzliche Investition für 1.000 $/Monat","Додаткові інвестиції для $1 000/місяць","Inversión adicional para 1.000 $/mes","Dodatkowa inwestycja dla 1000 USD/miesiąc","Investimento aggiuntivo per 1.000 $/mese"],
     ["Average monthly profit:","Durchschnittlicher Monatsgewinn:","Середній місячний прибуток:","Beneficio mensual medio:","Średni miesięczny zysk:","Profitto mensile medio:"],
@@ -990,16 +1016,19 @@ Invalid {value}.|Ungültiges Feld: {value}.|Некоректне поле: {valu
     location.reload();
   };
   const format = (key, values) => t(key).replace(/\{(\w+)\}/g, (match, name) => String(values[name] ?? match));
-  window.FinoI18n = { get locale() { return locale; }, t, format, apply, setLanguage };
-  document.addEventListener("DOMContentLoaded", () => {
+  const FinoI18n = { get locale() { return locale; }, t, format, apply, setLanguage };
+  let initialized = false;
+  function initializeI18n() {
+    if (initialized) return;
+    initialized = true;
     apply();
-    if (locale !== "en" && window.Chart && !window.Chart.__finoTranslated) {
-      const OriginalChart = window.Chart;
-      window.Chart = new Proxy(OriginalChart, {
+    if (locale !== "en" && charts.current && !charts.current.__finoTranslated) {
+      const OriginalChart = charts.current;
+      charts.current = new Proxy(OriginalChart, {
         construct(Target, args, NewTarget) { translateObject(args[1]); return Reflect.construct(Target, args, NewTarget); },
         apply(Target, thisArg, args) { translateObject(args[1]); return Reflect.apply(Target, thisArg, args); }
       });
-      window.Chart.__finoTranslated = true;
+      charts.current.__finoTranslated = true;
     }
     new MutationObserver((records) => records.forEach((record) => {
       if (record.type === "attributes") {
@@ -1020,5 +1049,6 @@ Invalid {value}.|Ungültiges Feld: {value}.|Некоректне поле: {valu
         }
       });
     })).observe(document.body, { childList: true, characterData: true, attributes: true, attributeFilter: ['placeholder', 'title', 'aria-label', 'aria-valuetext', 'data-label'], subtree: true });
-  });
-})();
+  }
+return { FinoI18n, initializeI18n, translationRows: rows };
+}

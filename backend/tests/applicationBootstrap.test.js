@@ -13,7 +13,7 @@ function fixture(overrides = {}) {
     store: { capture: () => context, isCurrent: value => value === context && current },
     api: { getData: options => { calls.push(['sync', options]); return sync; } },
     refreshData: async () => { calls.push('load'); return { applied: true }; },
-    render: () => calls.push('render'), updateBenchmark: () => calls.push('benchmark'),
+    render: () => calls.push('render'),
     initializeController: setup => setup(), controllers: [['Example', () => calls.push('setup')]],
     diagnostics: errors.diagnostics, logger: { error: (...args) => logs.push(args), warn: (...args) => logs.push(args) },
     showNotice: value => notices.push(value), isNative: () => false, ...overrides,
@@ -23,9 +23,9 @@ function fixture(overrides = {}) {
 test('injected bootstrap renders local data without waiting for optional sync and retains request/render counts', async () => {
   const f = fixture();
   await f.app.init();
-  assert.deepEqual(f.calls, ['setup', 'load', 'render', 'benchmark', ['sync', { sync: true }]]);
+  assert.deepEqual(f.calls, ['setup', 'load', 'render', ['sync', { sync: true }]]);
   f.resolveSync(); await flush();
-  assert.deepEqual(f.calls.slice(5), ['load', 'render', 'benchmark']);
+  assert.deepEqual(f.calls.slice(4), ['load', 'render']);
   assert.deepEqual(f.logs, []);
 });
 test('stale account/snapshot background success and failure cannot reload data or show stale errors', async () => {
@@ -48,15 +48,15 @@ test('controller initialization errors are visible and sanitized while other con
     ['Broken', () => { throw new Error('private provider body/token/financial records'); }],
     ['Next', () => { nextStarted = true; }],
   ] });
-  await f.app.init();
+  await assert.rejects(f.app.init(), /UI initialization failed/);
   assert.equal(nextStarted, true); assert.ok(f.calls.includes('render'));
-  assert.equal(f.logs.length, 1); assert.equal(f.logs[0][0], 'Broken setup failed:');
+  assert.equal(f.logs.length, 2); assert.equal(f.logs[0][0], 'Broken setup failed:');
   assert.ok(!JSON.stringify(f.logs).includes('private provider'));
 });
 test('initialization failure keeps the user-facing request ID and does not start background sync', async () => {
   const failure = Object.assign(new Error('Could not load your portfolio.'), { requestId: 'bootstrap-request' });
   const f = fixture({ refreshData: async () => { throw failure; } });
-  await f.app.init();
+  await assert.rejects(f.app.init(), error => error === failure);
   assert.deepEqual(f.calls, ['setup']); assert.deepEqual(f.notices, [failure]);
   assert.equal(f.logs.length, 1);
 });

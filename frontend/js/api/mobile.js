@@ -1,10 +1,8 @@
-(function (root, factory) {
-  const api = factory(typeof module === 'object' && module.exports ? require('../../../shared/market-model') : root.FinoMarketModel,
-    typeof module === 'object' && module.exports ? require('../../../shared/errors') : root.FinoErrors,
-    typeof module === 'object' && module.exports ? require('../../../shared/validation').createDefault() : root.FinoValidation, typeof module === 'object' && module.exports ? require('../../../shared/operations') : root.FinoOperations);
-  if (typeof module === 'object' && module.exports) module.exports = api;
-  else root.FinoMobileApi = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (marketModel, errors, validation, operations) {
+import marketModel from '../../../shared/market-model.js';
+import errors from '../../../shared/errors.js';
+import validation from '../shared/validation.js';
+import operations from '../../../shared/operations.js';
+const implementation = (function (marketModel, errors, validation, operations) {
   function createService({ getAdapter, request }) {
     const methods = ['getData', 'getMarketTimeSeries', 'getMarketCurrencies', 'getCurrencyHistory', 'getFrankfurterHistory', 'getIndexHistory', 'getMacroeconomics', 'getNbuPolicyRate', 'getGoogleDriveStatus', 'syncGoogleDrive', 'createAsset', 'updateAsset', 'mergeAssets', 'buyMoreAsset', 'deleteAsset', 'getSales', 'createSale', 'getTransactions', 'createTransaction', 'getPayments', 'createPayment', 'markPaymentReceived', 'getCalendarNotes', 'createCalendarNote', 'saveWallet', 'saveRebalance'];
     const service = Object.fromEntries(methods.map(method => [method, (...args) => getAdapter()[method](...args)]));
@@ -30,4 +28,6 @@
     return outbox ? outbox.wrap(service) : service;
   }
   return { createService, createFacade };
-});
+})(marketModel, errors, validation, operations);
+export default implementation;
+export const { createFacade, createService } = implementation;

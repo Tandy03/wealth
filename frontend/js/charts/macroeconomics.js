@@ -1,4 +1,13 @@
-(function () {
+// Explicit ports are wired once by composition.js; this module publishes no browser globals.
+export function createChartsMacroeconomics({
+  api,
+  charts,
+  currencyFormatter,
+  document,
+  escapeHtml,
+  stateStore,
+  valuesForDates,
+}) {
 // charts/macroeconomics.js
 let macroCharts = [];
 
@@ -12,10 +21,10 @@ function macroYearTick(value) {
 
 function macroLineChart(canvasId, series, label, color, suffix = "%", stepped = false) {
   const canvas = document.querySelector(`#${canvasId}`);
-  if (!canvas || typeof Chart === "undefined") return;
+  if (!canvas || typeof charts.current === "undefined") return;
   const byDate = new Map((series || []).map((point) => [point.date, point.value]));
   const points = [...byDate].sort(([a], [b]) => a.localeCompare(b));
-  const chart = new Chart(canvas, {
+  const chart = new charts.current(canvas, {
     type: "line",
     data: { labels: points.map(([date]) => date), datasets: [{ label, data: points.map(([, value]) => value), borderColor: color, backgroundColor: `${color}20`, fill: true, stepped, tension: stepped ? 0 : 0.28, pointRadius: points.length > 45 ? 0 : 2 }] },
     options: { responsive: true, maintainAspectRatio: false, interaction: { intersect: false, mode: "index" }, scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 8, callback: macroYearTick } }, y: { ticks: { callback: (value) => `${value}${suffix}` } } }, plugins: { legend: { display: false } } },
@@ -25,8 +34,8 @@ function macroLineChart(canvasId, series, label, color, suffix = "%", stepped = 
 
 function macroMultiChart(canvasId, labels, datasets, rightAxis = false) {
   const canvas = document.querySelector(`#${canvasId}`);
-  if (!canvas || typeof Chart === "undefined") return;
-  macroCharts.push(new Chart(canvas, {
+  if (!canvas || typeof charts.current === "undefined") return;
+  macroCharts.push(new charts.current(canvas, {
     type: "line",
     data: { labels, datasets: datasets.map((dataset, index) => ({ ...dataset, tension: 0.25, pointRadius: labels.length > 35 ? 0 : 2, borderWidth: 2, yAxisID: dataset.yAxisID || "y", backgroundColor: `${dataset.borderColor}18` })) },
     options: { responsive: true, maintainAspectRatio: false, interaction: { intersect: false, mode: "index" }, scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 8, callback: macroYearTick } }, y: { beginAtZero: false }, ...(rightAxis ? { y1: { position: "right", grid: { drawOnChartArea: false }, ticks: { callback: (value) => `${value}%` } } } : {}) }, plugins: { legend: { position: "bottom", labels: { usePointStyle: true, boxWidth: 8 } } } },
@@ -82,6 +91,5 @@ async function renderMacroeconomics() {
     state.textContent = error.message || "Could not load macroeconomic data.";
   }
 }
-
-Object.assign(window, { macroYearTick, macroLineChart, macroMultiChart, renderMacroeconomics });
-})();
+return { macroLineChart, macroMultiChart, macroYearTick, renderMacroeconomics };
+}

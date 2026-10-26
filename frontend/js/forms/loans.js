@@ -1,4 +1,14 @@
-(function () {
+// Explicit ports are wired once by composition.js; this module publishes no browser globals.
+export function createFormsLoans({
+  FormData,
+  document,
+  getDateString,
+  normalizeNumber,
+  renderLoans,
+  showNotice,
+  stateStore,
+  walletActions,
+}) {
 // forms/loans.js
 function updateLoanMethodFields() {
   const method = document.querySelector("#loan-method")?.value;
@@ -58,6 +68,7 @@ function setupLoans() {
     const previous = stateStore.selectWallet().loans.find((loan) => loan.id === stateStore.selectUI('editingLoanId'));
     const paidAmount = previous ? normalizeNumber(previous.amount) - normalizeNumber(previous.balance) : 0;
     const loan = { id: previous?.id || `loan-${Date.now()}`, createdAt: previous?.createdAt || new Date().toISOString(), name: String(values.get("name") || "").trim(), amount, balance: Math.max(0, amount - paidAmount), method: values.get("method"), institution: String(values.get("institution") || "").trim(), dueDate: values.get("dueDate"), monthlyPayment: normalizeNumber(values.get("monthlyPayment")), paymentDay: normalizeNumber(values.get("paymentDay")), lastPaymentDate: values.get("lastPaymentDate") || null, manualSchedule, comment: String(values.get("comment") || "").trim(), repayments: previous?.repayments || [], status: amount > paidAmount ? "active" : "paid" };
+    loan.archived = previous?.archived === true && loan.status === "paid";
     if (submitButton) submitButton.disabled = true;
     try {
       await walletActions.mutate(wallet => {
@@ -71,5 +82,5 @@ function setupLoans() {
     renderLoans();
   });
 }
-Object.assign(window, { updateLoanMethodFields, openLoanModal, setupLoans });
-})();
+return { openLoanModal, setupLoans, updateLoanMethodFields };
+}

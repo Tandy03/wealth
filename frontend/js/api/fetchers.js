@@ -1,8 +1,5 @@
-(function (root, factory) {
-  const api = factory(typeof module === 'object' && module.exports ? require('../../../shared/errors') : root.FinoErrors);
-  if (typeof module === 'object' && module.exports) module.exports = api;
-  else root.FinoFetchers = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (errors) {
+import errors from '../../../shared/errors.js';
+const implementation = (function (errors) {
   function responseFailure(response, message) {
     const failure = new errors.RemoteUnavailableError({ message, status: response.ok === false ? response.status : 502 });
     failure.requestId = response.headers?.get('x-request-id');
@@ -66,4 +63,6 @@
     };
   }
   return { createService, readJson };
-});
+})(errors);
+export default implementation;
+export const { createService, readJson } = implementation;

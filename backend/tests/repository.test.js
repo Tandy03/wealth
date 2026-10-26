@@ -10,7 +10,7 @@ test('local reads, status and edits remain available while Drive initialization 
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fino-local-first-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   const dataFile = path.join(dir, 'data.json');
-  const local = require('../../frontend/js/state-model').createEmptyState();
+  const local = require('../../shared/state-model').createEmptyState();
   await fs.writeFile(dataFile, JSON.stringify(local));
   let release, began, failure;
   const gate = new Promise(resolve => { release = resolve; });
@@ -44,7 +44,7 @@ test('edits made during initialization upload the latest version when the remote
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fino-init-latest-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   const dataFile = path.join(dir, 'data.json');
-  const local = require('../../frontend/js/state-model').createEmptyState();
+  const local = require('../../shared/state-model').createEmptyState();
   await fs.writeFile(dataFile, JSON.stringify(local));
   let release;
   const gate = new Promise(resolve => { release = resolve; });
@@ -65,7 +65,7 @@ test('HTTP startup serves local data immediately and refreshes after background 
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fino-http-local-first-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   const dataFile = path.join(dir, 'data.json');
-  const local = require('../../frontend/js/state-model').createEmptyState();
+  const local = require('../../shared/state-model').createEmptyState();
   await fs.writeFile(dataFile, JSON.stringify(local));
   let release;
   const gate = new Promise(resolve => { release = resolve; });

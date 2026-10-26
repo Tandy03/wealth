@@ -1,4 +1,14 @@
-(function () {
+// Explicit ports are wired once by composition.js; this module publishes no browser globals.
+export function createControllersPortfolio({
+  api,
+  document,
+  loadData,
+  openEditAssetModal,
+  openHoldingSelectionModal,
+  showConfirm,
+  stateStore,
+  ui,
+}) {
 const state = stateStore.getState();
 // Page event controllers; renderers never call transport directly.
 
@@ -23,13 +33,13 @@ function bindPortfolioActions(tbody) {
 
   tbody.querySelectorAll("[data-asset-group]").forEach((row) => row.addEventListener("click", (event) => {
     if (event.target.closest("button")) return;
-    window.ui.asset.open(row.dataset.assetGroup.split(','), { from: 'portfolio' });
+    ui.asset.open(row.dataset.assetGroup.split(','), { from: 'portfolio' });
   }));
   tbody.querySelectorAll('[data-asset-group]').forEach(row => {
     row.tabIndex = 0; row.setAttribute('role', 'button');
     row.addEventListener('keydown', event => {
       if (event.target !== row || !['Enter', ' '].includes(event.key)) return;
-      event.preventDefault(); window.ui.asset.open(row.dataset.assetGroup.split(','), { from: 'portfolio' });
+      event.preventDefault(); ui.asset.open(row.dataset.assetGroup.split(','), { from: 'portfolio' });
     });
   });
 }
@@ -44,5 +54,5 @@ function bindHoldingDetailActions(body) {
     }));
 
 }
-Object.assign(window, { bindPortfolioActions, bindHoldingDetailActions });
-})();
+return { bindHoldingDetailActions, bindPortfolioActions };
+}

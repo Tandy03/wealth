@@ -1,66 +1,91 @@
-# Frontend: глобали та порядок запуску
+# Frontend Fino: ES modules, build і перевірки
 
-`npm.cmd run check:frontend` now exposes the existing reviewed loading/global contract as a separate CI command. `npm.cmd run lint` adds ESLint correctness rules for shared modules plus state, API/outbox, sync, financial calculations and settings/conflict UI. The flat configuration reads existing owners from `frontend-globals.json` rather than accepting arbitrary globals. It checks undefined names, illegal assignments, duplicate declarations/keys, unreachable code and unsafe control flow; formatting and mass rewrites are outside this stage. [ESLint flat config](https://eslint.org/docs/latest/use/configure/configuration-files) is a development dependency only and is never loaded by the browser/WebView.
+`frontend/index.html` підключає один локальний `type="module"` entry — `frontend/js/main.js`. Залежності визначають статичні імпорти, а не список класичних scripts. Production web і Capacitor використовують одну Vite-збірку. Framework, TypeScript, зміни фінансових формул, JSON-моделі та API не додавалися.
 
-`.github/workflows/checks.yml` uses Node 24 on Windows and runs locked dependency installation, lint, frontend contracts and all tests on push/PR. On a clean checkout `node backend/scripts/prepareTestConfig.js` creates an empty ignored test-only mobile config if absent, preserving any existing local configuration. CI needs no Google/market secrets and does not deploy, sync Android resources, build APKs or publish artifacts. There is no TypeScript migration or new runtime loader.
+## Межі модулів
 
-`frontend/index.html` залишається точкою входу для web і Android WebView. Усі classic scripts локальні, виконуються послідовно наприкінці body. Нового framework, збирача, runtime loader або запитів за HTML-шаблонами немає. Великі секції HTML на цьому етапі залишені в документі: їх поділ не потрібний для ізоляції bootstrap і не додає ризику для offline-запуску.
-
-## Дозволені глобали та власники
-
-Повний перелік закріплений у [frontend-globals.json](frontend-globals.json). Кожен запис задає `src`, дозволені властивості browser global (`globals`) та top-level declarations classic script (`bindings`). До declarations належать також деструктуровані змінні й function declarations; останні можуть одночасно бути властивостями window. Кожне ім’я має одного власника. Це контрольований compatibility-контракт, а не рекомендація створювати нові глобали.
-
-| Власники | Інтерфейс / призначення |
+| Група | Контракт |
 | --- | --- |
-| `frontend/vendor/chart.umd.js` | `Chart`, локальна бібліотека; рендерери підтримують її відсутність |
-| `js/mobile-config.generated.js` ← `backend/scripts/generateMobileConfig.js` | `FINO_MOBILE_CONFIG`; конфігурація з середовища, значення не входять до переліку або звітів |
-| `frontend/js/i18n.js` | `FinoI18n` |
-| `shared/*.js`, `shared/portfolio/*.js` | `FinoErrors`, `FinoOperations`, `FinoSyncModel`, `FinoStateContract`, `FinoStateModel`, `FinoMarketModel`, `FinoConstants`, `FinoValidation`, `FinoOperationValidation`, `FinoPortfolioCalculations`, `FinoPortfolioNormalization`, `FinoPortfolioOperations`, `FinoPortfolioRules`, `FinoRequest` |
-| `controllers/wallet-actions.js`, `state-store.js` | `FinoWalletActions`, `FinoStateStore` |
-| `mobile-api.js` | `mobileApi` лише на native; bridge `Capacitor` надає платформа |
-| `api/{fetchers,desktop,mobile}.js`, `api.js` | `FinoFetchers`, `FinoDesktopApi`, `FinoMobileApi`, compatibility `api`, `readApiJson`, `financialCommand`; приватизація решти старих bindings відбувається поступово |
-| `api/outbox.js` | `FinoOutbox`, platform-neutral factory локального recovery; storage/scope/logger/UI не читає з globals, отримує їх явно |
-| `asset-detail/model.js` | `FinoAssetDetail`, DOM-free read adapter позицій і спільної картки активу: групує за типом/назвою як Portfolio, підсумовує чинні shared розрахунки й історію, не змінює документ |
-| `asset-detail/view.js` | `FinoAssetDetailView`, factory контролера `ui.asset` з явними залежностями store/model/DOM/i18n/actions/Chart; шаблони локальні, API викликається лише через передані чинні дії |
-| `state.js` | Єдиний `stateStore`, таблиці курсів і wallet-категорій; глобальний alias `state` вилучений |
-| `share-card/{data,card,platform,view}.js` | Один namespace `FinoPortfolioShare`; ізольований read adapter, SVG, export/platform adapter і модальне вікно; контролер створюється після натискання. [Методика й Android-обмеження](PORTFOLIO-SHARE.md) |
-| Analytics, market-data, cashflow, rebalance/model, views/wallet | DOM-free factories `Fino…`, `PortfolioPerformance`; сервіси отримують snapshot і залежності явно |
-| `models.js`, `utils.js`, `data-loader.js` | Старі lexical aliases, форматування, facade сервісів та завантаження; точні імена в JSON |
-| Renderers, forms, charts, controllers, rebalance UI | Старі function exports та `FinoChartPlugins`, `FinoRebalanceDashboard`, `FinoRebalanceCurrencyHover`; точні імена та відповідальні файли в JSON |
-| `ui.js` | Спільний namespace `ui` для рендерерів і форм |
-| `app.js` | Додає `ui.application`; зберігає лише чинні compatibility globals `init`, `loadData` |
+| Утиліти, read-only моделі, API factories, store, share models | ES modules із явними імпортами та named/default exports; придатні для Node-тестів без DOM |
+| Рендерери, графіки, форми й контролери | Ізольовані `create…({ namedDependencies })` factories; повертають інтерфейс, зберігають приватний стан у closure |
+| `composition.js` | Єдине місце створення store, API, моделей і UI. Передає кожній factory її конкретні залежності. Взаємні UI-виклики передаються відкладеними callbacks, тому імпортних циклів немає |
+| `app.js` | DOM-free lifecycle із `createApplication(dependencies)`; локальні дані показуються до завершення необов’язкового background sync |
+| `main.js` | Локальний Chart.js, конфігурація, composition і запуск після готовності DOM; позначає підтверджений запуск `data-startup="ready"`, помилку — `failed` |
 
-`controllers/application.js` також володіє погодженим `setupCommandRecovery`, який підключає outbox до локальної recovery panel. Namespace outbox і controller зафіксовані в JSON; startup не відправляє pending команди автоматично. Докладний контракт — [IDEMPOTENCY.md](IDEMPOTENCY.md).
+Об’єкт `ports` приватний для composition root. Він не передається модулям як service locator: у кожної factory є визначений перелік іменованих параметрів. Повернений runtime дає тестам доступ до реальних інтерфейсів без `window.ui`, `window.stateStore`, `window.mobileApi`, `window.Fino…`, `window.init` або `window.loadData`.
 
-Стандартні browser APIs (`document`, timers, fetch, storage, crypto тощо) та native `Capacitor` належать середовищу. Власний код не має перепризначати їх. Тимчасові DOM named properties, які браузер утворює з `id`, не є модульними API: доступ до елементів має бути явним через DOM.
+У production немає legacy-адаптера application globals. Старі `frontend/js/{state-model,errors,constants,…}.js` shims вилучені після перенесення споживачів на canonical `shared` або ESM imports. `frontend-globals.json` тепер є коротким реєстром платформних меж; списку scripts/loading order у ньому немає. Runtime і UI-тести не читають його як граф залежностей.
 
-## Порядок і залежності
+## Незмінний shared-код і локальний vendor
 
-Точний порядок скриптів у HTML має збігатися з JSON; автоматичної генерації або непомітного оновлення allowlist під час тестів немає.
+Backend продовжує виконувати оригінальні CommonJS/UMD файли `shared/`. Для браузера `backend/scripts/sharedBrowserModules.cjs` під час dev/build статично перетворює їхню **браузерну гілку** на ESM: замінює тільки вибір платформи й оболонку експорту, додає явні імпорти залежностей. Фінансові функції не переписуються. Локальні об’єкти оболонки не публікуються на `window`.
 
-1. Локальний Chart, конфігурація й i18n.
-2. Спільні errors/operations/sync/state/market моделі; wallet commands і store.
-3. Constants, raw/domain validation, фінансові правила й request helper. Lazy-залежності в shared залишаються lazy; bootstrap викликає їх після завантаження всього набору.
-4. Native adapter → desktop/native transports → compatibility API.
-5. DOM-free factories → єдиний store instance → utilities → factories аналітики → service facade → data loader.
-6. Рендерери → UI ребалансу → форми → графіки → controllers.
-7. `ui.js` збирає готові інтерфейси; `app.js` передає залежності bootstrap і реєструє `DOMContentLoaded`.
+Ця межа потрібна, бо звичайне CommonJS bundling увімкнуло б серверні гілки `validation`, `request` і crypto. Збережено браузерну валідацію JSON-відповідей, WebCrypto та обмеження native-запитів. Споживачі адаптера вичерпно перелічені в його `owners`: 15 canonical shared-модулів. Адаптер можна прибрати після появи native ESM-дистрибуції shared; backend-міграції зараз немає.
 
-`app.js` експортує `createApplication(dependencies)` у Node без доступу до DOM. Browser composition root передає store, API, завантаження, рендер, benchmark, controller registry, diagnostics, logger та notice service один раз. Сам bootstrap читає лише передані залежності. Нового глобального namespace для цього не додано: браузер використовує `ui.application`, старі форми ще можуть викликати `init`/`loadData`.
+Той самий build plugin обгортає локальний `frontend/vendor/chart.umd.js` у приватний module/exports scope і повертає його як default export. Споживач — `main.js`; глобальний `Chart` не створюється. Цю межу можна прибрати при заміні vendor на ESM-дистрибуцію. Обидві межі задокументовані в `frontend-globals.json`. Критичний код із CDN не завантажується; необов’язковий web font лишається із системним fallback, як раніше.
 
-Збережено порядок: setup → локальні дані → render → необов’язкові benchmark/background sync. Bootstrap не чекає завершення sync перед показом локальних даних. Background відповідь перевіряє store context перед повторним завантаженням або логуванням. Помилки controller setup залишаються видимими й проходять через безпечні diagnostics.
+## Команди
 
-## Правило для нових змін
+```powershell
+npm.cmd ci --ignore-scripts
+npm.cmd run dev
+npm.cmd run build:frontend
+npm.cmd start
+npm.cmd test
+npm.cmd run test:ui
+npm.cmd run check:frontend
+npm.cmd run mobile:prepare
+npm.cmd run mobile:check
+```
 
-Нові helpers і кеші тримати в closure/factory, залежності передавати параметрами. Для браузерних DOM-free модулів збережений UMD pattern із CommonJS export для Node. Використовувати чинний namespace або інтерфейс сервісу. Якщо новий публічний global справді потрібний, вказати єдиного власника, обґрунтувати потребу й явно оновити контракт та тести. Не передавати весь window як неявний контейнер залежностей.
+`dev` запускає Express і Vite middleware на одному localhost origin, з доступом до наявного API. Origin/session/proxy guards API збережені; окремий API proxy або послаблення CORS не потрібні. Vite обслуговує модулі й зміни frontend, Node watch — backend.
 
-Старі aliases вилучати після переходу всіх споживачів. Фінансові зміни й надалі проходять через store-команди, як описано в [FRONTEND-STATE.md](FRONTEND-STATE.md); цей етап не змінює фінансові правила або модель збереження.
+`build:frontend` створює `.tmp/frontend-dist/` із HTML, хешованими локальними JS/CSS/assets і manifest. `start` спершу виконує цю збірку, потім Express віддає її. Deep links повертають HTML; відсутній JS/CSS повертає 404, а не успішний HTML fallback. Без build сервер завершує запуск зрозумілою помилкою.
 
-## Автоматична перевірка
+Перед build `prepareTestConfig.js` створює порожню ignored ESM-конфігурацію **лише за її відсутності** — для web/offline-only роботи без provider keys. Наявна конфігурація зберігається. `mobile:config` і далі перевіряє та генерує реальну локальну конфігурацію для Android. Значення не друкуються у звітах чи тестах. `.env`, OAuth tokens і keystore не входять до frontend build inputs.
 
-- `frontendModules.test.js` читає реальний HTML і локальні scripts, компілює спільну classic scope, перевіряє allowlist declarations та властивостей global, єдиного власника і реєстрацію запуску. Негативні сценарії: пропущений/закоментований файл, перестановка, remote/inline/async script, зайвий global і відсутня runtime-залежність.
-- `applicationBootstrap.test.js` виконує реальний bootstrap без DOM: локальний запуск, кількість викликів, stale response, відсутність render для відхиленого snapshot, setup error і request ID.
-- `uiSmoke.test.js` завантажує реальний HTML та локальні scripts у тому самому порядку, перевіряє property globals кожного модуля. Окремо запускає desktop і native offline UI через справжню подію `DOMContentLoaded` з локальним Chart. Зовнішні API, native plugins і canvas drawing замінені тестовими реалізаціями; це не перевірка намальованих пікселів на телефоні.
-- `mobile:check` перевіряє порядок і declarations тим самим build-time валідатором, а також наявність усіх HTML-ресурсів та SHA-256 підготовлених frontend/shared файлів. Manifest і валідатор не завантажуються браузером та не додають роботи UI.
+`mobile:prepare` збирає frontend і копіює **тільки результат build** до `.tmp/mobile-web`, заданого в `capacitor.config.json`. `.fino-build.json` містить SHA-256 джерел і output-файлів; preflight відхиляє застарілі джерела, змінені/відсутні ресурси та зайві файли. Fallback до незбираних scripts немає. `mobile:check` лише читає ресурси, перевіряє граф, конфігурацію та реєстрацію native plugins; APK і Gradle не запускає. Наступний `cap sync` пакує цей самий build.
 
-Команди: `npm.cmd test`, потім `npm.cmd run mobile:prepare` і `npm.cmd run mobile:check`. Prepare оновлює лише `.tmp/mobile-web`; ці команди не складають APK і не копіюють файли на телефон. Майбутня дозволена Capacitor-збірка пакує ті самі локальні HTML/JS/shared ресурси.
+Vite 8.3.5 та parser Espree 11.2.0 зафіксовані у lockfile. Native config loader використано для коректного завантаження `.mjs`/`.cjs` на Windows із кириличними шляхами. У цьому робочому середовищі перевірено Node 24.
+
+## Автоматичні перевірки
+
+`check:frontend` аналізує один entry і фактичний ESM-граф: відсутні файли/exports, syntax errors, цикли, remote/implicit imports і нові записи у browser globals спричиняють помилку. ESLint працює в module scope без allowlist старих application globals; фінансовий mutation guard збережено.
+
+`npm test` спочатку будує production artifact та окремий IIFE test artifact із **того самого графа модулів і тих самих Vite adapters**. Test entry розташовано в `backend/tests/helpers/moduleEntry.mjs`, він не імпортується production entry. Це дозволяє jsdom, який сам не виконує module scripts, запускати реальний frontend-код. Порядок classic scripts або глобальний manifest більше не є тестовим loader.
+
+`helpers/frontendModules.js` має test-only facade для чинних UI assertions. Він працює з поверненим runtime і не публікує сервіси на справжньому Window. Кожен UI harness додатково відхиляє application-global leaks. Ізольований native harness також використовує скомпільований ESM entry.
+
+Покриття включає локальний startup, навігацію, календар, бюджет, portfolio/analytics, усі локалізації, Capacitor file/share adapters, збереження й помилки, recovery після втраченої відповіді та перезапуску, operationId без дублювання, sync conflicts і account isolation. Окремі нові сценарії в web/offline-native перевіряють:
+
+- Купівлю 1,5 одиниці по 100 після початкових 2 одиниць по 100: інвестовано 350; продаж 1 по 180: cost basis 100, profit 80, залишок 2,5 після restart.
+- Невдале збереження витрати: draft і фінансовий документ збережено; retry записує рівно одну витрату 20,50, яка переживає restart.
+
+Shared browser/Node parity tests перевіряють розрахунки, checksum, валідацію та native request concurrency. Provider data, transport, native bridge і canvas у DOM-тестах замінені детермінованими fixtures; реальних фінансових файлів і зовнішніх provider API тести не використовують.
+
+Поточний baseline до міграції: 540 тестів, 539 pass, 1 fail. Збій був у застарілому bootstrap expectation окремого benchmark callback, який поточний runtime уже не викликав; assertion оновлено до фактичного lifecycle. Тести не вимикалися і не позначалися skipped. Помилки controller setup або початкового data load тепер відхиляють startup promise після показу діагностики; успішний marker не маскує частково невдалий запуск.
+
+## Перевірка у браузері й розмір
+
+```powershell
+node backend/scripts/frontendBrowserSmoke.cjs
+```
+
+Команда використовує headless Chrome (`CHROME_PATH` або стандартний Windows-шлях), ізольований in-memory backend і тестовий профіль. Перевіряє actual production module entry та dev server, навігацію календаря, відмову/повтор збереження бюджету з перевіркою persisted state, а також compiled offline-native startup і restart з mock Capacitor storage. Зовнішні fonts заблоковані. Відсутність готового UI, import/startup errors і витік globals завершують перевірку помилкою. Це не перевірка фізичного Android WebView.
+
+Замір до/після виконано на однакових synthetic portfolio, HTML/CSS та localhost у headless Chrome, із вимкненим cache; три cold navigations, медіана до першого заповненого UI:
+
+| Метрика | До | Після |
+| --- | --- | --- |
+| JS-запити production | 77 | 1 |
+| Завантажений JavaScript | 1 070 808 bytes | близько 812 500 bytes (−24%) |
+| Gzip JS | близько 331 KB | близько 262 KB |
+| Перший заповнений UI | 218 ms | 115 ms |
+
+Це локальний замір, не гарантія швидкодії телефона. Dev має більше незменшених ресурсів для налагодження; для розгортання й Capacitor використовується production build. Є стандартне попередження Vite про chunk понад 500 KB: він менший за попередній сумарний код і завантажується одним запитом. Lazy loading не додавали, щоб не змінити offline/startup поведінку в цій міграції.
+
+CI запускає lint, graph contract, production/test builds, весь suite, підготовку compiled mobile resources і mobile preflight. Публікації, Gradle та APK build до CI не додані.
+
+Фінальний локальний прогін: **544/544 тести, 0 fail, 0 skipped**; `lint`, `check:frontend`, production build і `mobile:check` пройшли. Browser smoke: production/dev з перевіркою persisted retry, offline-native зі збереженням 250 після restart; runtime exceptions і application-global leaks відсутні. Фінальний точний JS payload — 812 478 bytes. Результати й сирі заміри збережені локально в `.tmp/modules-final-tests.log` та `.tmp/modules-browser-results.json`; baseline для `--compare` — у локальному `.tmp/modules-baseline-web`, без генерованих credentials. Для звичайної перевірки поточного checkout використовуйте команду без `--compare`.
+
+Інтеграцію налаштовано відповідно до [Vite Backend Integration](https://vite.dev/guide/backend-integration.html); middleware на спільному origin зберігає чинні API guards.

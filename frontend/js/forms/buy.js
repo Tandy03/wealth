@@ -1,4 +1,16 @@
-(function () {
+// Explicit ports are wired once by composition.js; this module publishes no browser globals.
+export function createFormsBuy({
+  FinoErrors,
+  FormData,
+  api,
+  console,
+  document,
+  financialCommand,
+  loadData,
+  normalizeNumber,
+  showNotice,
+  stateStore,
+}) {
 // Buy form and modal lifecycle.
 function openBuyMoreModal(assetId) {
   const asset = stateStore.selectAssets()?.find((item) => item.id === assetId);
@@ -215,7 +227,7 @@ function setupBuyMoreModal() {
 
       await loadData();
     } catch (error) {
-      console.error("BUY MORE ASSET ERROR:", window.FinoErrors.diagnostics(error));
+      console.error("BUY MORE ASSET ERROR:", FinoErrors.diagnostics(error));
 
       showNotice(error || "Failed to buy more asset.");
     } finally {
@@ -228,5 +240,5 @@ function setupBuyMoreModal() {
     }
   });
 }
-Object.assign(window, { openBuyMoreModal, setupBuyMoreModal });
-})();
+return { openBuyMoreModal, setupBuyMoreModal };
+}

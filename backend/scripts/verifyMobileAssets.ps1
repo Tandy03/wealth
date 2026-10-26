@@ -5,11 +5,11 @@ $apkPath = Join-Path $projectRoot 'android/app/build/outputs/apk/debug/app-debug
 $archive = [IO.Compression.ZipFile]::OpenRead($apkPath)
 $checked = 0
 try {
-    foreach ($directory in @('frontend', 'shared')) {
+    foreach ($directory in @('.tmp/mobile-web')) {
       $sourceRoot = Join-Path $projectRoot $directory
       foreach ($source in Get-ChildItem -LiteralPath $sourceRoot -File -Recurse) {
         $relative = $source.FullName.Substring($sourceRoot.Length + 1).Replace('\', '/')
-        if ($directory -eq 'shared') { $relative = 'shared/' + $relative }
+        if ($relative.StartsWith('.') -or $relative.Contains('/.')) { continue }
         $entry = $archive.GetEntry('assets/public/' + $relative)
         if ($null -eq $entry) { throw "APK is missing $relative" }
         $entryStream = $entry.Open()
@@ -22,4 +22,4 @@ try {
       }
     }
 } finally { $archive.Dispose() }
-Write-Output "APK verified: all $checked frontend/shared files match their source hashes."
+Write-Output "APK verified: all $checked compiled frontend resources match their build hashes."

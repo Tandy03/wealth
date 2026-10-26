@@ -2,8 +2,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const { createApp } = require('../app');
-const model = require('../../frontend/js/state-model');
-const { StorageError } = require('../../frontend/js/errors');
+const model = require('../../shared/state-model');
+const { StorageError } = require('../../shared/errors');
 const { harness } = require('./helpers/nativeHarness');
 const clone = value => JSON.parse(JSON.stringify(value));
 const stock = (id = 'a') => ({ id, name: 'Contract stock', type: 'stock', currency: 'UAH', quantity: 10,

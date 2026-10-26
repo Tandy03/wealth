@@ -2,12 +2,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const express = require('express');
-const errors = require('../../frontend/js/errors');
+const errors = require('../../shared/errors');
 const { DomainError } = require('../utils/domainError');
 const { errorHandler } = require('../utils/apiError');
 const { observeApi } = require('../utils/observability');
 const { createApp } = require('../app');
-const model = require('../../frontend/js/state-model');
+const model = require('../../shared/state-model');
 
 async function serve(t, app) {
   const server = app.listen(0, '127.0.0.1'); await once(server, 'listening');

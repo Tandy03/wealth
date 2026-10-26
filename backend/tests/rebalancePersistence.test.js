@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
-const model = require('../../frontend/js/state-model');
+const model = require('../../shared/state-model');
 const plan = () => ({ targets: { ovdp: 30, 'planned-etf': 70 }, plannedAssets: [{ id: 'planned-etf', label: 'Next ETF' }], excluded: ['stock::other'] });
 
 test('rebalance drafts validate on import and retain sparse legacy compatibility', () => {

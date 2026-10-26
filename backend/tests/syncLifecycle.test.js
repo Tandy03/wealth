@@ -5,10 +5,10 @@ const path = require('node:path');
 const os = require('node:os');
 const { createRepository } = require('../data/repository');
 const { createStorage } = require('../services/googleDrive/storage');
-const { normalizeState, createEmptyState } = require('../../frontend/js/state-model');
+const { normalizeState, createEmptyState } = require('../../shared/state-model');
 const { digest } = require('../data/journal');
 const { createHash } = require('node:crypto');
-const { signature } = require('../../frontend/js/sync-model');
+const { signature } = require('../../shared/sync-model');
 const fixture = () => normalizeState({ ...createEmptyState(), sync: { revision: 1, deviceId: 'test' }, assets: [{ id: 'a', type: 'stock', quantity: 1, purchasePrice: 100, purchaseDate: '2026-01-01' }] });
 async function storage(t, initial = fixture()) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fino-sync-lifecycle-'));

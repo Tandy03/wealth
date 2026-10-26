@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { parseCsv, debtFromCsv, debtHistoryFromCsv, createClient } = require("../services/macroeconomics/client");
-const macroModel = require('../../frontend/js/market-model');
+const macroModel = require('../../shared/market-model');
 const csv = 'STRUCTURE[;],INDICATOR,PRICE_TYPE,REGION,BREAKDOWN_CATEGORY,BREAKDOWN,SECTOR_ECONOMY,FREQ,TIME_PERIOD,OBS_VALUE\n' + [
   'dataflow,GDP_CUR_PRC,CURR_PRICES,UA00000000000000000,_T,_T,S_1,A,2023,6537825',
   'dataflow,GDP_CUR_PRC,CURR_PRICES,UA00000000000000000,_T,_T,S_1,A,2024,7658659',

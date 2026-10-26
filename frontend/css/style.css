@@ -1602,6 +1602,19 @@ textarea:focus {
 .asset-price-history-filters input { width: 100%; min-width: 0; }
 .asset-price-history-filters button { white-space: nowrap; }
 
+.asset-price-chart-appearance { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; min-width: 0; margin: 12px 0 18px; }
+.asset-price-chart-appearance > span { font-size: 14px; font-weight: 600; color: var(--text); }
+.asset-price-chart-switch { display: inline-flex; padding: 3px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg); max-width: 100%; }
+.asset-price-chart-switch button { appearance: none; min-height: 44px; padding: 8px 14px; border: 1px solid transparent; border-radius: 999px; background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; line-height: 1.2; white-space: nowrap; touch-action: manipulation; }
+.asset-price-chart-switch button:hover { color: var(--text); }
+.asset-price-chart-switch button[aria-pressed="true"] { background: var(--surface-2); color: var(--text); }
+.asset-price-chart-switch button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 480px) {
+  .asset-price-chart-appearance > span { flex-basis: 100%; }
+  .asset-price-chart-switch { margin-inline-start: auto; }
+  .asset-price-chart-switch button { padding-inline: 12px; }
+}
+
 @media (max-width: 700px) {
   .portfolio-history-panel .panel-header { align-items: stretch; flex-direction: column; }
   .portfolio-history-mode { width: 100%; min-width: 0; }
@@ -1839,6 +1852,9 @@ textarea:focus {
 .loans-panel { margin-top: 20px; }
 .loan-row { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(120px, .4fr) 140px repeat(3, auto); gap: 12px; align-items: center; padding: 14px; border-bottom: 1px solid var(--border); }
 .loan-row > div { display: flex; flex-direction: column; gap: 4px; }
+.paid-loans-archive { margin-top: 16px; }
+.paid-loans-archive > summary { cursor: pointer; font-weight: 600; padding: 10px 0; }
+.paid-loans-archive > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 .loan-payment { display: flex; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--border); }
 .loan-calendar-header { margin-top: 22px; }
 #add-loan-btn { flex: 0 0 auto; white-space: nowrap; }

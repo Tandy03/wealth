@@ -1,3 +1,23 @@
+// Explicit ports are wired once by composition.js; this module publishes no browser globals.
+export function createRenderersWallet({
+  FinoI18n,
+  FinoWalletView,
+  bindLoanActions,
+  bindWalletExpenseActions,
+  bindWalletNoteActions,
+  bindWalletPlanActions,
+  createRenderServices,
+  document,
+  escapeHtml,
+  formatWalletDate,
+  getDateString,
+  normalizeNumber,
+  renderWalletCharts,
+  requestAnimationFrame,
+  stateStore,
+  walletActions,
+  walletMoney,
+}) {
 // renderers/wallet.js
 function renderWalletCurrent(state = stateStore.getState()) {
   const { walletMonthKey, walletMonthView, walletCategories, walletCategoryTotal } = createRenderServices(state);
@@ -12,14 +32,14 @@ function renderWalletCurrent(state = stateStore.getState()) {
   const totalPlan = expenseCategories.reduce((sum, category) => sum + normalizeNumber(month.plans[category]), 0);
   const totalActual = expenseCategories.reduce((sum, category) => sum + walletCategoryTotal(key, category), 0);
   const spendingActual = totalActual - walletCategoryTotal(key, "Save+invest") - walletCategoryTotal(key, "Tithe");
-  const monthName = new Date(`${key}-01T00:00:00`).toLocaleDateString(window.FinoI18n?.locale || "en", { month: "long", year: "numeric" });
-  document.querySelector("#wallet-month-title").innerHTML = `${window.FinoI18n?.t("Budget") || "Budget"}<span>${escapeHtml(monthName)}</span>`;
+  const monthName = new Date(`${key}-01T00:00:00`).toLocaleDateString(FinoI18n?.locale || "en", { month: "long", year: "numeric" });
+  document.querySelector("#wallet-month-title").innerHTML = `${FinoI18n?.t("Budget") || "Budget"}<span>${escapeHtml(monthName)}</span>`;
 
   const row = category => FinoWalletView.budgetRow({
     category, plan: normalizeNumber(month.plans[category]), actual: walletCategoryTotal(key, category), totalPlan, totalActual,
     removable: month.customCategories.includes(category) && walletCategoryTotal(key, category) === 0,
     draft: state.walletPlanDrafts?.[walletActions.planDraftKey(key, category)],
-  }, { money: walletMoney, escapeHtml, translate: window.FinoI18n.t });
+  }, { money: walletMoney, escapeHtml, translate: FinoI18n.t });
 
   const remainder = totalPlan - totalActual;
   body.innerHTML = `<tr class="wallet-summary-row"><td>Budget<br>${escapeHtml(monthName)}</td><td>${walletMoney(totalPlan)}</td><td>100%</td><td>${walletMoney(totalActual)}</td><td class="wallet-balance ${remainder < 0 ? "negative-balance" : remainder > 0 ? "positive-balance" : ""}">${walletMoney(remainder)}</td><td>${totalPlan > 0 ? (totalActual / totalPlan * 100).toFixed(1) : "0.0"}%</td><td></td></tr>`
@@ -27,7 +47,7 @@ function renderWalletCurrent(state = stateStore.getState()) {
     + `<tr class="wallet-summary-row wallet-budget-total"><td>Total</td><td>${walletMoney(totalPlan)}</td><td>100%</td><td>${walletMoney(totalActual)}</td><td class="wallet-balance ${remainder < 0 ? "negative-balance" : remainder > 0 ? "positive-balance" : ""}">${walletMoney(remainder)}</td><td>${totalPlan > 0 ? (totalActual / totalPlan * 100).toFixed(1) : "0.0"}%</td><td></td></tr>`
     + `<tr class="wallet-summary-row wallet-budget-spending"><td>Expenses for ${escapeHtml(monthName)}</td><td colspan="5">${walletMoney(spendingActual)}</td><td></td></tr>`;
   const labels = ['Expense category', 'Plan', 'Percentage', 'Actual amount', 'Balance', 'Actual percentage', 'Actions'];
-  body.querySelectorAll('.wallet-summary-row').forEach(row => [...row.children].forEach((cell, index) => { cell.dataset.label = window.FinoI18n.t(labels[index]); }));
+  body.querySelectorAll('.wallet-summary-row').forEach(row => [...row.children].forEach((cell, index) => { cell.dataset.label = FinoI18n.t(labels[index]); }));
 
   renderBudgetProgress(totalActual, totalPlan);
 
@@ -49,7 +69,7 @@ function renderBudgetProgress(spent, budget) {
   const progress = card.querySelector(".wave-progress");
   const fill = document.querySelector("#budget-progress-fill");
   progress.setAttribute("aria-valuenow", String(Math.round(percentage)));
-  progress.setAttribute("aria-valuetext", `${walletMoney(spent)} ${window.FinoI18n.t("of")} ${walletMoney(budget)} ${window.FinoI18n.t("spent")}; ${window.FinoI18n.t(`${walletMoney(remaining)} remaining`)}`);
+  progress.setAttribute("aria-valuetext", `${walletMoney(spent)} ${FinoI18n.t("of")} ${walletMoney(budget)} ${FinoI18n.t("spent")}; ${FinoI18n.t(`${walletMoney(remaining)} remaining`)}`);
   fill.style.width = "0%";
   requestAnimationFrame(() => requestAnimationFrame(() => { fill.style.width = `${fillPercentage}%`; }));
 }
@@ -94,7 +114,7 @@ function renderWalletNotes(state = stateStore.getState()) {
   if (!list) return;
   const key = document.querySelector("#wallet-current-month")?.value || walletMonthKey();
   const month = walletMonthView(key);
-  const monthName = new Date(`${key}-01T00:00:00`).toLocaleDateString(window.FinoI18n?.locale || "en", { month: "long", year: "numeric" });
+  const monthName = new Date(`${key}-01T00:00:00`).toLocaleDateString(FinoI18n?.locale || "en", { month: "long", year: "numeric" });
   if (description) description.textContent = `Notes for ${monthName}`;
   list.innerHTML = month.notes.length
     ? month.notes.map((note) => `<div class="wallet-note"><span><span translate="no">${escapeHtml(note.text)}</span></span><button type="button" class="icon-btn" data-delete-wallet-note="${escapeHtml(note.id)}" aria-label="Delete note">×</button></div>`).join("")
@@ -117,8 +137,26 @@ function renderLoans(state = stateStore.getState()) {
   const list = document.querySelector("#loans-list");
   const calendar = document.querySelector("#loan-calendar");
   if (!list || !calendar) return;
-  list.innerHTML = stateStore.selectWallet(state).loans.length ? stateStore.selectWallet(state).loans.map((loan) => `<div class="loan-row"><div><strong><span translate="no">${escapeHtml(loan.name)}</span></strong><span><span translate="no">${escapeHtml(loan.institution || "—")}</span> · <span translate="no">${escapeHtml(loan.comment || "")}</span></span></div><div><span>Balance</span><strong>${walletMoney(loan.balance)}</strong></div><input type="number" min="0.01" step="0.01" value="${normalizeNumber(loan.monthlyPayment) || normalizeNumber(loan.balance)}" data-loan-payment="${escapeHtml(loan.id)}"><button class="primary-btn" data-repay-loan="${escapeHtml(loan.id)}" ${loan.status === "paid" ? "disabled" : ""}>${loan.status === "paid" ? "Paid" : "Repay"}</button><button class="secondary-btn" data-edit-loan="${escapeHtml(loan.id)}">Edit</button><button class="danger-btn" data-delete-loan="${escapeHtml(loan.id)}">Delete</button></div>`).join("") : '<p class="empty-state">No loans.</p>';
+  const loans = stateStore.selectWallet(state).loans;
+  const isArchived = loan => loan.archived === true && loan.status === "paid" && normalizeNumber(loan.balance) === 0;
+  const row = loan => {
+    const paid = loan.status === "paid" && normalizeNumber(loan.balance) === 0;
+    const action = isArchived(loan) ? "restore" : paid ? "archive" : "repay";
+    return `<div class="loan-row"><div><strong><span translate="no">${escapeHtml(loan.name)}</span></strong><span><span translate="no">${escapeHtml(loan.institution || "—")}</span> · <span translate="no">${escapeHtml(loan.comment || "")}</span></span></div><div><span>Balance</span><strong>${walletMoney(loan.balance)}</strong></div><input type="number" min="0.01" step="0.01" value="${paid ? 0 : normalizeNumber(loan.monthlyPayment) || normalizeNumber(loan.balance)}" data-loan-payment="${escapeHtml(loan.id)}" aria-label="Repayment amount" ${paid ? "disabled" : ""}><button class="${isArchived(loan) ? "secondary" : "primary"}-btn" data-${action}-loan="${escapeHtml(loan.id)}" ${action === "archive" ? 'title="Move to paid loans"' : ""}>${action === "restore" ? "Return to list" : paid ? "Paid" : "Repay"}</button><button class="secondary-btn" data-edit-loan="${escapeHtml(loan.id)}">Edit</button><button class="danger-btn" data-delete-loan="${escapeHtml(loan.id)}">Delete</button></div>`;
+  };
+  const current = loans.filter(loan => !isArchived(loan));
+  const archived = loans.filter(isArchived);
+  list.innerHTML = current.length ? current.map(row).join("") : '<p class="empty-state">No loans.</p>';
   bindLoanActions(list);
+  const archive = document.querySelector("#paid-loans-archive");
+  const paidList = document.querySelector("#paid-loans-list");
+  if (archive && paidList) {
+    archive.hidden = archived.length === 0;
+    paidList.innerHTML = archived.map(row).join("");
+    bindLoanActions(paidList);
+  }
   const upcoming = stateStore.selectWallet(state).loans.flatMap((loan) => getLoanSchedule(loan)).filter((payment) => payment.date >= getDateString()).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 12);
   calendar.innerHTML = upcoming.length ? upcoming.map((payment) => { const loan = stateStore.selectWallet(state).loans.find((item) => item.id === payment.loanId); return `<div class="loan-payment"><span>${formatWalletDate(payment.date)} · <span translate="no">${escapeHtml(loan?.name || "Loan")}</span></span><strong>${walletMoney(payment.amount)}</strong></div>`; }).join("") : '<p class="empty-state">No upcoming loan payments.</p>';
+}
+return { renderBudgetProgress, renderLoans, renderWallet, renderWalletArchive, renderWalletCurrent, renderWalletExpenseList, renderWalletNotes };
 }

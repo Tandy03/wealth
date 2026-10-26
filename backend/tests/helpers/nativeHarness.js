@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const source = fs.readFileSync(path.join(__dirname, '../../../frontend/js/mobile-api.js'), 'utf8');
+const { loadModules } = require('./frontendModules');
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const signature = (value) => JSON.stringify((function canonical(item) { return Array.isArray(item) ? item.map(canonical) : item && typeof item === 'object' ? Object.fromEntries(Object.keys(item).sort().map(key => [key, canonical(item[key])])) : item; })(value));
 const fixture = () => ({ schemaVersion: 1, sync: { revision: 7, updatedAt: '2026-01-01T00:00:00Z', deviceId: 'desktop' }, assets: [{ id: 'bond', name: 'Bond', type: 'ovdp', quantity: 10, remainingQuantity: 10, remainingCostBasis: 10000, purchasePrice: 1000, currency: 'UAH' }], transactions: [{ id: 'buy', assetId: 'bond', type: 'BUY', quantity: 10, amount: 10000, date: '2026-01-01' }], sales: [], payments: [], calendarNotes: [], priceHistory: [], wallet: { expenses: [], months: {}, loans: [] }, instruments: [] });
@@ -71,37 +71,18 @@ function harness({ local = fixture(), remote = clone(local), metadata = true, co
     context.window.Capacitor.Plugins.Preferences = new Proxy({}, { get() { throw new Error('Async Preferences must not handle confirmed writes.'); } });
   }
   vm.createContext(context);
-  for (const script of ['errors', 'operations', 'sync-model', 'state-contract', 'portfolio/calculations', 'portfolio/normalization', 'portfolio/operations']) {
-    vm.runInContext(fs.readFileSync(path.join(__dirname, '../../../shared/' + script + '.js'), 'utf8'), context);
-  }
-  context.window.FinoErrors = context.FinoErrors; context.window.FinoOperations = context.FinoOperations; context.window.FinoSyncModel = context.FinoSyncModel; context.window.FinoStateContract = context.FinoStateContract;
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '../../../shared/state-model.js'), 'utf8'), context);
-  context.window.FinoStateModel = context.FinoStateModel;
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '../../../shared/portfolio-transfer.js'), 'utf8'), context);
-  context.window.FinoPortfolioTransfer = context.FinoPortfolioTransfer;
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '../../../shared/market-model.js'), 'utf8'), context);
-  context.window.FinoMarketModel = context.FinoMarketModel;
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '../../../shared/constants.js'), 'utf8'), context);
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '../../../shared/validation.js'), 'utf8'), context);
-  context.window.FinoConstants = context.FinoConstants;
-  context.window.FinoValidation = context.FinoValidation;
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '../../../shared/portfolio/validation.js'), 'utf8'), context);
-  context.window.FinoOperationValidation = context.FinoOperationValidation;
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '../../../shared/portfolio-rules.js'), 'utf8'), context);
-  context.window.FinoPortfolioRules = context.FinoPortfolioRules;
   context.AbortController = AbortController;
   context.crypto = require('node:crypto').webcrypto;
   context.TextEncoder = TextEncoder;
   context.URL = URL;
   context.setTimeout = setTimeout;
   context.clearTimeout = clearTimeout;
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '../../../shared/request.js'), 'utf8'), context);
-  context.window.FinoRequest = context.FinoRequest;
-  vm.runInContext(source, context);
-  return { api: context.window.mobileApi, storage, uploads, backups, hooks,
+  const modules = loadModules(context);
+  const { mobileApi } = modules.createMobileApi({ ...modules.sharedModules, ...context, config: context.window.FINO_MOBILE_CONFIG || {} });
+  return { api: mobileApi, storage, uploads, backups, hooks,
     remote: () => clone(remoteData), changeRemote: (data) => { remoteData = clone(data); version++; }, offline: (value) => { offline = value; }, authOffline: (value) => { authOffline = value; },
     local: () => JSON.parse(storage.get('fino-data-v1:test%40example.com')),
-    drain: () => context.window.mobileApi.waitForSync() };
+    drain: () => mobileApi.waitForSync() };
 }
 
 module.exports={harness,fixture,clone};

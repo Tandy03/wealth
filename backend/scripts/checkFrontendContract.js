@@ -1,3 +1,3 @@
 const { validateFrontend } = require('./frontendContract');
-const sources = validateFrontend();
-console.log('Reviewed frontend script order and globals: ' + sources.length + ' local scripts.');
+const result = validateFrontend();
+console.log('Validated one ESM entry and ' + result.files.length + ' local modules: no cycles, missing exports or browser-global writes.');

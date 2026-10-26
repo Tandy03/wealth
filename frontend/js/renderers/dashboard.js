@@ -1,3 +1,24 @@
+// Explicit ports are wired once by composition.js; this module publishes no browser globals.
+export function createRenderersDashboard({
+  FinoDashboardAnalytics,
+  FinoI18n,
+  bindDashboardHoldings,
+  bindUpcomingPaymentActions,
+  createRenderServices,
+  currencyFormatter,
+  document,
+  escapeHtml,
+  formatDate,
+  formatQuantity,
+  getDateString,
+  money,
+  paymentTypeLabel,
+  portfolioMoneyWithUahHover,
+  setupPortfolioCurrencyHover,
+  stateStore,
+  typeLabels,
+  usdMoney,
+}) {
 // renderers/dashboard.js
 function setDashboardCurrencyHover(element, valueInUah, valueInUsd = null) {
   if (!element) return;
@@ -20,47 +41,14 @@ function setDashboardCurrencyHover(element, valueInUah, valueInUsd = null) {
   card.addEventListener("blur", showUah);
 }
 
-function setReturnBenchmarkHover(element, portfolioReturn, state = stateStore.getState()) {
+// Compatibility entry point for existing renderer consumers; Return is now static.
+function setReturnBenchmarkHover(element, portfolioReturn) {
   if (!element) return;
   const card = element.closest(".stat-card") || element;
-  const label = document.querySelector("#stat-roi-label");
-  const note = card.querySelector('#stat-roi-note') || card.querySelector('small');
-  const t = window.FinoI18n.t;
-  if (portfolioReturn !== undefined) element.dataset.portfolioReturn = portfolioReturn == null ? "Unavailable" : `${portfolioReturn.toFixed(2)}%`;
-  element.dataset.benchmarkReturn = state.sp500Benchmark == null ? window.FinoI18n.t(state.sp500BenchmarkStatus === 'loading' ? 'Loading…' : 'Unavailable') : `${state.sp500Benchmark >= 0 ? "+" : ""}${state.sp500Benchmark.toFixed(2)}%`;
-  card.classList.add("currency-hover-card");
-  card.title = state.sp500BenchmarkStart && state.sp500BenchmarkEnd ? `S&P 500 · ${state.sp500BenchmarkStart} — ${state.sp500BenchmarkEnd}` : "Compare with S&P 500";
-  element.dataset.portfolioNote = t('All-time simple return at report-date FX; unavailable with incomplete valuation.');
-  const benchmarkNote = state.sp500Benchmark != null
-    ? state.sp500BenchmarkStatus === 'unavailable' ? 'S&P 500: last loaded result; the data provider is currently unavailable.' : 'S&P 500 price change over the investment period; dividends are excluded.'
-    : state.sp500BenchmarkStatus === 'loading' ? 'Loading S&P 500 history…'
-      : state.sp500BenchmarkErrorCode === 'INDEX_HISTORY_NOT_FOUND' ? 'No S&P 500 quotes are available for the investment period.'
-        : ['FRED_NOT_CONFIGURED', 'NOT_CONFIGURED'].includes(state.sp500BenchmarkErrorCode) ? 'S&P 500 data access is not configured.'
-          : 'S&P 500 history is temporarily unavailable from the data provider.';
-  element.dataset.benchmarkNote = t(benchmarkNote);
-  card.tabIndex = 0;
-  if (!card.dataset.benchmarkHoverBound) {
-    card.dataset.benchmarkHoverBound = "true";
-    const showBenchmark = () => {
-      card.dataset.benchmarkView = 'benchmark';
-      if (label) label.textContent = "S&P 500";
-      element.textContent = element.dataset.benchmarkReturn;
-      if (note) note.textContent = element.dataset.benchmarkNote;
-    };
-    const showPortfolioReturn = () => {
-      card.dataset.benchmarkView = 'portfolio';
-      if (label) label.textContent = "Return";
-      element.textContent = element.dataset.portfolioReturn;
-      if (note) note.textContent = element.dataset.portfolioNote;
-    };
-    card.addEventListener("mouseenter", showBenchmark);
-    card.addEventListener("mouseleave", showPortfolioReturn);
-    card.addEventListener("focus", showBenchmark);
-    card.addEventListener("blur", showPortfolioReturn);
-  }
-  if (label) label.textContent = card.dataset.benchmarkView === 'benchmark' ? 'S&P 500' : 'Return';
-  element.textContent = card.dataset.benchmarkView === 'benchmark' ? element.dataset.benchmarkReturn : element.dataset.portfolioReturn;
-  if (note) note.textContent = card.dataset.benchmarkView === 'benchmark' ? element.dataset.benchmarkNote : element.dataset.portfolioNote;
+  element.textContent = portfolioReturn == null ? FinoI18n.t('Unavailable') : `${portfolioReturn.toFixed(2)}%`;
+  card.classList.remove("currency-hover-card");
+  card.removeAttribute("title");
+  card.removeAttribute("tabindex");
 }
 
 function setXirrValue(element, xirr) {
@@ -68,16 +56,7 @@ function setXirrValue(element, xirr) {
   const card = element.closest(".stat-card") || element;
   const details = xirr && typeof xirr === 'object' ? xirr : null;
   const value = details ? details.value : xirr;
-  element.textContent = value == null ? window.FinoI18n.t(details?.incomplete ? 'Incomplete' : 'Unavailable') : `${details?.estimated ? '≈ ' : ''}${(value * 100).toFixed(2)}%`;
-  const note = document.querySelector('#stat-xirr-note');
-  if (note && details) {
-    const v = details.valuation, dates = v.rows.map(row => row.quoteDate).filter(Boolean).sort();
-    note.textContent = window.FinoI18n.format('Unvalued: {missing}; stale: {stale}; undated: {undated}. Fresh quote coverage by cost basis: {share}.', { missing: v.unpricedCount, stale: v.staleCount, undated: v.undatedCount, share: v.freshQuoteShare == null ? '—' : v.freshQuoteShare.toFixed(1) + '%' })
-      + ' ' + window.FinoI18n.format('Valuation: {date}. Quote dates: {from} — {to}. Sources: {sources}.', { date: v.asOf, from: dates[0] || '—', to: dates.at(-1) || '—', sources: [...new Set(v.rows.map(row => window.FinoI18n.t(row.source)))].join(', ') || '—' })
-      + ' ' + window.FinoI18n.format('Operation-date FX; estimated conversions: {estimated}; missing FX: {missing}.', { estimated: details.estimatedFx + v.estimatedFx, missing: details.missingFx + v.missingFx })
-      + (details.missingHistory || details.missingAmounts || details.missingDates ? ' ' + window.FinoI18n.t('Incomplete cash-flow history.') : '')
-      + ' ' + window.FinoI18n.t('Fresh means a recorded quote no older than 7 days. Missing prices are not replaced with purchase prices.');
-  }
+  element.textContent = value == null ? FinoI18n.t(details?.incomplete ? 'Incomplete' : 'Unavailable') : `${details?.estimated ? '≈ ' : ''}${(value * 100).toFixed(2)}%`;
   card.classList.remove("currency-hover-card");
   card.removeAttribute("title");
   card.removeAttribute("tabindex");
@@ -86,7 +65,7 @@ function setXirrValue(element, xirr) {
 function renderReinvestmentForecast(state = stateStore.getState(), services = createRenderServices(state)) {
   const amount = document.querySelector('#stat-reinvestment');
   if (!amount) return;
-  const t = window.FinoI18n.t, f = window.FinoI18n.format;
+  const t = FinoI18n.t, f = FinoI18n.format;
   const forecast = FinoDashboardAnalytics.reinvestmentForecast({ data: stateStore.selectData(state), market: services, asOf: getDateString() });
   const set = (id, text) => { const element = document.getElementById(id); if (element) element.textContent = text; };
   const approximate = forecast.estimated || forecast.incomplete;
@@ -172,7 +151,7 @@ function renderDashboard(state = stateStore.getState()) {
   const showResult = (element, amount, sign = false) => {
     if (!element) return;
     if (amount === null) {
-      const unavailable = window.FinoI18n.t('Unavailable');
+      const unavailable = FinoI18n.t('Unavailable');
       element.textContent = unavailable; element.dataset.valueUah = unavailable; element.dataset.valueUsd = unavailable;
     } else {
       setDashboardCurrencyHover(element, amount);
@@ -184,20 +163,13 @@ function renderDashboard(state = stateStore.getState()) {
   showResult(document.querySelector('#stat-value'), valuation.rows.length && valuation.rows.every(row => row.value === null) ? null : portfolioValue);
   const unrealizedElement = document.querySelector('#stat-unrealized');
   if (unrealizedElement && valuation.rows.length && valuation.rows.every(row => row.value === null)) {
-    const text = window.FinoI18n.t('No quote available'); unrealizedElement.textContent = text; unrealizedElement.dataset.valueUah = text; unrealizedElement.dataset.valueUsd = text;
+    const text = FinoI18n.t('No quote available'); unrealizedElement.textContent = text; unrealizedElement.dataset.valueUah = text; unrealizedElement.dataset.valueUsd = text;
   } else showResult(unrealizedElement, valuation.unrealized, true);
   showResult(document.querySelector('#stat-realized'), realized, true);
   showResult(document.querySelector('#stat-profit'), totalProfit);
   const note = document.querySelector('#stat-unrealized-note');
-  if (note) note.textContent = window.FinoI18n.t('Open quoted positions only; received income is excluded.') + (valuation.unpricedCount ? ` ${valuation.unpricedCount} ${window.FinoI18n.t('unquoted positions are excluded.')}` : '');
-  const currencies = [...new Set([...(stateStore.selectAssets(state) || []).map(asset => asset.currency || 'UAH'), ...observations.flows.map(event => event.currency)])];
-  const fx = currencies.map(currency => services.rateInfo(currency, valuation.asOf));
-  const estimated = fx.some(info => info.estimated), dates = fx.filter(info => info.source !== 'UAH').map(info => info.date).filter(Boolean).sort();
-  const method = window.FinoI18n.format('Report-date FX: {date}. {quality}', { date: dates[0] || valuation.asOf, quality: window.FinoI18n.t(estimated ? 'Estimated FX.' : 'Recorded FX.') });
-  for (const id of ['stat-invested-method', 'stat-realized-method', 'stat-profit-method']) { const element = document.getElementById(id); if (element) element.textContent = method; }
-  const valueNote = document.querySelector('#stat-value-note');
-  if (valueNote) valueNote.textContent = window.FinoI18n.format('Quoted value only; excluded positions: {count}.', { count: valuation.unpricedCount });
-  setReturnBenchmarkHover(document.querySelector('#stat-roi'), totalProfit !== null && roiBase > 0 && !valuation.missingFx ? totalProfit / roiBase * 100 : null, state);
+  if (note) note.textContent = FinoI18n.t('Open quoted positions only; received income is excluded.') + (valuation.unpricedCount ? ` ${valuation.unpricedCount} ${FinoI18n.t('unquoted positions are excluded.')}` : '');
+  setReturnBenchmarkHover(document.querySelector('#stat-roi'), totalProfit !== null && roiBase > 0 && !valuation.missingFx ? totalProfit / roiBase * 100 : null);
   setXirrValue(document.querySelector('#stat-return'), services.calculatePortfolioXirrDetails(valuation, observations));
   renderReinvestmentForecast(state, services);
 
@@ -330,4 +302,6 @@ function renderUpcomingPayments(state = stateStore.getState()) {
 
   bindUpcomingPaymentActions(container, payments);
 
+}
+return { renderDashboard, renderReinvestmentForecast, renderUpcomingPayments, setDashboardCurrencyHover, setReturnBenchmarkHover, setXirrValue };
 }

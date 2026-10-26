@@ -1,10 +1,7 @@
-(function (root, factory) {
-  const api = factory();
-  if (typeof module === 'object' && module.exports) module.exports = api;
-  else root.FinoAssetDetailView = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+
+const implementation = (function () {
   function createController({ store, model, document, window, i18n, typeLabels, escapeHtml, read, actions, getChart, convert }) {
-    let chart = null, scope = null, syncStatus = null, last = null, initialScope = false;
+    let chart = null, scope = null, syncStatus = null, last = null, initialScope = false, priceChartStyle = 'real';
     const formatters = new Map(); let cachedModel = null;
     const formatter = (key, create) => { if (!formatters.has(key)) formatters.set(key, create()); return formatters.get(key); };
     const root = () => document.querySelector('#asset-detail-section');
@@ -92,6 +89,10 @@
         ${!received && payment.amountPerUnit != null ? `<small>${e(t('Quantity is determined by the payment entitlement date.'))}</small>` : ''}
         ${!received && payment.id ? `<button type="button" class="secondary-btn" data-asset-receive="${e((payment.paymentIds || [payment.id]).join(','))}">${e(t('Mark as received'))}</button>` : ''}</article>`).join('')}</div>`;
     }
+    function priceChartOptions() {
+      const smooth = priceChartStyle === 'smooth';
+      return { tension: 0, cubicInterpolationMode: smooth ? 'monotone' : 'default', pointRadius: smooth ? 1.5 : 3, pointHoverRadius: 5, pointHitRadius: 8 };
+    }
     function chartMarkup(detail, current) {
       return `<div class="asset-chart-controls">
         <label>${e(t('Chart'))}<select data-asset-chart-mode><option value="price" ${current.mode === 'price' ? 'selected' : ''}>${e(t('Unit price'))}</option><option value="value" ${current.mode === 'value' ? 'selected' : ''}>${e(t('Position value at each date'))}</option></select></label>
@@ -100,6 +101,11 @@
         <label>${e(t('To'))}<input type="date" data-asset-chart-to value="${e(current.to)}"></label>
       </div><p class="asset-detail-note">${e(t('Currency'))}: ${e(detail.currency)} · ${e(t('Last recorded quote'))}: ${e(date(detail.history.at(-1)?.date))}<br>
       ${e(t('Sources'))}: <span translate="no">${e([...new Set(detail.history.map(point => point.source || t('Unknown')))].join(', ') || t('No data'))}</span></p>
+      ${current.mode === 'price' ? `<div class="asset-price-chart-appearance"><span>${e(t('Chart appearance'))}</span>
+        <div class="asset-price-chart-switch" role="group" aria-label="${e(t('Chart appearance'))}" data-no-swipe>
+          <button type="button" data-asset-price-style="real" aria-pressed="${priceChartStyle === 'real'}">${e(t('Original'))}</button>
+          <button type="button" data-asset-price-style="smooth" aria-pressed="${priceChartStyle === 'smooth'}">${e(t('Smoothed'))}</button>
+        </div></div>` : ''}
       <p data-asset-chart-message class="asset-detail-note"></p><div class="asset-detail-chart" hidden><canvas id="asset-detail-chart" aria-label="${e(t('Asset price history'))}" role="img"></canvas></div>
       ${detail.members?.length > 1 ? `<p class="asset-detail-note">${e(t('Grouped history uses each holding’s quantity and last recorded quote on or before that date.'))}</p>` : ''}
       <p class="asset-detail-note">${e(t('Recorded snapshots only; gaps are not interpolated. Historical value uses end-of-day holdings.'))}</p>`;
@@ -120,6 +126,7 @@
       chart = new Chart(canvas, { type: 'line', data: { labels: points.map(point => date(point.date)), datasets: [{
         label: t(current.mode === 'price' ? 'Unit price' : 'Position value at each date') + ' · ' + detail.currency,
         data: points.map(point => point.value), borderColor: '#8587ff', backgroundColor: '#8587ff22', fill: true, tension: 0, pointRadius: 3, spanGaps: false,
+        ...(current.mode === 'price' ? priceChartOptions() : {}),
       }] }, options: { responsive: true, maintainAspectRatio: false, animation: false,
         plugins: { legend: { display: false }, tooltip: { callbacks: { label: item => money(item.parsed.y, detail.currency) } } },
         scales: { x: { ticks: { maxTicksLimit: 6 } }, y: { ticks: { callback: value => n(value) } } } } });
@@ -191,6 +198,14 @@
       const element = root(); if (!element) return;
       element.addEventListener('click', event => {
         const button = event.target.closest('button'); if (!button) return;
+        if (button.hasAttribute('data-asset-price-style')) {
+          const style = button.dataset.assetPriceStyle;
+          if (page()?.mode !== 'price' || !['real', 'smooth'].includes(style) || style === priceChartStyle) return;
+          priceChartStyle = style;
+          element.querySelectorAll('[data-asset-price-style]').forEach(item => item.setAttribute('aria-pressed', String(item.dataset.assetPriceStyle === style)));
+          if (chart) { Object.assign(chart.data.datasets[0], priceChartOptions()); chart.update('none'); }
+          return;
+        }
         if (button.hasAttribute('data-asset-back')) { close(); return; }
         if (button.hasAttribute('data-asset-retry')) { void read().catch(() => render(store.getState(), true)); return; }
         if (button.dataset.assetTab) { patch({ tab: button.dataset.assetTab, focusPayment: null }); return; }
@@ -233,4 +248,6 @@
     return { setup, open, close, render, setSyncStatus(status) { syncStatus = status; syncNote(); } };
   }
   return { createController };
-});
+})();
+export default implementation;
+export const { createController } = implementation;

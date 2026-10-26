@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const vm = require('node:vm');
+const { createDataLoader } = require('../../frontend/js/data-loader');
 const model = require('../../shared/state-model');
 const { createStore } = require('../../frontend/js/state-store');
 const window = { FinoStateContract: require('../../shared/state-contract'), FinoErrors: require('../../shared/errors') };
@@ -17,7 +17,7 @@ test('a failed optional FX refresh preserves the date and source of the rates st
       return {rates:{USD:45.0791,EUR:51},exchangeDate:'20.10.2026',source:'NBU'};
     }},
   };
-  vm.createContext(context);vm.runInContext(fs.readFileSync(path.join(__dirname,'../../frontend/js/data-loader.js'),'utf8'),context);
+  Object.assign(context, createDataLoader({ ...context, getDateString: (...args) => context.getDateString(...args) }));
   await context.refreshApplicationData();await new Promise(setImmediate);
   assert.equal(context.state.exchangeRateDate,'20.10.2026');assert.equal(context.state.exchangeRateSource,'NBU');
   fail=true;await context.refreshApplicationData();await new Promise(setImmediate);
@@ -41,7 +41,7 @@ test('benchmark uses completed investments and legacy purchase dates, sorted in-
       return { values: [{ datetime: '2026-10-16', close: 110 }, { datetime: '2026-02-02', close: 100 }, { datetime: '2026-02-31', close: 500 }, { datetime: '2027-01-01', close: 1000 }, { datetime: '2026-01-01', close: 1 }, { datetime: '2026-02-01', close: 0 }] };
     } },
   };
-  vm.createContext(context); vm.runInContext(fs.readFileSync(path.join(__dirname, '../../frontend/js/data-loader.js'), 'utf8'), context);
+  Object.assign(context, createDataLoader({ ...context, getDateString: (...args) => context.getDateString(...args) }));
   await context.updateSp500Benchmark();
   assert.ok(Math.abs(store.getState().sp500Benchmark - 10) < 1e-9);
   assert.equal(store.getState().sp500BenchmarkStatus, 'ready');
@@ -65,8 +65,7 @@ test('local holdings become available even when optional market requests never r
     localStorage: { getItem: () => '{"USD":[{"date":"2026-01-01","rate":40}]}' },
     normalizeNumber: Number,
   };
-  vm.createContext(context);
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '../../frontend/js/data-loader.js'), 'utf8'), context);
+  Object.assign(context, createDataLoader({ ...context, getDateString: (...args) => context.getDateString(...args) }));
   // Exercise the real loader with a dated holding so history really blocks.
   data.assets[0].purchaseDate = '2026-01-01';
   context.getDateString = () => '2026-10-03';
@@ -97,8 +96,7 @@ test('optional market responses for an inactive account cannot change rates, cac
       getIndexHistory: () => new Promise(resolve => { resolveIndex = resolve; }),
     },
   };
-  vm.createContext(context);
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '../../frontend/js/data-loader.js'), 'utf8'), context);
+  Object.assign(context, createDataLoader({ ...context, getDateString: (...args) => context.getDateString(...args) }));
   await context.refreshApplicationData();
   const benchmark = context.updateSp500Benchmark();
   account = 'b';

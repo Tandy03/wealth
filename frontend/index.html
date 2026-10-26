@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>fino</title>
   <link rel="icon" type="image/png" href="/assets/fino-logo.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -13,6 +13,8 @@
   <link rel="stylesheet" href="/css/rebalance.css?v=20261018-usd-hover" />
   <link rel="stylesheet" href="/css/asset-detail.css" />
   <link rel="stylesheet" href="/css/portfolio-share.css" />
+  <link rel="stylesheet" href="/css/calendar.css" />
+  <link rel="stylesheet" href="/css/mobile-navigation.css" />
 </head>
 
 <body>
@@ -26,15 +28,14 @@
 
       <nav class="nav">
         <button class="nav-item active" data-section="dashboard">Dashboard</button>
-        <button class="nav-item" data-section="portfolio">Portfolio</button>
-        <button class="nav-item" data-section="transactions">Transactions</button>
-        <button class="nav-item" data-section="calendar">Calendar</button>
         <button class="nav-item" data-section="analytics">Analytics</button>
-        <button class="nav-item" data-section="rebalance">Rebalance</button>
         <button class="nav-item" data-section="market">Market</button>
         <button class="nav-item" data-section="macroeconomics">Macroeconomics</button>
+        <button class="nav-item" data-section="calendar">Calendar</button>
+        <button class="nav-item" data-section="portfolio">Portfolio</button>
+        <button class="nav-item" data-section="transactions">Transactions</button>
+        <button class="nav-item" data-section="rebalance">Rebalance</button>
       </nav>
-      <p class="nav-scroll-hint"><span>Swipe to see all sections</span><span aria-hidden="true">↔</span></p>
 
       <button class="sidebar-settings-button" type="button" data-open-settings><svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M7.07095 0.650238C6.67391 0.650238 6.32977 0.925096 6.24198 1.31231L6.0039 2.36247C5.6249 2.47269 5.26335 2.62363 4.92436 2.81013L4.01335 2.23585C3.67748 2.02413 3.23978 2.07312 2.95903 2.35386L2.35294 2.95996C2.0722 3.2407 2.0232 3.6784 2.23493 4.01427L2.80942 4.92561C2.62307 5.2645 2.47227 5.62594 2.36216 6.00481L1.31209 6.24287C0.924883 6.33065 0.650024 6.6748 0.650024 7.07183V7.92897C0.650024 8.32601 0.924883 8.67015 1.31209 8.75794L2.36228 8.99603C2.47246 9.375 2.62335 9.73652 2.80979 10.0755L2.2354 10.9867C2.02367 11.3225 2.07267 11.7602 2.35341 12.041L2.95951 12.6471C3.24025 12.9278 3.67795 12.9768 4.01382 12.7651L4.92506 12.1907C5.26384 12.377 5.62516 12.5278 6.0039 12.6379L6.24198 13.6881C6.32977 14.0753 6.67391 14.3502 7.07095 14.3502H7.92809C8.32512 14.3502 8.66927 14.0753 8.75705 13.6881L8.99505 12.6383C9.37411 12.5282 9.73573 12.3773 10.0748 12.1909L10.986 12.7653C11.3218 12.977 11.7595 12.928 12.0403 12.6473L12.6464 12.0412C12.9271 11.7604 12.9761 11.3227 12.7644 10.9869L12.1902 10.076C12.3768 9.73688 12.5278 9.37515 12.638 8.99596L13.6879 8.75794C14.0751 8.67015 14.35 8.32601 14.35 7.92897V7.07183C14.35 6.6748 14.0751 6.33065 13.6879 6.24287L12.6381 6.00488C12.528 5.62578 12.3771 5.26414 12.1906 4.92507L12.7648 4.01407C12.9766 3.6782 12.9276 3.2405 12.6468 2.95975L12.0407 2.35366C11.76 2.07292 11.3223 2.02392 10.9864 2.23565L10.0755 2.80989C9.73622 2.62328 9.37437 2.47229 8.99505 2.36209L8.75705 1.31231C8.66927 0.925096 8.32512 0.650238 7.92809 0.650238H7.07095ZM4.92053 3.81251C5.44724 3.44339 6.05665 3.18424 6.71543 3.06839L7.07095 1.50024H7.92809L8.28355 3.06816C8.94267 3.18387 9.5524 3.44302 10.0794 3.81224L11.4397 2.9547L12.0458 3.56079L11.1882 4.92117C11.5573 5.44798 11.8164 6.0575 11.9321 6.71638L13.5 7.07183V7.92897L11.932 8.28444C11.8162 8.94342 11.557 9.55301 11.1878 10.0798L12.0453 11.4402L11.4392 12.0462L10.0787 11.1886C9.55192 11.5576 8.94241 11.8166 8.28355 11.9323L7.92809 13.5002H7.07095L6.71543 11.932C6.0569 11.8162 5.44772 11.5572 4.92116 11.1883L3.56055 12.046L2.95445 11.4399L3.81213 10.0794C3.4431 9.55266 3.18403 8.94326 3.06825 8.2845L1.50002 7.92897V7.07183L3.06818 6.71632C3.18388 6.05765 3.44283 5.44833 3.81171 4.92165L2.95398 3.561L3.56008 2.95491L4.92053 3.81251ZM9.02496 7.50008C9.02496 8.34226 8.34223 9.02499 7.50005 9.02499C6.65786 9.02499 5.97513 8.34226 5.97513 7.50008C5.97513 6.65789 6.65786 5.97516 7.50005 5.97516C8.34223 5.97516 9.02496 6.65789 9.02496 7.50008ZM9.92496 7.50008C9.92496 8.83932 8.83929 9.92499 7.50005 9.92499C6.1608 9.92499 5.07513 8.83932 5.07513 7.50008C5.07513 6.16084 6.1608 5.07516 7.50005 5.07516C8.83929 5.07516 9.92496 6.16084 9.92496 7.50008Z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"></path></svg><span>Settings</span></button>
     </aside>
@@ -55,12 +56,10 @@
           <article class="stat-card">
             <span>Total invested</span>
             <strong id="stat-invested">0 ₴</strong>
-            <small id="stat-invested-method"></small>
           </article>
           <article class="stat-card">
             <span>Portfolio value today</span>
             <strong id="stat-value">0 ₴</strong>
-            <small id="stat-value-note"></small>
           </article>
           <article class="stat-card result-stat-card">
             <span>Unrealized result</span>
@@ -70,7 +69,6 @@
           <article class="stat-card result-stat-card">
             <span>Realized result</span>
             <strong id="stat-realized">—</strong>
-            <small id="stat-realized-method"></small>
             <details class="stat-explanation" open><summary>How calculated</summary><small>Recorded sale profit plus received investment income. Returned principal and planned payments are excluded.</small></details>
           </article>
         </div>
@@ -80,38 +78,35 @@
           <article class="stat-card">
             <span>Profit</span>
             <strong id="stat-profit">0 ₴</strong>
-            <small id="stat-profit-method"></small>
           </article>
           <article class="stat-card">
             <span id="stat-roi-label">Return</span>
             <strong id="stat-roi">0%</strong>
-              <small id="stat-roi-note">All-time simple return at report-date FX; unavailable with incomplete valuation.</small>
           </article>
           <article class="stat-card">
             <span id="stat-xirr-label">XIRR</span>
             <strong id="stat-return">0%</strong>
-            <details class="valuation-details"><summary>Valuation and FX quality</summary><small id="stat-xirr-note"></small></details>
           </article>
           <article class="stat-card reinvestment-stat-card">
             <span>Additional investment for $1,000/month</span>
             <strong id="stat-reinvestment">—</strong>
-            <small id="reinvestment-status" role="status"></small>
-            <small id="stat-average-monthly-profit"></small>
-            <small id="reinvestment-observation"></small>
-            <dl class="income-forecast-metrics">
-              <div><dt>Received regular income</dt><dd id="reinvestment-income">—</dd></div>
-              <div><dt>Average daily invested capital</dt><dd id="reinvestment-average-capital">—</dd></div>
-              <div><dt>Current invested capital</dt><dd id="reinvestment-current-capital">—</dd></div>
-              <div><dt>Annual regular-income yield</dt><dd id="reinvestment-annual-yield">—</dd></div>
-              <div><dt>Required capital, base scenario</dt><dd id="reinvestment-required-capital">—</dd></div>
-              <div><dt>Monthly target in UAH</dt><dd id="reinvestment-target">—</dd></div>
-            </dl>
-            <small id="reinvestment-range"></small>
-            <small id="reinvestment-excess"></small>
-            <ul id="reinvestment-scenarios" class="scenario-list"></ul>
-            <small id="reinvestment-fx"></small>
-            <small>Additional funds are assumed to earn the same regular-income yield in a similarly structured portfolio. The 50%, 100% and 150% scenarios are assumptions, not probabilities or confidence intervals.</small>
             <details class="income-forecast-details"><summary>Income records, capital and FX assumptions</summary>
+              <small id="reinvestment-status" role="status"></small>
+              <small id="stat-average-monthly-profit"></small>
+              <small id="reinvestment-observation"></small>
+              <dl class="income-forecast-metrics">
+                <div><dt>Received regular income</dt><dd id="reinvestment-income">—</dd></div>
+                <div><dt>Average daily invested capital</dt><dd id="reinvestment-average-capital">—</dd></div>
+                <div><dt>Current invested capital</dt><dd id="reinvestment-current-capital">—</dd></div>
+                <div><dt>Annual regular-income yield</dt><dd id="reinvestment-annual-yield">—</dd></div>
+                <div><dt>Required capital, base scenario</dt><dd id="reinvestment-required-capital">—</dd></div>
+                <div><dt>Monthly target in UAH</dt><dd id="reinvestment-target">—</dd></div>
+              </dl>
+              <small id="reinvestment-range"></small>
+              <small id="reinvestment-excess"></small>
+              <ul id="reinvestment-scenarios" class="scenario-list"></ul>
+              <small id="reinvestment-fx"></small>
+              <small>Additional funds are assumed to earn the same regular-income yield in a similarly structured portfolio. The 50%, 100% and 150% scenarios are assumptions, not probabilities or confidence intervals.</small>
               <p>Dividends and coupons are treated as regular unless explicitly marked non-recurring. Maturity proceeds, sale profit, price gains and savings are excluded. Amounts are recorded receipts; unrecorded tax and fees are not deducted.</p>
               <p>Capital is the end-of-day remaining cost basis, not market value. Receipts use receipt-date FX; daily capital uses that day's FX. Monthly income is annualized income divided by 12.</p>
               <p>Recorded receipts do not independently prove a complete income history. Gaps, ambiguous mirrors, missing FX, an undated target rate or at least 10% fallback in income or capital-days hide scenario amounts. Recent prior official rates remain marked approximate.</p>
@@ -250,66 +245,55 @@
       </section>
 
       <section id="calendar-section" class="page-section">
-        <article class="panel calendar-panel">
-          <div class="panel-header">
-            <div>
-              <h2>Calendar</h2>
+        <article class="calendar-panel">
+          <div class="calendar-heading">
+            <h1>Calendar</h1>
+            <div class="calendar-heading-actions">
+              <button class="secondary-btn calendar-info-btn" id="calendar-help-btn" type="button" aria-label="Calendar guide" title="Calendar guide">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v1"/></svg>
+              </button>
+              <button class="primary-btn" id="add-note-btn" type="button"><span aria-hidden="true">＋</span> <span>Add note</span></button>
             </div>
-
-            <button class="primary-btn" id="add-note-btn">
-              + Add note
-            </button>
           </div>
-
-          <div class="calendar-toolbar">
-            <button class="secondary-btn calendar-nav-btn" id="previous-month" type="button">
-              ←
-            </button>
-
-            <h3 id="calendar-month-title"></h3>
-
-            <button class="secondary-btn calendar-nav-btn" id="next-month" type="button">
-              →
-            </button>
-
-            <button class="secondary-btn" id="today-btn" type="button">
-              Today
-            </button>
+          <div class="calendar-layout">
+            <div class="calendar-month-card">
+              <div class="calendar-toolbar">
+                <label class="calendar-month-picker">
+                  <span id="calendar-month-title" translate="no"></span>
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m5 8 5 5 5-5"/></svg>
+                  <input id="calendar-month-picker" type="month" aria-label="Select month" />
+                </label>
+                <div class="calendar-month-nav">
+                  <button class="secondary-btn calendar-nav-btn" id="previous-month" type="button" aria-label="Previous month"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m12 5-5 5 5 5"/></svg></button>
+                  <button class="secondary-btn calendar-nav-btn" id="next-month" type="button" aria-label="Next month"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m8 5 5 5-5 5"/></svg></button>
+                </div>
+              </div>
+              <div class="calendar-weekdays" aria-hidden="true"><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div><div>Sun</div></div>
+              <div id="calendar-grid" class="calendar-grid" role="group" aria-label="Calendar"></div>
+              <div class="calendar-month-footer"><span id="calendar-month-count"></span><button class="secondary-btn" id="today-btn" type="button">Today</button></div>
+            </div>
+            <section class="calendar-agenda" aria-labelledby="calendar-selected-title">
+              <div class="calendar-agenda-heading"><h3 id="calendar-selected-title" translate="no"></h3><span id="calendar-day-count" class="calendar-count"></span></div>
+              <div id="calendar-day-events" class="calendar-day-events" aria-live="polite"></div>
+            </section>
           </div>
-
-          <div class="calendar-weekdays">
-            <div>Mon</div>
-            <div>Tue</div>
-            <div>Wed</div>
-            <div>Thu</div>
-            <div>Fri</div>
-            <div>Sat</div>
-            <div>Sun</div>
+          <div class="calendar-legend" aria-label="Event colors">
+            <span><i class="legend-dot dividend" aria-hidden="true"></i><span>Dividend</span></span>
+            <span><i class="legend-dot coupon" aria-hidden="true"></i><span>Coupon</span></span>
+            <span><i class="legend-dot maturity" aria-hidden="true"></i><span>Maturity</span></span>
+            <span><i class="legend-dot note" aria-hidden="true"></i><span>Planned purchase</span></span>
           </div>
-
-          <div id="calendar-grid" class="calendar-grid"></div>
-
-          <div class="calendar-legend">
-            <span>
-              <i class="legend-dot dividend"></i>
-              Dividend
-            </span>
-
-            <span>
-              <i class="legend-dot coupon"></i>
-              Coupon
-            </span>
-
-            <span>
-              <i class="legend-dot maturity"></i>
-              Maturity
-            </span>
-
-            <span>
-              <i class="legend-dot note"></i>
-              Planned purchase
-            </span>
-          </div>
+          <template id="calendar-help-template">
+            <p class="calendar-guide-intro">Select a day to see its events. Open an event to view details or mark a payment as received.</p>
+            <h3>Event colors</h3>
+            <div class="calendar-guide-list">
+              <div><i class="legend-dot dividend" aria-hidden="true"></i><strong>Dividend</strong></div>
+              <div><i class="legend-dot coupon" aria-hidden="true"></i><strong>Coupon</strong></div>
+              <div><i class="legend-dot maturity" aria-hidden="true"></i><strong>Maturity</strong></div>
+              <div><i class="legend-dot note" aria-hidden="true"></i><strong>Planned purchase</strong></div>
+            </div>
+            <p class="calendar-guide-intro">Dots under a date show events for that day. Outlined dots indicate received payments. A number shows additional events.</p>
+          </template>
         </article>
       </section>
 
@@ -375,6 +359,13 @@
             <label><span>From</span><input type="date" id="asset-price-history-from" /></label>
             <label><span>To</span><input type="date" id="asset-price-history-to" /></label>
             <button type="button" class="secondary-btn" id="asset-price-history-all-time">All time</button>
+          </div>
+          <div class="asset-price-chart-appearance">
+            <span>Chart appearance</span>
+            <div id="asset-price-history-appearance" class="asset-price-chart-switch" role="group" aria-label="Chart appearance" data-no-swipe>
+              <button type="button" data-price-chart-style="real" aria-pressed="true">Original</button>
+              <button type="button" data-price-chart-style="smooth" aria-pressed="false">Smoothed</button>
+            </div>
           </div>
           <div class="portfolio-history-chart">
             <canvas id="asset-price-history-chart"></canvas>
@@ -769,6 +760,10 @@
         <article class="panel loans-panel">
           <div class="panel-header"><div><h2>Loans</h2></div><button class="primary-btn" id="add-loan-btn">Add loan</button></div>
           <div id="loans-list"></div>
+          <details class="paid-loans-archive" id="paid-loans-archive" hidden>
+            <summary>Paid loans</summary>
+            <div id="paid-loans-list"></div>
+          </details>
           <div class="panel-header loan-calendar-header"><div><h3>Upcoming loan payments</h3></div></div>
           <div id="loan-calendar"></div>
         </article>
@@ -1350,85 +1345,14 @@
     </div>
   </div>
 
-  <!-- Classic local scripts: reviewed owners/order in frontend-globals.json.
-       npm test and mobile:check verify the contract; do not add async/defer. -->
-  <script src="/vendor/chart.umd.js"></script>
-  <script src="/js/mobile-config.generated.js"></script>
-  <script src="/js/i18n.js"></script>
-  <script src="/shared/errors.js"></script>
-  <script src="/shared/operations.js"></script>
-  <script src="/shared/sync-model.js"></script>
-  <script src="/shared/state-contract.js"></script>
-  <script src="/shared/state-model.js"></script>
-  <script src="/shared/portfolio-transfer.js"></script>
-  <script src="/shared/market-model.js"></script>
-  <script src="/js/controllers/wallet-actions.js"></script>
-  <script src="/js/state-store.js"></script>
-  <script src="/shared/constants.js"></script>
-  <script src="/shared/validation.js"></script>
-  <script src="/shared/portfolio/validation.js"></script>
-  <script src="/shared/portfolio/calculations.js"></script>
-  <script src="/shared/portfolio/normalization.js"></script>
-  <script src="/shared/portfolio/operations.js"></script>
-  <script src="/shared/portfolio-rules.js"></script>
-  <script src="/shared/request.js"></script>
-  <script src="/js/mobile-api.js"></script>
-  <script src="/js/api/fetchers.js"></script>
-  <script src="/js/api/desktop.js"></script>
-  <script src="/js/api/mobile.js"></script>
-  <script src="/js/api/outbox.js"></script>
-  <script src="/js/api.js"></script>
-  <script src="/js/portfolio-performance.js"></script>
-  <script src="/js/analytics/values.js"></script>
-  <script src="/js/state.js"></script>
-  <script src="/js/utils.js"></script>
-  <script src="/js/market-data.js"></script>
-  <script src="/js/analytics/portfolio-finance.js"></script>
-  <script src="/js/asset-detail/model.js"></script>
-  <script src="/js/rebalance/model.js"></script>
-  <script src="/js/cashflow.js"></script>
-  <script src="/js/wallet-analytics.js"></script>
-  <script src="/js/analytics/dashboard.js"></script>
-  <script src="/js/views/wallet.js"></script>
-  <script src="/js/models.js"></script>
-  <script src="/js/data-loader.js"></script>
-  <script src="/js/renderers/dashboard.js"></script>
-  <script src="/js/renderers/portfolio.js"></script>
-  <script src="/js/renderers/transactions.js"></script>
-  <script src="/js/renderers/calendar.js"></script>
-  <script src="/js/renderers/calculators.js"></script>
-  <script src="/js/rebalance/dashboard.js"></script>
-  <script src="/js/rebalance/currency-hover.js"></script>
-  <script src="/js/renderers/sync.js"></script>
-  <script src="/js/renderers/wallet.js"></script>
-  <script src="/js/forms/assets.js"></script>
-  <script src="/js/forms/buy.js"></script>
-  <script src="/js/forms/calendar.js"></script>
-  <script src="/js/forms/sales.js"></script>
-  <script src="/js/forms/calculators.js"></script>
-  <script src="/js/forms/settings.js"></script>
-  <script src="/js/forms/wallet.js"></script>
-  <script src="/js/forms/loans.js"></script>
-  <script src="/js/charts/market.js"></script>
-  <script src="/js/charts/macroeconomics.js"></script>
-  <script src="/js/charts/plugins.js"></script>
-  <script src="/js/charts/portfolio.js"></script>
-  <script src="/js/charts/wallet.js"></script>
-  <script src="/js/controllers/actions.js"></script>
-  <script src="/js/controllers/dashboard.js"></script>
-  <script src="/js/controllers/wallet.js"></script>
-  <script src="/js/controllers/portfolio.js"></script>
-  <script src="/js/controllers/calendar.js"></script>
-  <script src="/js/controllers/calculators.js"></script>
-  <script src="/js/controllers/sync.js"></script>
-  <script src="/js/controllers/application.js"></script>
-  <script src="/js/asset-detail/view.js"></script>
-  <script src="/js/share-card/data.js"></script>
-  <script src="/js/share-card/card.js"></script>
-  <script src="/js/share-card/platform.js"></script>
-  <script src="/js/share-card/view.js"></script>
-  <script src="/js/ui.js"></script>
-  <script src="/js/app.js"></script>
+  <nav class="mobile-bottom-nav" id="mobile-bottom-nav" aria-label="Main navigation"></nav>
+  <div class="mobile-more-backdrop" id="mobile-more-backdrop" hidden>
+    <section class="mobile-more-popover" id="mobile-more-sheet" role="menu" aria-labelledby="mobile-more-title" tabindex="-1">
+      <h2 id="mobile-more-title" hidden>More</h2>
+      <div class="mobile-more-items" id="mobile-more-items"></div>
+    </section>
+  </div>
+  <script type="module" src="/js/main.js"></script>
 </body>
 
 </html>

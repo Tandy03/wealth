@@ -1,5 +1,6 @@
-(function () {
-  const stackedDoughnutLegend = {
+// Explicit ports are wired once by composition.js; this module publishes no browser globals.
+export function createChartsPlugins({ document }) {
+const stackedDoughnutLegend = {
     id: "stackedDoughnutLegend",
     afterUpdate(chart, _args, options) {
       const container = document.getElementById(options.containerId);
@@ -35,5 +36,6 @@
       container.replaceChildren(list);
     },
   };
-  window.FinoChartPlugins = { stackedDoughnutLegend };
-})();
+  const FinoChartPlugins = { stackedDoughnutLegend };
+return { FinoChartPlugins };
+}

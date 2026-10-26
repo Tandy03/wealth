@@ -1,8 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
-const model = require('../../frontend/js/market-model');
-const stateModel = require('../../frontend/js/state-model');
+const model = require('../../shared/market-model');
+const stateModel = require('../../shared/state-model');
 const { createApp } = require('../app');
 const { createService } = require('../domain/marketService');
 const { INZHUR_ASSETS_URL, INZHUR_CACHE_TTL_MS } = require('../config/constants');

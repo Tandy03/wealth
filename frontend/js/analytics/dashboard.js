@@ -1,9 +1,6 @@
-(function (root, factory) {
-  const node = typeof module === 'object' && module.exports;
-  const api = factory(node ? require('../../../shared/portfolio-rules') : root.FinoPortfolioRules, node ? require('../../../shared/state-contract') : root.FinoStateContract);
-  if (node) module.exports = api;
-  else root.FinoDashboardAnalytics = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (rules, contract) {
+import rules from '../../../shared/portfolio-rules.js';
+import contract from '../../../shared/state-contract.js';
+const implementation = (function (rules, contract) {
   const DAY = 86400000;
   const validDate = date => typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(Date.parse(date)) && new Date(date + 'T00:00:00Z').toISOString().slice(0, 10) === date;
   const day = date => String(date || '').slice(0, 10);
@@ -190,4 +187,6 @@
       currentMonthlyExcess: Math.max(0, scenarios[1].monthlyIncome - target.amount) };
   }
   return { reinvestmentForecast };
-});
+})(rules, contract);
+export default implementation;
+export const { reinvestmentForecast } = implementation;

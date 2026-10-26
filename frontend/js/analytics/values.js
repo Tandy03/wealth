@@ -1,8 +1,5 @@
-(function (root, factory) {
-  const api = factory();
-  if (typeof module === 'object' && module.exports) module.exports = api;
-  else root.FinoValues = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+
+const implementation = (function () {
   function createService() {
 function normalizeNumber(value) {
   const number = Number(value);
@@ -36,4 +33,6 @@ function isDateInRange(date, from, to) {
     return { normalizeNumber, getDateString, isDateInRange };
   }
   return createService();
-});
+})();
+export default implementation;
+export const { getDateString, isDateInRange, normalizeNumber } = implementation;

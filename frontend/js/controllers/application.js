@@ -1,31 +1,53 @@
-(function () {
+// Explicit ports are wired once by composition.js; this module publishes no browser globals.
+export function createControllersApplication({
+  FinoErrors,
+  FinoI18n,
+  MutationObserver,
+  api,
+  console,
+  document,
+  loadData,
+  populateMarketSymbols,
+  populateSellAssetSelect,
+  renderCalendar,
+  renderMacroeconomics,
+  renderMarketChart,
+  renderPortfolio,
+  renderProfitCalculator,
+  renderRebalanceCalculator,
+  requestAnimationFrame,
+  showNotice,
+  stateStore,
+  ui,
+  window,
+}) {
 // Application wiring and centralized render triggers.
 function renderApplication(snapshot = stateStore.getState()) {
-  window.ui.dashboard.render(snapshot);
-  window.ui.portfolio.render(snapshot);
-  window.ui.calculators.rebalance(snapshot);
-  window.ui.transactions.render(snapshot);
-  window.ui.calendar.render(snapshot);
-  window.ui.calculators.render(snapshot);
-  window.ui.wallet.render(snapshot);
+  ui.dashboard.render(snapshot);
+  ui.portfolio.render(snapshot);
+  ui.calculators.rebalance(snapshot);
+  ui.transactions.render(snapshot);
+  ui.calendar.render(snapshot);
+  ui.calculators.render(snapshot);
+  ui.wallet.render(snapshot);
   populateSellAssetSelect();
-  window.ui.asset.render(snapshot);
+  ui.asset.render(snapshot);
 }
 function renderMarketViews(snapshot = stateStore.getState()) {
   // FX updates invalidate derived views, not the financial document. Hidden
   // views use the latest snapshot when opened, without rebuilding their DOM now.
   const wallet = document.querySelector('#wallet-app');
   if (wallet && !wallet.hidden) {
-    window.ui.wallet.render(snapshot);
+    ui.wallet.render(snapshot);
     return;
   }
   const renderers = {
-    'asset-detail-section': window.ui.asset.render,
-    'dashboard-section': window.ui.dashboard.render,
-    'portfolio-section': window.ui.portfolio.render,
-    'transactions-section': window.ui.transactions.render,
-    'analytics-section': window.ui.calculators.render,
-    'rebalance-section': window.ui.calculators.rebalance,
+    'asset-detail-section': ui.asset.render,
+    'dashboard-section': ui.dashboard.render,
+    'portfolio-section': ui.portfolio.render,
+    'transactions-section': ui.transactions.render,
+    'analytics-section': ui.calculators.render,
+    'rebalance-section': ui.calculators.rebalance,
   };
   const active = document.querySelector('#investments-app .page-section.active');
   renderers[active?.id]?.(snapshot);
@@ -34,7 +56,7 @@ let stopRenderSubscription = null;
 function setupCommandRecovery() {
   const panel = document.querySelector('#command-recovery');
   if (!panel || !api.outbox) return;
-  const t = key => window.FinoI18n.t(key);
+  const t = key => FinoI18n.t(key);
   let sequence = 0;
   const labels = { createAsset: 'Create asset', buyMoreAsset: 'Buy asset', createSale: 'Sell asset', createTransaction: 'Create transaction',
     createPayment: 'Create payment', markPaymentReceived: 'Receive payment', createCalendarNote: 'Create calendar note', mergeAssets: 'Merge assets' };
@@ -52,7 +74,7 @@ function setupCommandRecovery() {
       const title = document.createElement('strong'); title.textContent = t('Command recovery'); panel.append(title);
       if (result.corrupt) {
         const notice = document.createElement('p');
-        notice.textContent = window.FinoI18n.format('Local recovery data is damaged and has been preserved. No commands will be sent. Code: {code}', { code: result.code });
+        notice.textContent = FinoI18n.format('Local recovery data is damaged and has been preserved. No commands will be sent. Code: {code}', { code: result.code });
         panel.append(notice); return;
       }
       for (const entry of result.entries) {
@@ -79,7 +101,7 @@ function setupCommandRecovery() {
       }
     } catch (error) {
       if (current !== sequence) return;
-      panel.hidden = false; panel.textContent = window.FinoErrors.displayMessage(error);
+      panel.hidden = false; panel.textContent = FinoErrors.displayMessage(error);
     }
   }
   document.addEventListener('fino:outbox-changed', () => { void refresh(); });
@@ -96,7 +118,6 @@ function setupRenderSubscriptions() {
   if (stopRenderSubscription) return;
   stopRenderSubscription = stateStore.subscribe(({ type, keys, state }) => {
     if (type === 'ui:changed' && keys.includes('marketRevision')) renderMarketViews(state);
-    if (type === 'ui:changed' && keys.includes('sp500BenchmarkStatus')) setReturnBenchmarkHover(document.querySelector('#stat-roi'), undefined, state);
   });
 }
 function setupPortfolioSort() {
@@ -151,7 +172,7 @@ function setupInzhurSync() {
         : "";
       showNotice(`Synchronized ${result.synced.length} Inzhur asset(s) and ${binanceSynced} Binance holding(s).${skipped}${binanceSkipped}`);
     } catch (error) {
-      console.error(window.FinoErrors.diagnostics(error));
+      console.error(FinoErrors.diagnostics(error));
       showNotice(error || "Could not synchronize assets.");
     } finally {
       button.disabled = false;
@@ -167,7 +188,7 @@ function setupNativeSectionSwipes() {
   let gesture = null;
   const blocked = 'input, textarea, select, button, a, label, summary, canvas, video, audio, [role="slider"], [role="button"], [contenteditable]:not([contenteditable="false"]), [data-no-swipe]';
   const reset = () => { gesture = null; };
-  const obstructed = () => Boolean(document.querySelector('.modal-backdrop.open') || window.getSelection()?.toString());
+  const obstructed = () => Boolean(document.querySelector('.modal-backdrop.open, #mobile-more-backdrop:not([hidden])') || window.getSelection()?.toString());
   document.querySelectorAll('.app-shell > .main').forEach(main => {
     const shell = main.closest('.app-shell');
     const wallet = shell.id === 'wallet-app';
@@ -258,9 +279,9 @@ function setupNavigation() {
 
       // These views may have been hidden when market/FX metadata changed.
       const latest = stateStore.getState();
-      if (section === 'dashboard') window.ui.dashboard.render(latest);
-      if (section === 'portfolio') window.ui.portfolio.render(latest);
-      if (section === 'transactions') window.ui.transactions.render(latest);
+      if (section === 'dashboard') ui.dashboard.render(latest);
+      if (section === 'portfolio') ui.portfolio.render(latest);
+      if (section === 'transactions') ui.transactions.render(latest);
 
       if (section === "calendar") {
         renderCalendar();
@@ -288,11 +309,11 @@ function setupNavigation() {
 
 function setupGlobalErrorHandling() {
   window.addEventListener("error", (event) => {
-    console.error("JavaScript error:", window.FinoErrors.diagnostics(event.error));
+    console.error("JavaScript error:", FinoErrors.diagnostics(event.error));
   });
 
   window.addEventListener("unhandledrejection", (event) => {
-    console.error("Unhandled promise rejection:", window.FinoErrors.diagnostics(event.reason));
+    console.error("Unhandled promise rejection:", FinoErrors.diagnostics(event.reason));
   });
 }
 
@@ -336,5 +357,5 @@ function setupResponsiveTables() {
   applyResponsiveTableLabels();
   new MutationObserver(refresh).observe(document.body, { childList: true, subtree: true });
 }
-Object.assign(window, { renderApplication, renderMarketViews, initializeUiController, setupRenderSubscriptions, setupPortfolioSort, setupInzhurSync, setupNavigation, setupGlobalErrorHandling, disableNumberInputWheelChanges, applyResponsiveTableLabels, setupResponsiveTables, setupCommandRecovery });
-})();
+return { applyResponsiveTableLabels, disableNumberInputWheelChanges, initializeUiController, renderApplication, renderMarketViews, setupGlobalErrorHandling, setupInzhurSync, setupNavigation, setupPortfolioSort, setupRenderSubscriptions, setupResponsiveTables, setupCommandRecovery };
+}

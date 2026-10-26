@@ -1,10 +1,22 @@
+// Explicit ports are wired once by composition.js; this module publishes no browser globals.
+export function createDataLoader({
+  EXCHANGE_RATES,
+  FinoErrors,
+  FinoStateContract,
+  api,
+  console,
+  getDateString,
+  localStorage,
+  normalizeNumber,
+  stateStore,
+}) {
 async function refreshApplicationData() {
   const context = stateStore.capture();
   if (!stateStore.selectUI('portfolioLoaded')) stateStore.setUI({ portfolioLoadState: 'loading' });
   let result;
   try { result = await stateStore.loadData(() => api.getData({ sync: false })); }
   catch (error) {
-    if (stateStore.isCurrent(context)) stateStore.setUI({ portfolioLoadState: 'error', portfolioLoadError: globalThis.FinoErrors?.clientError(error) || { message: 'Could not load asset details.' } });
+    if (stateStore.isCurrent(context)) stateStore.setUI({ portfolioLoadState: 'error', portfolioLoadError: FinoErrors?.clientError(error) || { message: 'Could not load asset details.' } });
     throw error;
   }
   if (!result.applied) return result;
@@ -14,7 +26,7 @@ async function refreshApplicationData() {
   const snapshot = stateStore.capture();
   const history = loadPurchaseExchangeRates();
   void Promise.all([api.getExchangeRates().catch(error => {
-    console.warn('Using fallback exchange rates:', window.FinoErrors.diagnostics(error));
+    console.warn('Using fallback exchange rates:', FinoErrors.diagnostics(error));
     return null;
   }), history]).then(([exchangeData]) => {
     if (!stateStore.isCurrent(snapshot)) return;
@@ -27,7 +39,7 @@ async function refreshApplicationData() {
       update.exchangeRateStale = true;
     }
     stateStore.setUI(update);
-  }).catch(error => console.warn('Could not refresh market-dependent views:', window.FinoErrors.diagnostics(error)));
+  }).catch(error => console.warn('Could not refresh market-dependent views:', FinoErrors.diagnostics(error)));
   return result;
 }
 
@@ -85,7 +97,7 @@ async function loadPurchaseExchangeRates() {
       stateStore.setUI({ purchaseExchangeRates: { ...stateStore.selectUI('purchaseExchangeRates'), [currency]: rates } });
       localStorage.setItem(cacheKey, JSON.stringify(stateStore.selectUI('purchaseExchangeRates')));
     } catch (error) {
-      console.warn(`Could not load historical ${currency}/UAH rates:`, window.FinoErrors.diagnostics(error));
+      console.warn(`Could not load historical ${currency}/UAH rates:`, FinoErrors.diagnostics(error));
     }
   }));
 }
@@ -96,7 +108,7 @@ async function updateSp500Benchmark() {
   const isDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value + 'T00:00:00Z')) && new Date(value + 'T00:00:00Z').toISOString().slice(0, 10) === value;
   const savings = new Set((data.assets || []).filter(item => item.type === 'savings').map(item => item.id));
   const buys = (data.transactions || []).filter(item => item.type === 'BUY' &&
-    !savings.has(item.assetId) && (globalThis.FinoStateContract?.isTransactionCompleted(item) ?? !['pending', 'planned', 'cancelled'].includes(item.status)) && isDate(item.date));
+    !savings.has(item.assetId) && (FinoStateContract?.isTransactionCompleted(item) ?? !['pending', 'planned', 'cancelled'].includes(item.status)) && isDate(item.date));
   const recorded = new Set(buys.map(item => item.assetId));
   const dates = [...buys.map(item => item.date), ...(data.assets || []).filter(item => item.type !== 'savings' && !recorded.has(item.id)).map(item => item.purchaseDate).filter(isDate)].sort();
   const start = dates[0], end = getDateString(new Date());
@@ -116,6 +128,8 @@ async function updateSp500Benchmark() {
     if (!stateStore.isCurrent(snapshot)) return;
     const code = ['FRED_NOT_CONFIGURED', 'NOT_CONFIGURED', 'INDEX_HISTORY_NOT_FOUND'].includes(error?.code) ? error.code : 'FRED_API_ERROR';
     stateStore.setUI({ sp500BenchmarkStatus: 'unavailable', sp500BenchmarkErrorCode: code });
-    console.warn("Could not load the S&P 500 benchmark:", window.FinoErrors.diagnostics(error));
+    console.warn("Could not load the S&P 500 benchmark:", FinoErrors.diagnostics(error));
   }
+}
+return { loadPurchaseExchangeRates, refreshApplicationData, updateSp500Benchmark };
 }

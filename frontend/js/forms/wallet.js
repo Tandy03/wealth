@@ -1,4 +1,22 @@
-(function () {
+// Explicit ports are wired once by composition.js; this module publishes no browser globals.
+export function createFormsWallet({
+  FinoErrors,
+  FinoWalletActions,
+  FormData,
+  console,
+  document,
+  escapeHtml,
+  getDateString,
+  normalizeNumber,
+  renderWallet,
+  renderWalletNotes,
+  setupWalletNavigation,
+  showNotice,
+  stateStore,
+  walletActions,
+  walletCategories,
+  walletMonthKey,
+}) {
 // forms/wallet.js
 function openExpenseModal(expenseId = null) {
   const modal = document.querySelector("#expense-modal");
@@ -71,7 +89,7 @@ function setupWallet() {
         }
         if (editingId) {
           const index = wallet.expenses.findIndex(item => item.id === editingId);
-          if (index < 0) throw new window.FinoErrors.ConflictError({ message: 'This expense changed. Reload before editing it again.' });
+          if (index < 0) throw new FinoErrors.ConflictError({ message: 'This expense changed. Reload before editing it again.' });
           wallet.expenses[index] = { ...wallet.expenses[index], ...expense };
         } else wallet.expenses.push(expense);
         FinoWalletActions.cleanupCategories(wallet);
@@ -79,12 +97,12 @@ function setupWallet() {
       close();
       renderWallet();
     } catch (error) {
-      console.error("Failed to save expense:", window.FinoErrors.diagnostics(error));
+      console.error("Failed to save expense:", FinoErrors.diagnostics(error));
       await showNotice(error || "Failed to save wallet.");
     } finally {
       if (submitButton) submitButton.disabled = false;
     }
   });
 }
-Object.assign(window, { openExpenseModal, setupWallet });
-})();
+return { openExpenseModal, setupWallet };
+}

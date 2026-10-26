@@ -1,9 +1,7 @@
-(function (root, factory) {
-  const api = factory(typeof module === 'object' && module.exports ? require('../../../shared/validation').createDefault() : root.FinoValidation,
-    typeof module === 'object' && module.exports ? require('../../../shared/errors') : root.FinoErrors, typeof module === 'object' && module.exports ? require('../../../shared/operations') : root.FinoOperations);
-  if (typeof module === 'object' && module.exports) module.exports = api;
-  else root.FinoDesktopApi = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (validation, errors, operations) {
+import validation from '../shared/validation.js';
+import errors from '../../../shared/errors.js';
+import operations from '../../../shared/operations.js';
+const implementation = (function (validation, errors, operations) {
   function createService({ request }) {
     const get = (url, message, params) => {
       try { if (params) params = validation.queryParameters(params, url); }
@@ -58,4 +56,6 @@
     });
   }
   return { createService };
-});
+})(validation, errors, operations);
+export default implementation;
+export const { createService } = implementation;

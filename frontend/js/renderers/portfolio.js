@@ -1,3 +1,19 @@
+// Explicit ports are wired once by composition.js; this module publishes no browser globals.
+export function createRenderersPortfolio({
+  bindHoldingDetailActions,
+  bindPortfolioActions,
+  createRenderServices,
+  document,
+  escapeHtml,
+  formatDate,
+  formatQuantity,
+  getDateString,
+  money,
+  normalizeNumber,
+  portfolioMoneyWithUahHover,
+  stateStore,
+  typeLabels,
+}) {
 // renderers/portfolio.js
 function setupPortfolioCurrencyHover(container) {
   container.querySelectorAll(".portfolio-currency-hover").forEach((element) => {
@@ -194,4 +210,6 @@ function renderAssetTransactionsModal(state = stateStore.getState()) {
     const asset = stateStore.selectAssets(state).find((item) => item.id === transaction.assetId);
     return `<tr><td>${formatDate(getTransactionEffectiveDate(transaction))}</td><td><span translate="no">${escapeHtml(asset?.instrumentName || "—")}</span></td><td>${escapeHtml(transaction.type)}</td><td>${escapeHtml(transaction.quantity ?? "—")}</td><td>${money(transaction.amount, transaction.currency || asset?.currency)}</td><td></td></tr>`;
   }).join("") : '<tr><td colspan="6" class="empty-state">No matching transactions.</td></tr>';
+}
+return { renderAssetTransactionsModal, renderPortfolio, setupPortfolioCurrencyHover };
 }

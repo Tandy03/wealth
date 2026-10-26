@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const model = require('../../frontend/js/state-model');
+const model = require('../../shared/state-model');
 const { merge } = require('../services/googleDrive/merge');
 test('legacy migration preserves unknown fields and is idempotent', () => {
   const legacy = { assets: [{ id: 'a', type: ' STOCK ', currency: ' usd ', quantity: '2', purchaseDate: '2024-02-29', custom: { value: 3 } }], custom: ['keep'] };

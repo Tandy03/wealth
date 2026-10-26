@@ -1,12 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const vm = require('node:vm');
-const appSource = fs.readFileSync(path.join(__dirname, '../../frontend/js/renderers/dashboard.js'), 'utf8');
-const dashboard = appSource.slice(appSource.indexOf('function renderDashboard('), appSource.indexOf('function renderUpcomingPayments('));
-const financeSource = fs.readFileSync(path.join(__dirname, '../../frontend/js/analytics/portfolio-finance.js'), 'utf8');
-const price = financeSource.slice(financeSource.indexOf('function getCurrentPrice('), financeSource.indexOf('function calculatePortfolioValue('));
+const { createRenderersDashboard } = require('../../frontend/js/renderers/dashboard');
 function render(assets) {
   const container = { innerHTML: '', querySelectorAll: () => [] };
   const rates = { UAH: 1, USD: 40, EUR: 45 };
@@ -27,7 +21,8 @@ function render(assets) {
   // Exercise the actual metric collaborators; this test still isolates the
   // Portfolio card's mocked remaining-unit display from its sibling cards.
   context.createRenderServices = () => ({ ...context, ...market, ...finance, ...cashflow, getAvailableQuantity: context.getAvailableQuantity });
-  vm.createContext(context); vm.runInContext(price + dashboard, context); context.renderDashboard(); return container.innerHTML;
+  createRenderersDashboard({ ...context, FinoI18n: context.window.FinoI18n, FinoDashboardAnalytics: require('../../frontend/js/analytics/dashboard') }).renderDashboard();
+  return container.innerHTML;
 }
 test('Portfolio card displays current value for remaining units instead of invested cost', () => {
   const html = render([{ id: 'a', name: 'Stock', type: 'stock', quantity: 5, sold: 2, purchasePrice: 100, currentPrice: 120, currency: 'USD' }]);

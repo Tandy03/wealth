@@ -1,8 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
-const model = require('../../frontend/js/state-model');
-const rules = require('../../frontend/js/portfolio-rules');
+const model = require('../../shared/state-model');
+const rules = require('../../shared/portfolio-rules');
 const finance = require('../../frontend/js/analytics/portfolio-finance');
 const { createServices: createService } = require('./helpers/portfolioServices');
 const { createApp } = require('../app');

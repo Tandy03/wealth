@@ -1,16 +1,18 @@
+// Explicit ports are wired once by composition.js; this module publishes no browser globals.
+export function createUtils({ EXCHANGE_RATES, FinoConstants, FinoI18n, getAvailableQuantity, normalizeNumber, toUAH }) {
 // utils.js
-const typeLabels = window.FinoConstants.ASSET_TYPE_LABELS;
+const typeLabels = FinoConstants.ASSET_TYPE_LABELS;
 
-const DEFAULT_INSTRUMENTS = window.FinoConstants.DEFAULT_INSTRUMENTS;
+const DEFAULT_INSTRUMENTS = FinoConstants.DEFAULT_INSTRUMENTS;
 
-const monthNames = Array.from({ length: 12 }, (_, month) => new Date(2026, month, 1).toLocaleDateString(window.FinoI18n?.locale || "en", { month: "long" }));
+const monthNames = Array.from({ length: 12 }, (_, month) => new Date(2026, month, 1).toLocaleDateString(FinoI18n?.locale || "en", { month: "long" }));
 
-const currencyFormatter = new Intl.NumberFormat(window.FinoI18n?.locale || "en", {
+const currencyFormatter = new Intl.NumberFormat(FinoI18n?.locale || "en", {
   minimumFractionDigits: 0,
   maximumFractionDigits: 2,
 });
 
-const quantityFormatter = new Intl.NumberFormat(window.FinoI18n?.locale || "en", {
+const quantityFormatter = new Intl.NumberFormat(FinoI18n?.locale || "en", {
   minimumFractionDigits: 0,
   maximumFractionDigits: 3,
 });
@@ -43,7 +45,7 @@ function formatDate(dateString) {
     return "-";
   }
 
-  return date.toLocaleDateString(window.FinoI18n?.locale || "en");
+  return date.toLocaleDateString(FinoI18n?.locale || "en");
 }
 
 function escapeHtml(value) {
@@ -76,9 +78,9 @@ function portfolioMoneyWithUahHover(value, currency = "UAH", valueInUah = null) 
 
 function holdingOptionLabel(asset) {
   const available = getAvailableQuantity(asset.id);
-  const instrument = asset.instrumentName || window.FinoI18n.t("No instrument");
-  const instrumentType = asset.instrumentType ? ` · ${window.FinoI18n.t(asset.instrumentType)}` : "";
-  return `${asset.name} — ${instrument}${instrumentType} — ${window.FinoI18n.t(`${formatQuantity(available)} units`)}`;
+  const instrument = asset.instrumentName || FinoI18n.t("No instrument");
+  const instrumentType = asset.instrumentType ? ` · ${FinoI18n.t(asset.instrumentType)}` : "";
+  return `${asset.name} — ${instrument}${instrumentType} — ${FinoI18n.t(`${formatQuantity(available)} units`)}`;
 }
 
 function groupHoldingsByInstrument(holdings) {
@@ -96,16 +98,16 @@ function groupHoldingsByInstrument(holdings) {
 function holdingGroupLabel(group) {
   const first = group.assets[0];
   const quantity = group.assets.reduce((sum, asset) => sum + getAvailableQuantity(asset.id), 0);
-  const instrumentType = group.instrumentType ? ` · ${window.FinoI18n.t(group.instrumentType)}` : "";
-  const instrument = group.instrumentName === "No instrument" ? window.FinoI18n.t("No instrument") : group.instrumentName;
-  return `${first.name} — ${instrument}${instrumentType} · ${group.currency} — ${window.FinoI18n.t(`${formatQuantity(quantity)} units`)}`;
+  const instrumentType = group.instrumentType ? ` · ${FinoI18n.t(group.instrumentType)}` : "";
+  const instrument = group.instrumentName === "No instrument" ? FinoI18n.t("No instrument") : group.instrumentName;
+  return `${first.name} — ${instrument}${instrumentType} · ${group.currency} — ${FinoI18n.t(`${formatQuantity(quantity)} units`)}`;
 }
 
 function formatMarketPrice(value, currency = "USD") {
-  return new Intl.NumberFormat(window.FinoI18n?.locale || "en", { style: "currency", currency, maximumFractionDigits: 2 }).format(value);
+  return new Intl.NumberFormat(FinoI18n?.locale || "en", { style: "currency", currency, maximumFractionDigits: 2 }).format(value);
 }
 
-const walletCurrencyFormatter = new Intl.NumberFormat(window.FinoI18n?.locale || "en", {
+const walletCurrencyFormatter = new Intl.NumberFormat(FinoI18n?.locale || "en", {
   minimumFractionDigits: 0,
   maximumFractionDigits: 2,
 });
@@ -116,5 +118,7 @@ function walletMoney(value) {
 
 function formatWalletDate(dateString) {
   const date = new Date(`${dateString}T00:00:00`);
-  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString(window.FinoI18n?.locale || "en");
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString(FinoI18n?.locale || "en");
+}
+return { escapeHtml, formatDate, formatMarketPrice, formatQuantity, formatWalletDate, groupHoldingsByInstrument, holdingGroupLabel, holdingOptionLabel, money, paymentTypeLabel, portfolioMoneyWithUahHover, usdMoney, walletMoney, DEFAULT_INSTRUMENTS, currencyFormatter, monthNames, quantityFormatter, typeLabels, walletCurrencyFormatter };
 }

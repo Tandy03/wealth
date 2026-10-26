@@ -1,10 +1,24 @@
+// Explicit ports are wired once by composition.js; this module publishes no browser globals.
+export function createRenderersCalculators({
+  FinoI18n,
+  FinoRebalanceDashboard,
+  createRenderServices,
+  document,
+  escapeHtml,
+  money,
+  renderAssetAllocationChart,
+  renderAssetPriceHistoryChart,
+  renderPortfolioHistoryChart,
+  stateStore,
+  typeLabels,
+}) {
 // renderers/calculators.js
 function renderProfitCalculator(state = stateStore.getState()) {
   const services = createRenderServices(state);
   renderAssetAllocationChart(state); renderPortfolioHistoryChart(state); renderAssetPriceHistoryChart(state);
   const from = document.querySelector('#profit-from')?.value || null, to = document.querySelector('#profit-to')?.value || null;
   const result = services.calculateProfit(from, to), valuation = services.valuation();
-  const t = window.FinoI18n.t, f = window.FinoI18n.format;
+  const t = FinoI18n.t, f = FinoI18n.format;
   const estimated = result.estimatedFx > 0 || result.missingFx > 0 || result.missingAmounts > 0 || result.missingDates > 0;
   for (const [id, key] of [['profit-dividends','dividends'],['profit-coupons','coupons'],['profit-maturity','maturity'],['profit-sales','salesProfit'],['profit-total','totalProfit']]) {
     const element = document.getElementById(id); if (element) element.textContent = result.invalidPeriod ? '—' : !result.eventCount && (result.missingFx || result.missingAmounts || result.missingDates) ? t('Unavailable') : (estimated ? '≈ ' : '') + money(result[key]);
@@ -35,5 +49,7 @@ function renderProfitCalculator(state = stateStore.getState()) {
 }
 
 function renderRebalanceCalculator(state = stateStore.getState()) {
-  window.FinoRebalanceDashboard.render(state);
+  FinoRebalanceDashboard.render(state);
+}
+return { renderProfitCalculator, renderRebalanceCalculator };
 }

@@ -1,9 +1,6 @@
-(function (root, factory) {
-  const api = factory();
-  if (typeof module === 'object' && module.exports) module.exports = api;
-  else if (root.FinoPortfolioShare) root.FinoPortfolioShare.view = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
-  function createController({ window, document, store, feature, services, getRates, getHistoricalRates, today, i18n, typeLabels, escapeHtml }) {
+
+const implementation = (function () {
+  function createController({ window, document, store, feature, services, getRates, getHistoricalRates, today, i18n, typeLabels, escapeHtml, nativeApi = null }) {
     let overlay = null, previousFocus, stop, platform, report, svg = '', selected, theme, snapshot, rates, cache;
     let generation = 0, invalid = false, busy = false, ready = null, controller = null, context, inert = [];
     const t = key => i18n.t(key), e = escapeHtml;
@@ -101,7 +98,7 @@
       previousFocus = document.activeElement;
       selected = { return: true, count: true, allocation: true, branding: true };
       theme = document.documentElement.dataset.theme || 'dark'; snapshotNow();
-      platform = feature.platform.create({ window, document });
+        platform = feature.platform.create({ window, document, nativeApi });
       overlay = document.createElement('div'); overlay.className = 'modal-backdrop open portfolio-share-overlay'; overlay.setAttribute('translate', 'no');
       overlay.innerHTML = `<section class="modal portfolio-share-modal" role="dialog" aria-modal="true" aria-labelledby="portfolio-share-title">
         <div class="modal-header"><h2 id="portfolio-share-title">${e(t('Portfolio share card'))}</h2><button type="button" class="icon-btn" data-share-close aria-label="${e(t('Close'))}">×</button></div>
@@ -135,4 +132,6 @@
     return { open, close };
   }
   return { createController };
-});
+})();
+export default implementation;
+export const { createController } = implementation;

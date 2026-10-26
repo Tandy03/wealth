@@ -12,6 +12,6 @@ if (proxyToken.length < 32) {
 }
 
 const target = path.join(__dirname, "..", "..", "frontend", "js", "mobile-config.generated.js");
-const payload = `window.FINO_MOBILE_CONFIG = Object.freeze(${JSON.stringify({ proxyUrl, proxyToken })});\n`;
+const payload = `export default Object.freeze(${JSON.stringify({ proxyUrl, proxyToken })});\n`;
 fs.writeFileSync(target, payload, { encoding: "utf8", mode: 0o600 });
 console.log("Generated local Android proxy configuration.");

@@ -1,4 +1,21 @@
-(function () {
+// Explicit ports are wired once by composition.js; this module publishes no browser globals.
+export function createFormsSales({
+  FinoErrors,
+  FinoI18n,
+  api,
+  console,
+  document,
+  financialCommand,
+  formatQuantity,
+  getAvailableQuantity,
+  getDateString,
+  getGroupedSaleCost,
+  loadData,
+  money,
+  normalizeNumber,
+  showNotice,
+  stateStore,
+}) {
 // forms/sales.js
 function populateSellAssetSelect() {
   const select = document.querySelector("#sell-asset");
@@ -30,7 +47,7 @@ function populateSellAssetSelect() {
     const instrument = instruments.length === 1 ? instruments[0] : `${instruments.length} instruments`;
     option.value = assets.map((asset) => asset.id).join(",");
     option.setAttribute("translate", "no");
-    option.textContent = `${first.name} — ${instrument} — ${window.FinoI18n.t(`${formatQuantity(available)} units`)}`;
+    option.textContent = `${first.name} — ${instrument} — ${FinoI18n.t(`${formatQuantity(available)} units`)}`;
     select.appendChild(option);
   });
 }
@@ -341,7 +358,7 @@ function setupSellModal() {
 
       showNotice("Sale successfully recorded.");
     } catch (error) {
-      console.error("SALE ERROR:", window.FinoErrors.diagnostics(error));
+      console.error("SALE ERROR:", FinoErrors.diagnostics(error));
 
       showNotice(error || "Failed to record sale.");
     } finally {
@@ -354,5 +371,5 @@ function setupSellModal() {
     }
   });
 }
-Object.assign(window, { populateSellAssetSelect, getSelectedSellAssets, updateSalePreview, setupSellModal, openSellAssetModal });
-})();
+return { getSelectedSellAssets, populateSellAssetSelect, setupSellModal, updateSalePreview, openSellAssetModal };
+}

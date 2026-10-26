@@ -1,16 +1,32 @@
-(function () {
+// Explicit ports are wired once by composition.js; this module publishes no browser globals.
+export function createChartsPortfolio({
+  FinoChartPlugins,
+  FinoI18n,
+  PortfolioPerformance,
+  charts,
+  createRenderServices,
+  document,
+  escapeHtml,
+  getComputedStyle,
+  getDateString,
+  money,
+  normalizeNumber,
+  stateStore,
+  typeLabels,
+  window,
+}) {
 let assetAllocationChart = null, allocationMode = null;
-const stackedDoughnutLegendPlugin = window.FinoChartPlugins.stackedDoughnutLegend;
+const stackedDoughnutLegendPlugin = FinoChartPlugins.stackedDoughnutLegend;
 function renderAssetAllocationChart(state = stateStore.getState()) {
   const canvas = document.querySelector('#asset-allocation-chart');
-  if (!canvas || typeof Chart === 'undefined') return;
+  if (!canvas || typeof charts.current === 'undefined') return;
   const { toUAH, getAvailableQuantity, getCurrentPrice } = createRenderServices(state);
   const mode = document.querySelector('#asset-allocation-mode')?.value || 'assets';
   const allocation = new Map();
   for (const asset of stateStore.selectAssets(state) || []) {
     if (asset.type === 'savings') continue;
     const value = toUAH(getAvailableQuantity(asset.id) * getCurrentPrice(asset), asset.currency);
-    const label = mode === 'tools' ? String(asset.instrumentName || '').trim() || window.FinoI18n.t('Unassigned') : window.FinoI18n.t(window.FinoI18n.locale === 'uk' && asset.type === 'stock' ? 'Stocks' : typeLabels[asset.type] || asset.type);
+    const label = mode === 'tools' ? String(asset.instrumentName || '').trim() || FinoI18n.t('Unassigned') : FinoI18n.t(FinoI18n.locale === 'uk' && asset.type === 'stock' ? 'Stocks' : typeLabels[asset.type] || asset.type);
     const key = mode === 'tools' ? label.toLocaleLowerCase() : asset.type;
     const item = allocation.get(key) || { value: 0, label };
     item.value += value; allocation.set(key, item);
@@ -21,8 +37,8 @@ function renderAssetAllocationChart(state = stateStore.getState()) {
   const styles = getComputedStyle(document.getElementById('analytics-section'));
   const token = name => styles.getPropertyValue(name).trim();
   const colors = items.map((_, i) => i < 8 ? token('--rebalance-asset-' + (i + 1)) : 'hsl(' + i * 137.508 % 360 + ' 62% ' + (token('--rebalance-color-lightness') || '55%') + ')');
-  const percent = value => new Intl.NumberFormat(window.FinoI18n.locale, { style: 'percent', maximumFractionDigits: 1 }).format(total ? value / total : 0);
-  const amount = value => new Intl.NumberFormat(window.FinoI18n.locale, { style: 'currency', currency: 'UAH', currencyDisplay: 'narrowSymbol', maximumFractionDigits: 2 }).format(value);
+  const percent = value => new Intl.NumberFormat(FinoI18n.locale, { style: 'percent', maximumFractionDigits: 1 }).format(total ? value / total : 0);
+  const amount = value => new Intl.NumberFormat(FinoI18n.locale, { style: 'currency', currency: 'UAH', currencyDisplay: 'narrowSymbol', maximumFractionDigits: 2 }).format(value);
   const center = document.getElementById('asset-allocation-center');
   if (center) center.textContent = amount(total);
   canvas.parentElement.classList.toggle('is-empty', !total);
@@ -46,7 +62,7 @@ function renderAssetAllocationChart(state = stateStore.getState()) {
         } },
     },
   };
-  if (!assetAllocationChart) assetAllocationChart = new Chart(canvas, { type: 'doughnut', data, plugins: [stackedDoughnutLegendPlugin], options });
+  if (!assetAllocationChart) assetAllocationChart = new charts.current(canvas, { type: 'doughnut', data, plugins: [stackedDoughnutLegendPlugin], options });
   else {
     if (allocationMode !== mode) values.forEach((_, i) => { if (assetAllocationChart.getDataVisibility?.(i) === false) assetAllocationChart.toggleDataVisibility(i); });
     assetAllocationChart.data = data;
@@ -62,7 +78,7 @@ function renderPortfolioHistoryChart(state = stateStore.getState()) {
   const { toUAH, toUAHAtDate, getAssetPurchaseDate, toUAHPurchaseCost, getMaturityCostBasis, getCurrentPrice } = createRenderServices(state);
   const canvas = document.querySelector("#portfolio-history-chart");
 
-  if (!canvas || typeof Chart === "undefined") {
+  if (!canvas || typeof charts.current === "undefined") {
     return;
   }
 
@@ -113,7 +129,7 @@ function renderPortfolioHistoryChart(state = stateStore.getState()) {
   const datedEvents = [...movements, ...earnedEvents];
 
   if (!datedEvents.length) {
-    portfolioHistoryChart = new Chart(canvas, {
+    portfolioHistoryChart = new charts.current(canvas, {
       type: "line",
       data: { labels: [], datasets: [] },
       options: { responsive: true, maintainAspectRatio: false },
@@ -162,7 +178,7 @@ function renderPortfolioHistoryChart(state = stateStore.getState()) {
       return sum + toUAH(quantity * getCurrentPrice(asset), asset.currency);
     }, 0);
 
-    labels.push(cursor.toLocaleDateString(window.FinoI18n?.locale || "en", { month: "short", year: "numeric" }));
+    labels.push(cursor.toLocaleDateString(FinoI18n?.locale || "en", { month: "short", year: "numeric" }));
     investedValues.push(Math.max(0, runningInvested));
     monthlyInvestedValues.push(investedThisMonth);
     portfolioValues.push(Math.max(0, portfolioValue));
@@ -177,11 +193,11 @@ function renderPortfolioHistoryChart(state = stateStore.getState()) {
     const point = [...rates].reverse().find((item) => item.date <= date);
     return point && normalizeNumber(point.rate) > 0 ? normalizeNumber(point.rate) : null;
   };
-  const weeklyPerformance = window.PortfolioPerformance.buildWeeklyPerformance(stateStore.selectData(state), {
+  const weeklyPerformance = PortfolioPerformance.buildWeeklyPerformance(stateStore.selectData(state), {
     today: getDateString(new Date()),
     exchangeRateOnDate: strictHistoricalRate,
   });
-  const weeklyDifferenceLabels = weeklyPerformance.points.map((point) => new Date(`${point.date}T12:00:00`).toLocaleDateString(window.FinoI18n?.locale || "en"));
+  const weeklyDifferenceLabels = weeklyPerformance.points.map((point) => new Date(`${point.date}T12:00:00`).toLocaleDateString(FinoI18n?.locale || "en"));
   const weeklyDifferenceValues = weeklyPerformance.points.map((point) => point.value);
 
   const chartModes = {
@@ -222,12 +238,12 @@ function renderPortfolioHistoryChart(state = stateStore.getState()) {
     },
   };
   const selected = chartModes[mode] || chartModes.value;
-  if (description) description.textContent = window.FinoI18n.t(selected.description);
+  if (description) description.textContent = FinoI18n.t(selected.description);
 
   const chartText = getComputedStyle(document.documentElement).getPropertyValue("--text").trim();
   const gridColor = getComputedStyle(document.documentElement).getPropertyValue("--border").trim();
 
-  portfolioHistoryChart = new Chart(canvas, {
+  portfolioHistoryChart = new charts.current(canvas, {
     type: selected.type,
     data: {
       labels: selected.labels || labels,
@@ -247,7 +263,7 @@ function renderPortfolioHistoryChart(state = stateStore.getState()) {
       maintainAspectRatio: false,
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { label: (context) => `${window.FinoI18n.t(selected.label)}: ${money(context.raw)}` } },
+        tooltip: { callbacks: { label: (context) => `${FinoI18n.t(selected.label)}: ${money(context.raw)}` } },
       },
       scales: {
         x: { ticks: { color: chartText }, grid: { color: gridColor } },
@@ -259,19 +275,25 @@ function renderPortfolioHistoryChart(state = stateStore.getState()) {
 
 let assetPriceHistoryChart = null;
 
-function renderAssetPriceHistoryChart(state = stateStore.getState()) {
+function renderAssetPriceHistoryChart(state = stateStore.getState(), appearanceOnly = false) {
+  const smooth = document.querySelector('#asset-price-history-appearance [aria-pressed="true"]')?.dataset.priceChartStyle === 'smooth';
+  const appearance = { tension: 0, cubicInterpolationMode: smooth ? 'monotone' : 'default', pointRadius: smooth ? 1.5 : 4, pointHoverRadius: 5, pointHitRadius: 8 };
+  if (appearanceOnly) {
+    if (assetPriceHistoryChart) { Object.assign(assetPriceHistoryChart.data.datasets[0], appearance); assetPriceHistoryChart.update('none'); }
+    return;
+  }
   const { getAvailableQuantity } = createRenderServices(state);
   const canvas = document.querySelector("#asset-price-history-chart");
   const select = document.querySelector("#asset-price-history-select");
   const description = document.querySelector("#asset-price-history-description");
-  if (!canvas || !select || typeof Chart === "undefined") return;
+  if (!canvas || !select || typeof charts.current === "undefined") return;
 
   const from = document.querySelector("#asset-price-history-from");
   const to = document.querySelector("#asset-price-history-to");
   const start = from?.value || "";
   const end = to?.value || "";
   const invalidRange = Boolean(start && end && start > end);
-  const rangeError = window.FinoI18n.t("The end date must be on or after the start date.");
+  const rangeError = FinoI18n.t("The end date must be on or after the start date.");
   if (from) from.max = end;
   if (to) {
     to.min = start;
@@ -314,16 +336,16 @@ function renderAssetPriceHistoryChart(state = stateStore.getState()) {
     description.setAttribute("aria-live", "polite");
     description.textContent = invalidRange ? rangeError : group
       ? points.length
-        ? `${group.name}: ${window.FinoI18n.t(`${points.length} recorded price point${points.length === 1 ? "" : "s"}`)}`
-        : window.FinoI18n.t(history.length && (start || end)
+        ? `${group.name}: ${FinoI18n.t(`${points.length} recorded price point${points.length === 1 ? "" : "s"}`)}`
+        : FinoI18n.t(history.length && (start || end)
           ? "{value}: no recorded prices in the selected period"
           : "{value}: price history will appear after the next edit or synchronization").replace("{value}", group.name)
-      : window.FinoI18n.t("No active portfolio assets");
+      : FinoI18n.t("No active portfolio assets");
   }
 
   const chartText = getComputedStyle(document.documentElement).getPropertyValue("--text").trim();
   const gridColor = getComputedStyle(document.documentElement).getPropertyValue("--border").trim();
-  assetPriceHistoryChart = new Chart(canvas, {
+  assetPriceHistoryChart = new charts.current(canvas, {
     type: "line",
     data: {
       datasets: [{
@@ -334,7 +356,7 @@ function renderAssetPriceHistoryChart(state = stateStore.getState()) {
           y: normalizeNumber(point.price),
         })).filter((point) => Number.isFinite(point.x)),
         borderColor: "#7c8cff", backgroundColor: "rgba(124, 140, 255, 0.18)",
-        fill: true, tension: 0.25, pointRadius: 4,
+        fill: true, ...appearance,
       }],
     },
     options: {
@@ -344,7 +366,7 @@ function renderAssetPriceHistoryChart(state = stateStore.getState()) {
         legend: { display: false },
         tooltip: {
           callbacks: {
-            title: (items) => items.length ? new Date(items[0].parsed.x).toLocaleString(window.FinoI18n?.locale || "en", {
+            title: (items) => items.length ? new Date(items[0].parsed.x).toLocaleString(FinoI18n?.locale || "en", {
               day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
             }) : "",
             label: (context) => money(context.parsed.y, currency),
@@ -359,7 +381,7 @@ function renderAssetPriceHistoryChart(state = stateStore.getState()) {
           ticks: {
             color: chartText, maxRotation: 0, autoSkip: true,
             maxTicksLimit: window.innerWidth <= 700 ? 4 : 8,
-            callback: (value) => new Date(value).toLocaleDateString(window.FinoI18n?.locale || "en", { day: "2-digit", month: "2-digit" }),
+            callback: (value) => new Date(value).toLocaleDateString(FinoI18n?.locale || "en", { day: "2-digit", month: "2-digit" }),
           },
           grid: { color: gridColor },
         },
@@ -368,6 +390,5 @@ function renderAssetPriceHistoryChart(state = stateStore.getState()) {
     },
   });
 }
-
-Object.assign(window, { renderAssetAllocationChart, renderPortfolioHistoryChart, renderAssetPriceHistoryChart });
-})();
+return { renderAssetAllocationChart, renderAssetPriceHistoryChart, renderPortfolioHistoryChart };
+}

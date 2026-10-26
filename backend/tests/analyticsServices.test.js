@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const model = require('../../frontend/js/state-model');
+const model = require('../../shared/state-model');
 const values = require('../../frontend/js/analytics/values');
 const marketModule = require('../../frontend/js/market-data');
 const financeModule = require('../../frontend/js/analytics/portfolio-finance');

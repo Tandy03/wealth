@@ -1,10 +1,32 @@
-(function () {
+// Explicit ports are wired once by composition.js; this module publishes no browser globals.
+export function createFormsSettings({
+  Blob,
+  FileReader,
+  FinoErrors,
+  FinoI18n,
+  FinoPortfolioTransfer,
+  URL,
+  api,
+  document,
+  escapeHtml,
+  loadData,
+  localStorage,
+  mobileApi,
+  refreshGoogleDriveStatus,
+  renderGoogleDriveStatus,
+  renderProfitCalculator,
+  renderRebalanceCalculator,
+  renderWalletCharts,
+  setTimeout,
+  stateStore,
+  window,
+}) {
 // forms/settings.js
 let noticeResolver = null;
 
 function showNotice(message, title = "Message") {
-  message = message && typeof message === 'object' ? window.FinoErrors.displayMessage(message, window.FinoI18n) : window.FinoI18n?.t(message) || message;
-  title = window.FinoI18n?.t(title) || title;
+  message = message && typeof message === 'object' ? FinoErrors.displayMessage(message, FinoI18n) : FinoI18n?.t(message) || message;
+  title = FinoI18n?.t(title) || title;
   const modal = document.querySelector("#notice-modal");
   if (!modal) return Promise.resolve(true);
   document.querySelector("#notice-title").textContent = title;
@@ -44,13 +66,13 @@ function setupGoogleDriveSync() {
   const previewModal = document.querySelector('#sync-preview-modal');
   const compareVersions = async action => {
     const preview = await api.getSyncConflictPreview();
-    const text = value => window.FinoI18n?.t(value) || value;
+    const text = value => FinoI18n?.t(value) || value;
     const e = escapeHtml;
-    const date = value => value ? new Date(value).toLocaleString(window.FinoI18n?.locale || 'en') : text('Unknown');
+    const date = value => value ? new Date(value).toLocaleString(FinoI18n?.locale || 'en') : text('Unknown');
     const countLabels = { assets: 'Assets', transactions: 'Transactions', sales: 'Sales', payments: 'Payments', receivedPayments: 'Received payments', expenses: 'Expenses', loans: 'Loans', notes: 'Notes' };
     const card = (title, version) => `<article><h3>${e(text(title))}</h3>${version ? `<p>${e(text('Updated'))}: ${e(date(version.updatedAt))}<br>${e(text('Device'))}: ${e(version.deviceId || text('Unknown'))}<br>${e(text('Revision'))}: ${e(version.revision ?? text('Unknown'))}</p><dl>${Object.entries(version.counts).map(([key, value]) => `<dt>${e(text(countLabels[key] || key))}</dt><dd>${e(value)}</dd>`).join('')}</dl>` : `<p>${e(text('No cloud document found.'))}</p>`}</article>`;
     document.querySelector('#sync-preview-versions').innerHTML = card('This device', preview.local) + card('Google Drive', preview.remote);
-    document.querySelector('#sync-preview-differences').innerHTML = Object.entries(preview.differences).map(([key, diff]) => `<p><strong>${e(text(countLabels[key] || key))}</strong>: ${e(window.FinoI18n.format('Only on device: {local}; only in Drive: {remote}; different: {changed}', { local: diff.localOnly, remote: diff.remoteOnly, changed: diff.changed }))}</p>`).join('')
+    document.querySelector('#sync-preview-differences').innerHTML = Object.entries(preview.differences).map(([key, diff]) => `<p><strong>${e(text(countLabels[key] || key))}</strong>: ${e(FinoI18n.format('Only on device: {local}; only in Drive: {remote}; different: {changed}', { local: diff.localOnly, remote: diff.remoteOnly, changed: diff.changed }))}</p>`).join('')
       + (preview.plansDiffer ? `<p>${e(text('Budget plans differ.'))}</p>` : '') + (preview.targetsDiffer ? `<p>${e(text('Rebalance targets differ.'))}</p>` : '')
       + `<p>${e(text('Budget plans and rebalance targets are also replaced with the selected document.'))}</p>`;
     const choices = [...previewModal.querySelectorAll('[name="sync-version"]')];
@@ -94,7 +116,7 @@ function setupGoogleDriveSync() {
       if (comparing) return;
       let action = button.dataset.driveAction, options = {};
       const confirmations = {
-        reconnect: window.mobileApi ? "Disconnect the current Google account? You will choose an account when opening your portfolio again." : "Disconnect the current Google authorization? You will need to run npm run google-auth again.",
+        reconnect: mobileApi ? "Disconnect the current Google account? You will choose an account when opening your portfolio again." : "Disconnect the current Google authorization? You will need to run npm run google-auth again.",
       };
       if (['upload', 'download', 'compare'].includes(action)) {
         comparing = true;
@@ -110,7 +132,7 @@ function setupGoogleDriveSync() {
         renderGoogleDriveStatus(result.status);
         if (action === "download" || action === "sync") await loadData();
         if (action === "reconnect") await showNotice(
-          window.mobileApi ? "Select the Google account whose portfolio you want to open." : "Run npm run google-auth in the project console, then restart the server.",
+          mobileApi ? "Select the Google account whose portfolio you want to open." : "Run npm run google-auth in the project console, then restart the server.",
           "Authorization required",
         );
         else if (action === "backup") await showNotice("Google Drive backup created.");
@@ -129,12 +151,12 @@ function setupGoogleDriveSync() {
 function setupPortfolioTransfer() {
   const panel = document.querySelector('#portfolio-transfer');
   if (!panel) return () => {};
-  const model = window.FinoPortfolioTransfer, native = Boolean(window.Capacitor?.isNativePlatform?.());
+  const model = FinoPortfolioTransfer, native = Boolean(window.Capacitor?.isNativePlatform?.());
   const picker = window.Capacitor?.Plugins?.PortfolioTransfer;
   const fileInput = panel.querySelector('#portfolio-import-file');
   const preview = panel.querySelector('#portfolio-import-preview');
   const status = panel.querySelector('#portfolio-transfer-status');
-  const t = key => window.FinoI18n.t(key);
+  const t = key => FinoI18n.t(key);
   let pending = null, busy = false;
   const clear = () => { pending = null; preview.hidden = true; fileInput.value = ''; };
   const run = async action => {
@@ -147,7 +169,7 @@ function setupPortfolioTransfer() {
     finally { busy = false; panel.querySelectorAll('button').forEach(button => { button.disabled = false; }); }
   };
   const assertCurrent = token => {
-    if (!stateStore.isCurrent(token)) throw new window.FinoErrors.ConflictError({ message: 'The portfolio changed. Choose the file again before continuing.' });
+    if (!stateStore.isCurrent(token)) throw new FinoErrors.ConflictError({ message: 'The portfolio changed. Choose the file again before continuing.' });
   };
   const validateFile = async text => {
     clear();
@@ -156,8 +178,8 @@ function setupPortfolioTransfer() {
     const result = await api.previewPortfolioImport(checked.file);
     assertCurrent(token);
     pending = { backup: checked.file, expected: result.expected, token };
-    panel.querySelector('#portfolio-import-summary').textContent = window.FinoI18n.format('File checked: {assets} assets, {transactions} transactions, {payments} payments, {expenses} expenses. Exported: {date}.', {
-      ...result.counts, date: new Date(result.createdAt).toLocaleString(window.FinoI18n.locale),
+    panel.querySelector('#portfolio-import-summary').textContent = FinoI18n.format('File checked: {assets} assets, {transactions} transactions, {payments} payments, {expenses} expenses. Exported: {date}.', {
+      ...result.counts, date: new Date(result.createdAt).toLocaleString(FinoI18n.locale),
     });
     panel.querySelector('#portfolio-import-checksum').textContent = 'SHA-256: ' + checked.checksum;
     preview.hidden = false;
@@ -169,13 +191,13 @@ function setupPortfolioTransfer() {
     assertCurrent(token);
     const recovery = await api.outbox.list();
     if (recovery.corrupt || recovery.entries.some(entry => ['queued', 'in-flight', 'outcome-unknown'].includes(entry.state)))
-      throw new window.FinoErrors.ConflictError({ message: 'Recover unfinished commands before exporting a portfolio.' });
+      throw new FinoErrors.ConflictError({ message: 'Recover unfinished commands before exporting a portfolio.' });
     const backup = await api.exportPortfolio();
     await model.validateExport(backup);
     assertCurrent(token);
     const text = JSON.stringify(backup, null, 2);
     if (native) {
-      if (!picker) throw new window.FinoErrors.StorageError({ message: 'Update the Android app to use portfolio files.' });
+      if (!picker) throw new FinoErrors.StorageError({ message: 'Update the Android app to use portfolio files.' });
       const result = await picker.exportFile({ text });
       if (!result.cancelled) status.textContent = t('Portfolio file saved. Keep it private.');
     } else {
@@ -193,7 +215,7 @@ function setupPortfolioTransfer() {
     status.textContent = '';
     if (!native) { if (!busy) fileInput.click(); return; }
     void run(async () => {
-      if (!picker) throw new window.FinoErrors.StorageError({ message: 'Update the Android app to use portfolio files.' });
+      if (!picker) throw new FinoErrors.StorageError({ message: 'Update the Android app to use portfolio files.' });
       const result = await picker.importFile();
       if (!result.cancelled) await validateFile(result.text);
     });
@@ -202,10 +224,10 @@ function setupPortfolioTransfer() {
     const file = fileInput.files?.[0];
     if (!file) return;
     void run(async () => {
-      if (file.size > model.MAX_BYTES) throw new window.FinoErrors.ValidationError({ message: 'Portfolio files must be JSON of at most 1 MiB.' });
+      if (file.size > model.MAX_BYTES) throw new FinoErrors.ValidationError({ message: 'Portfolio files must be JSON of at most 1 MiB.' });
       const text = await new Promise((resolve, reject) => {
         const reader = new FileReader(); reader.onload = () => resolve(reader.result);
-        reader.onerror = () => reject(new window.FinoErrors.StorageError({ message: 'Could not read the portfolio file.' }));
+        reader.onerror = () => reject(new FinoErrors.StorageError({ message: 'Could not read the portfolio file.' }));
         reader.readAsText(file);
       });
       await validateFile(text);
@@ -217,7 +239,7 @@ function setupPortfolioTransfer() {
     const request = pending;
     assertCurrent(request.token);
     const result = await api.restorePortfolio({ backup: request.backup, expected: request.expected });
-    if (result.persistence?.savedLocally !== true) throw new window.FinoErrors.StorageError();
+    if (result.persistence?.savedLocally !== true) throw new FinoErrors.StorageError();
     stateStore.invalidateContext();
     clear();
     status.textContent = t('Portfolio saved locally. Google Drive upload is not confirmed.');
@@ -262,7 +284,7 @@ function setupThemeToggle() {
   localStorage.removeItem("investment-tracker-text-size");
   if (themeSelect) themeSelect.value = document.documentElement.dataset.theme;
   if (fontSelect) fontSelect.value = document.documentElement.dataset.font;
-  if (languageSelect) languageSelect.value = window.FinoI18n?.locale || "en";
+  if (languageSelect) languageSelect.value = FinoI18n?.locale || "en";
   if (appLock) {
     biometricControl.hidden = false;
     appLock.setTheme({ theme: document.documentElement.dataset.theme }).catch(() => {});
@@ -289,7 +311,7 @@ function setupThemeToggle() {
     localStorage.setItem("investment-tracker-font", fontSelect.value);
   });
   languageSelect?.addEventListener("change", () => {
-    window.FinoI18n?.setLanguage(languageSelect.value);
+    FinoI18n?.setLanguage(languageSelect.value);
   });
   biometricToggle?.addEventListener("change", () => {
     appLock?.setBiometricEnabled({ enabled: biometricToggle.checked }).catch(() => {
@@ -297,5 +319,5 @@ function setupThemeToggle() {
     });
   });
 }
-Object.assign(window, { showNotice, showConfirm, setupNoticeModal, setupModalBackdropClosing, setupGoogleDriveSync, setupSettingsModal, setupThemeToggle });
-})();
+return { setupGoogleDriveSync, setupModalBackdropClosing, setupNoticeModal, setupSettingsModal, setupThemeToggle, showConfirm, showNotice };
+}

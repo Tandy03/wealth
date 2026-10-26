@@ -1,11 +1,35 @@
-(function () {
+// Explicit ports are wired once by composition.js; this module publishes no browser globals.
+export function createFormsAssets({
+  DEFAULT_INSTRUMENTS,
+  FinoErrors,
+  FinoI18n,
+  FinoOperations,
+  FormData,
+  api,
+  console,
+  document,
+  escapeHtml,
+  financialCommand,
+  getAvailableQuantity,
+  getCurrentPrice,
+  getDateString,
+  groupHoldingsByInstrument,
+  holdingGroupLabel,
+  loadData,
+  normalizeNumber,
+  openBuyMoreModal,
+  renderAssetTransactionsModal,
+  showConfirm,
+  showNotice,
+  stateStore,
+}) {
 // forms/assets.js
 function populateInstrumentSelect(selectedName = "") {
   const select = document.querySelector("#asset-instrument");
   if (!select) return;
   const instruments = [...DEFAULT_INSTRUMENTS, ...(stateStore.selectInstruments() || [])]
     .filter((item, index, all) => all.findIndex((candidate) => candidate.name.toLowerCase() === item.name.toLowerCase()) === index);
-  select.innerHTML = instruments.map((item) => `<option translate="no" value="${escapeHtml(item.name)}" data-instrument-type="${escapeHtml(item.type)}">${escapeHtml(item.name)} — ${escapeHtml(window.FinoI18n.t(item.type))}</option>`).join("") + '<option value="__new__">New instrument...</option>';
+  select.innerHTML = instruments.map((item) => `<option translate="no" value="${escapeHtml(item.name)}" data-instrument-type="${escapeHtml(item.type)}">${escapeHtml(item.name)} — ${escapeHtml(FinoI18n.t(item.type))}</option>`).join("") + '<option value="__new__">New instrument...</option>';
   if (selectedName && instruments.some((item) => item.name === selectedName)) select.value = selectedName;
   updateNewInstrumentFields();
 }
@@ -57,7 +81,7 @@ async function executeHoldingAction(assetIds, action) {
     for (const asset of assets) await api.deleteAsset(asset.id);
     await loadData();
   } catch (error) {
-    console.error(window.FinoErrors.diagnostics(error));
+    console.error(FinoErrors.diagnostics(error));
     showNotice(error || "Failed to delete holding.");
   }
 }
@@ -531,17 +555,6 @@ function setupModal() {
   };
 
   /*
-   * Expose edit function so that
-   * portfolio rendering can use it.
-   *
-   * Example:
-   *
-   * openEditAsset(asset)
-   */
-
-  window.openEditAsset = openEditModal;
-
-  /*
    * ==========================================================
    * CLOSE MODAL
    * ==========================================================
@@ -865,7 +878,7 @@ function setupModal() {
             currency: asset.currency,
             instrumentId: existingAsset.instrumentId,
           } : asset;
-        const intent = window.FinoOperations.describe('createAsset', [{ ...asset, operationId: 'preview' }]).command;
+        const intent = FinoOperations.describe('createAsset', [{ ...asset, operationId: 'preview' }]).command;
         const command = financialCommand(form, existingAsset ? 'buyMoreAsset' : 'createAsset', body, existingAsset?.id || null,
           { slot: 'asset-acquisition', identity: intent });
         if (command.method === 'buyMoreAsset') await api.buyMoreAsset(command.target, command.body);
@@ -897,7 +910,7 @@ function setupModal() {
 
       await loadData();
     } catch (error) {
-      console.error("SAVE ASSET ERROR:", window.FinoErrors.diagnostics(error));
+      console.error("SAVE ASSET ERROR:", FinoErrors.diagnostics(error));
 
       showNotice(error || "Failed to save asset.");
     } finally {
@@ -1185,5 +1198,5 @@ function setDefaultDates() {
     maturityDate.value = "";
   }
 }
-Object.assign(window, { populateInstrumentSelect, updateNewInstrumentFields, openAssetTransactions, setupAssetTransactionsModal, executeHoldingAction, openHoldingSelectionModal, setupDeleteHoldingModal, openEditAssetModal, setupModal, updateAssetTypeFields, addCouponRow, collectCoupons, setDefaultDates });
-})();
+return { addCouponRow, collectCoupons, executeHoldingAction, openAssetTransactions, openEditAssetModal, openHoldingSelectionModal, populateInstrumentSelect, setDefaultDates, setupAssetTransactionsModal, setupDeleteHoldingModal, setupModal, updateAssetTypeFields, updateNewInstrumentFields };
+}

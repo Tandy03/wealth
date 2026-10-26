@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node backend/server.js",
-    "dev": "node --watch backend/server.js",
+    "dev": "node --watch backend/dev.mjs",
     "google-auth": "node backend/scripts/googleAuth.js",
     "test": "node --test --test-concurrency=4 backend/tests/*.test.js",
     "test:ui": "node --test backend/tests/uiSmoke.test.js",
@@ -20,12 +20,19 @@
     "smoke:serve": "node backend/scripts/uiSmokeServer.js",
     "mobile:config": "node backend/scripts/generateMobileConfig.js",
     "mobile:check": "node backend/scripts/checkMobileReadiness.js",
-    "mobile:prepare": "node backend/scripts/prepareMobileAssets.js",
+    "mobile:prepare": "npm run build:frontend && node backend/scripts/prepareMobileAssets.js",
     "capacitor:copy:before": "npm run mobile:prepare",
     "mobile:sync": "npm run mobile:config && npm run mobile:prepare && npx cap sync android",
     "mobile:open": "npx cap open android",
     "mobile:build": "npm run mobile:sync && cd android && gradlew.bat assembleDebug",
-    "mobile:apk": "npm run mobile:build"
+    "mobile:apk": "npm run mobile:build",
+    "build:frontend": "node backend/scripts/buildFrontend.mjs",
+    "build:frontend:test": "node backend/scripts/buildFrontend.mjs --tests",
+    "pretest": "npm run build:frontend && npm run build:frontend:test",
+    "pretest:ui": "npm run build:frontend:test",
+    "prestart": "npm run build:frontend",
+    "presmoke:serve": "npm run build:frontend",
+    "prebuild:frontend": "node backend/scripts/prepareTestConfig.js"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.3",
@@ -41,7 +48,9 @@
   "devDependencies": {
     "@capacitor/cli": "^8.5.3",
     "eslint": "10.13.0",
-    "jsdom": "^29.1.1"
+    "jsdom": "^29.1.1",
+    "vite": "8.3.5",
+    "espree": "11.2.0"
   },
   "overrides": {
     "gaxios@6": {

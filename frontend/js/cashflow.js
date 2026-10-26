@@ -1,8 +1,6 @@
-(function (root, factory) {
-  const api = factory(typeof module === 'object' && module.exports ? require('../../shared/state-contract') : root.FinoStateContract, typeof module === 'object' && module.exports ? require('./state-store') : root.FinoStateStore);
-  if (typeof module === 'object' && module.exports) module.exports = api;
-  else root.FinoCashflow = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (contract, readers) {
+import contract from '../../shared/state-contract.js';
+import readers from './state-store.js';
+const implementation = (function (contract, readers) {
   function createService({ state, selectData, selectUI, market, finance, values }) {
     ({ selectData, selectUI } = readers.createReader({ state, selectData, selectUI }));
     const { normalizeNumber, getDateString, isDateInRange } = values;
@@ -249,4 +247,6 @@ function summarizeProfit(result, labels = {}) {
     return { cashEvents, calculatePortfolioXirrDetails, summarizeProfit, calculateXirr, calculatePortfolioXirr, calculateProfit, getTransactionEffectiveDate, getCalendarEvents, paymentToCalendarEvent, groupPaymentEvents };
   }
   return { createService };
-});
+})(contract, readers);
+export default implementation;
+export const { createService } = implementation;
