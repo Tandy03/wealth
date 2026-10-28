@@ -75,200 +75,116 @@ function renderAssetAllocationChart(state = stateStore.getState()) {
 let portfolioHistoryChart = null;
 
 function renderPortfolioHistoryChart(state = stateStore.getState()) {
-  const { toUAH, toUAHAtDate, getAssetPurchaseDate, toUAHPurchaseCost, getMaturityCostBasis, getCurrentPrice } = createRenderServices(state);
-  const canvas = document.querySelector("#portfolio-history-chart");
-
-  if (!canvas || typeof charts.current === "undefined") {
-    return;
-  }
-
-  const mode = document.querySelector("#portfolio-history-mode")?.value || "value";
-  const description = document.querySelector("#portfolio-history-description");
-  const assetsById = new Map((stateStore.selectAssets(state) || []).map((asset) => [asset.id, asset]));
-  const movements = (stateStore.selectTransactions(state) || [])
-    .filter((transaction) => {
-      const asset = assetsById.get(transaction.assetId);
-      return asset?.type !== "savings" && transaction.date && ["BUY", "SELL"].includes(transaction.type);
-    })
-    .map((transaction) => ({
-      date: transaction.date,
-      assetId: transaction.assetId,
-      quantity: (transaction.type === "BUY" ? 1 : -1) * normalizeNumber(transaction.quantity),
-      amount:
-        transaction.type === "BUY"
-          ? toUAHAtDate(transaction.amount, transaction.currency, transaction.date)
-          : -toUAHPurchaseCost(
-            transaction.costBasis ?? transaction.amount,
-            transaction.currency,
-            transaction.assetId,
-            getAssetPurchaseDate(transaction.assetId, transaction.date),
-          ),
-    }))
-    .sort((a, b) => a.date.localeCompare(b.date));
-
-  if (portfolioHistoryChart) {
-    portfolioHistoryChart.destroy();
-  }
-
-  const earnedEvents = [
-    ...(stateStore.selectPayments(state) || [])
-      .filter((payment) => payment.status === "received" || payment.status === "paid")
-      .map((payment) => {
-        const date = payment.receivedDate || String(payment.receivedAt || "").slice(0, 10) || payment.date;
-        const maturityBasis = payment.type === "MATURITY" ? getMaturityCostBasis(payment.assetId) : 0;
-        return { date, amount: toUAH(normalizeNumber(payment.amount) - maturityBasis, payment.currency) };
-      }),
-    ...(stateStore.selectSales(state) || [])
-      .filter((sale) => sale.type !== "savings" && sale.sellDate)
-      .map((sale) => ({
-        date: sale.sellDate,
-        amount: toUAH(normalizeNumber(sale.profit), sale.currency),
-      })),
-  ].filter((event) => /^\d{4}-\d{2}-\d{2}$/.test(String(event.date))).sort((a, b) => a.date.localeCompare(b.date));
-
-  const datedEvents = [...movements, ...earnedEvents];
-
-  if (!datedEvents.length) {
-    portfolioHistoryChart = new charts.current(canvas, {
-      type: "line",
-      data: { labels: [], datasets: [] },
-      options: { responsive: true, maintainAspectRatio: false },
-    });
-    return;
-  }
-
-  const firstEventDate = datedEvents.map((event) => event.date).sort()[0];
-  const firstDate = new Date(`${firstEventDate}T00:00:00`);
-  const lastDate = new Date();
-  const labels = [];
-  const investedValues = [];
-  const monthlyInvestedValues = [];
-  const portfolioValues = [];
-  const earnedValues = [];
-  const quantities = new Map();
-  let runningInvested = 0;
-  let movementIndex = 0;
-  let earnedIndex = 0;
-  const cursor = new Date(firstDate.getFullYear(), firstDate.getMonth(), 1);
-  const lastMonth = new Date(lastDate.getFullYear(), lastDate.getMonth(), 1);
-
-  while (cursor <= lastMonth) {
-    const monthEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
-    const monthEndString = getDateString(monthEnd);
-
-    let investedThisMonth = 0;
-    while (movementIndex < movements.length && movements[movementIndex].date <= monthEndString) {
-      const movement = movements[movementIndex];
-      runningInvested += movement.amount;
-      investedThisMonth += movement.amount;
-      quantities.set(movement.assetId, normalizeNumber(quantities.get(movement.assetId)) + movement.quantity);
-      movementIndex += 1;
+  const canvas = document.querySelector('#portfolio-history-chart');
+  if (!canvas || typeof charts.current === 'undefined') return;
+  const mode = document.querySelector('#portfolio-history-mode')?.value || 'value';
+  const currency = document.querySelector('#portfolio-history-currency')?.value === 'USD' ? 'USD' : 'UAH';
+  const locale = FinoI18n?.locale || 'en';
+  const today = getDateString(new Date());
+  const period = document.querySelector('#portfolio-history-period')?.value || 'all';
+  const fromInput = document.querySelector('#portfolio-history-from'), toInput = document.querySelector('#portfolio-history-to');
+  const custom = period === 'custom';
+  document.querySelectorAll('[data-portfolio-history-custom]').forEach(label => { label.hidden = !custom; });
+  let from = '', to = today;
+  if (custom) { from = fromInput?.value || ''; to = toInput?.value || today; }
+  else if (period === 'ytd') from = `${today.slice(0, 4)}-01-01`;
+  else if (['30d', '3m', '6m', '1y'].includes(period)) {
+    const start = new Date(`${today}T12:00:00`);
+    if (period === '30d') start.setDate(start.getDate() - 29);
+    else {
+      const day = start.getDate(); start.setDate(1);
+      start.setMonth(start.getMonth() - ({ '3m': 3, '6m': 6, '1y': 12 })[period]);
+      start.setDate(Math.min(day, new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate()));
     }
-
-    let earnedThisMonth = 0;
-    const monthKey = getDateString(cursor).slice(0, 7);
-    while (earnedIndex < earnedEvents.length && earnedEvents[earnedIndex].date.slice(0, 7) <= monthKey) {
-      if (earnedEvents[earnedIndex].date.slice(0, 7) === monthKey) earnedThisMonth += earnedEvents[earnedIndex].amount;
-      earnedIndex += 1;
-    }
-
-    const portfolioValue = [...quantities.entries()].reduce((sum, [assetId, quantity]) => {
-      const asset = assetsById.get(assetId);
-      if (!asset || quantity <= 0) return sum;
-      return sum + toUAH(quantity * getCurrentPrice(asset), asset.currency);
-    }, 0);
-
-    labels.push(cursor.toLocaleDateString(FinoI18n?.locale || "en", { month: "short", year: "numeric" }));
-    investedValues.push(Math.max(0, runningInvested));
-    monthlyInvestedValues.push(investedThisMonth);
-    portfolioValues.push(Math.max(0, portfolioValue));
-    earnedValues.push(earnedThisMonth);
-    cursor.setMonth(cursor.getMonth() + 1);
+    from = getDateString(start);
   }
-
-  const strictHistoricalRate = (currency, date) => {
-    const normalizedCurrency = String(currency || "UAH").toUpperCase();
-    if (normalizedCurrency === "UAH") return 1;
-    const rates = state.purchaseExchangeRates[normalizedCurrency] || [];
-    const point = [...rates].reverse().find((item) => item.date <= date);
-    return point && normalizeNumber(point.rate) > 0 ? normalizeNumber(point.rate) : null;
+  if (!custom) { if (fromInput) fromInput.value = from; if (toInput) toInput.value = to; }
+  const validDate = date => /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(Date.parse(date)) &&
+    new Date(date + 'T00:00:00Z').toISOString().slice(0, 10) === date;
+  const invalidRange = !validDate(to) || to > today || Boolean(from && (!validDate(from) || from > to)) ||
+    Boolean(fromInput?.validity.badInput || toInput?.validity.badInput);
+  const rangeError = invalidRange ? FinoI18n.t('Choose valid dates ending no later than today.') : '';
+  if (fromInput) { fromInput.max = to <= today ? to : today; fromInput.setCustomValidity(rangeError); fromInput.setAttribute('aria-invalid', String(invalidRange)); }
+  if (toInput) { toInput.min = from; toInput.max = today; toInput.setCustomValidity(rangeError); toInput.setAttribute('aria-invalid', String(invalidRange)); }
+  const history = stateStore.selectUI('purchaseExchangeRates', state) || {};
+  const indexes = new Map();
+  const officialRate = (code, date) => {
+    if (code === 'UAH') return 1;
+    if (!indexes.has(code)) indexes.set(code, (Array.isArray(history[code]) ? history[code] : [])
+      .filter(point => point && /^\d{4}-\d{2}-\d{2}$/.test(point.date) && Number.isFinite(Date.parse(point.date)) &&
+        new Date(point.date + 'T00:00:00Z').toISOString().slice(0, 10) === point.date && Number.isFinite(Number(point.rate)) && Number(point.rate) > 0)
+      .slice().sort((a, b) => a.date.localeCompare(b.date)));
+    const series = indexes.get(code);
+    let low = 0, high = series.length;
+    while (low < high) { const middle = (low + high) >>> 1; if (series[middle].date <= date) low = middle + 1; else high = middle; }
+    const point = series[low - 1];
+    // Official weekend/holiday observations may carry forward, never backward.
+    return point && (Date.parse(date) - Date.parse(point.date)) / 86400000 <= 7 ? Number(point.rate) : null;
   };
-  const weeklyPerformance = PortfolioPerformance.buildWeeklyPerformance(stateStore.selectData(state), {
-    today: getDateString(new Date()),
-    exchangeRateOnDate: strictHistoricalRate,
+  const performance = invalidRange ? { points: [], flows: [] } : PortfolioPerformance.buildWeeklyPerformance(stateStore.selectData(state), {
+    today: to, startDate: from, currency, currentPricesAsOf: today, exchangeRateOnDate: officialRate,
   });
-  const weeklyDifferenceLabels = weeklyPerformance.points.map((point) => new Date(`${point.date}T12:00:00`).toLocaleDateString(FinoI18n?.locale || "en"));
-  const weeklyDifferenceValues = weeklyPerformance.points.map((point) => point.value);
-
-  const chartModes = {
-    value: {
-      label: "Portfolio value",
-      description: "Portfolio value by month",
-      values: portfolioValues,
-      type: "line",
-      color: "#7c8cff",
-      background: "rgba(124, 140, 255, 0.18)",
-    },
-    profit: {
-      label: "Cumulative portfolio profit",
-      description: weeklyPerformance.limitations.length
-        ? "Weekly profit. Gaps indicate missing historical data."
-        : "Realized and unrealized profit by week",
-      values: weeklyDifferenceValues,
-      labels: weeklyDifferenceLabels,
-      type: "line",
-      color: "#49c58b",
-      background: "rgba(73, 197, 139, 0.18)",
-    },
-    earned: {
-      label: "Money earned",
-      description: "Income and realized profit by month",
-      values: earnedValues,
-      type: "bar",
-      color: "#e8a33a",
-      background: "rgba(232, 163, 58, 0.65)",
-    },
-    invested: {
-      label: "Invested by month",
-      description: "Purchases minus the cost of units sold, by month (UAH)",
-      values: monthlyInvestedValues,
-      type: "bar",
-      color: "#7c8cff",
-      background: "rgba(124, 140, 255, 0.68)",
-    },
+  const points = performance.points.filter(point => (!from || point.date >= from) && point.date <= to);
+  const flows = performance.flows.filter(flow => (!from || flow.date >= from) && flow.date <= to);
+  const weeklyLabels = points.map(point => new Date(`${point.date}T12:00:00`).toLocaleDateString(locale, { day: '2-digit', month: 'short', year: 'numeric' }));
+  const months = new Map();
+  for (const flow of flows) {
+    const key = flow.date.slice(0, 7);
+    const month = months.get(key) || { invested: 0, earned: 0 };
+    for (const field of ['invested', 'earned']) month[field] = month[field] === null || flow[field] === null ? null : month[field] + flow[field];
+    months.set(key, month);
+  }
+  const monthlyLabels = [], investedValues = [], earnedValues = [];
+  const first = points.length || flows.length ? from || [...flows.map(flow => flow.date), ...points.map(point => point.date)].sort()[0] : null;
+  if (first) {
+    const cursor = new Date(`${first.slice(0, 7)}-01T12:00:00Z`);
+    while (cursor.toISOString().slice(0, 7) <= to.slice(0, 7)) {
+      const totals = months.get(cursor.toISOString().slice(0, 7)) || { invested: 0, earned: 0 };
+      monthlyLabels.push(cursor.toLocaleDateString(locale, { month: 'short', year: 'numeric', timeZone: 'UTC' }));
+      investedValues.push(totals.invested); earnedValues.push(totals.earned);
+      cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+    }
+  }
+  const modes = {
+    value: { label: 'Portfolio value', description: 'Portfolio value by week', labels: weeklyLabels,
+      values: points.map(point => point.portfolioValue), type: 'line', color: '#7c8cff', background: 'rgba(124, 140, 255, 0.18)' },
+    profit: { label: 'Cumulative portfolio profit', description: 'Realized and unrealized profit by week', labels: weeklyLabels,
+      values: points.map(point => point.value), type: 'line', color: '#49c58b', background: 'rgba(73, 197, 139, 0.18)' },
+    earned: { label: 'Money earned', description: 'Income and realized profit by month', labels: monthlyLabels,
+      values: earnedValues, type: 'bar', color: '#e8a33a', background: 'rgba(232, 163, 58, 0.65)' },
+    invested: { label: 'Invested by month', description: 'Purchases minus the cost of units sold, by month', labels: monthlyLabels,
+      values: investedValues, type: 'bar', color: '#7c8cff', background: 'rgba(124, 140, 255, 0.68)' },
   };
-  const selected = chartModes[mode] || chartModes.value;
+  const selected = modes[mode] || modes.value;
+  const description = document.querySelector('#portfolio-history-description');
   if (description) description.textContent = FinoI18n.t(selected.description);
-
-  const chartText = getComputedStyle(document.documentElement).getPropertyValue("--text").trim();
-  const gridColor = getComputedStyle(document.documentElement).getPropertyValue("--border").trim();
-
+  const note = document.querySelector('#portfolio-history-note');
+  if (note) {
+    const explanation = FinoI18n.t('Values use the last recorded price and the exchange rate for each date.');
+    note.textContent = selected.values.some(value => value === null)
+      ? `${explanation} ${FinoI18n.t('Missing historical data is shown as gaps.')}` : explanation;
+    if (mode === 'profit') {
+      if (currency === 'USD') note.textContent += ` ${FinoI18n.t('USD profit includes exchange-rate gains and losses on invested capital.')}`;
+      if (from) note.textContent += ` ${FinoI18n.t('Cumulative profit retains operations before the selected period.')}`;
+      const last = points.at(-1);
+      if (last?.value != null && [last.realized, last.income, last.unrealized].every(Number.isFinite)) note.textContent += ` ${FinoI18n.t('Realized result')}: ${money(last.realized + last.income, currency)}; ${FinoI18n.t('Unrealized result')}: ${money(last.unrealized, currency)}.`;
+    }
+    if (!selected.values.length) note.textContent = FinoI18n.t('No data in the selected period.');
+    if (invalidRange) note.textContent = rangeError;
+  }
+  const styles = getComputedStyle(document.documentElement);
+  const chartText = styles.getPropertyValue('--text').trim(), gridColor = styles.getPropertyValue('--border').trim();
+  portfolioHistoryChart?.destroy();
   portfolioHistoryChart = new charts.current(canvas, {
     type: selected.type,
-    data: {
-      labels: selected.labels || labels,
-      datasets: [{
-        label: selected.label,
-        data: selected.values,
-        borderColor: selected.color,
-        backgroundColor: selected.background,
-        fill: selected.type === "line",
-        tension: 0.28,
-        pointRadius: selected.type === "line" ? (selected.values.length > 90 ? 0 : 3) : 0,
-        borderRadius: selected.type === "bar" ? 5 : 0,
-      }],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: (context) => `${FinoI18n.t(selected.label)}: ${money(context.raw)}` } },
-      },
-      scales: {
-        x: { ticks: { color: chartText }, grid: { color: gridColor } },
-        y: { ticks: { color: chartText, callback: (value) => money(value) }, grid: { color: gridColor } },
-      },
+    data: { labels: selected.labels, datasets: [{ label: `${FinoI18n.t(selected.label)} · ${currency}`, data: selected.values,
+      borderColor: selected.color, backgroundColor: selected.background, fill: selected.type === 'line', spanGaps: false,
+      tension: 0.28, pointRadius: selected.type === 'line' ? (selected.values.length > 90 ? 0 : 3) : 0,
+      borderRadius: selected.type === 'bar' ? 5 : 0 }] },
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: context => `${FinoI18n.t(selected.label)}: ${money(context.raw, currency)}` } } },
+      scales: { x: { ticks: { color: chartText }, grid: { color: gridColor } },
+        y: { ticks: { color: chartText, callback: value => money(value, currency) }, grid: { color: gridColor } } },
     },
   });
 }

@@ -62,6 +62,12 @@ function setupProfitCalculator() {
   }
 
   historyMode?.addEventListener("change", () => renderPortfolioHistoryChart());
+  document.querySelector('#portfolio-history-currency')?.addEventListener('change', () => renderPortfolioHistoryChart());
+  document.querySelector('#portfolio-history-period')?.addEventListener('change', () => renderPortfolioHistoryChart());
+  for (const id of ['portfolio-history-from', 'portfolio-history-to']) document.getElementById(id)?.addEventListener('change', () => {
+    document.querySelector('#portfolio-history-period').value = 'custom';
+    renderPortfolioHistoryChart();
+  });
   allocationMode?.addEventListener("change", () => renderAssetAllocationChart());
   document.querySelector('#concentration-basis')?.addEventListener('change', () => renderProfitCalculator());
   document.querySelector("#asset-price-history-select")?.addEventListener("change", () => renderAssetPriceHistoryChart());

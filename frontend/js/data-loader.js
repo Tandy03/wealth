@@ -54,33 +54,31 @@ async function loadPurchaseExchangeRates() {
     stateStore.setUI({ purchaseExchangeRates: {} });
   }
 
-  const allPurchaseDates = [
-    ...(stateStore.selectAssets() || []).map((asset) => asset.purchaseDate),
-    ...(stateStore.selectTransactions() || [])
-      .filter((transaction) => transaction.type === "BUY" && FinoStateContract.isTransactionCompleted(transaction))
-      .map((transaction) => transaction.date),
-  ].filter(Boolean);
-  const purchaseRecords = [
+  const today = getDateString(new Date());
+  const validDate = date => /^\d{4}-\d{2}-\d{2}$/.test(date || '') && date <= today &&
+    Number.isFinite(Date.parse(date)) && new Date(date + 'T00:00:00Z').toISOString().slice(0, 10) === date;
+  const records = [
     ...(stateStore.selectAssets() || []).map((asset) => ({
       currency: asset.currency,
       date: asset.purchaseDate,
     })),
     ...(stateStore.selectTransactions() || [])
-      .filter((transaction) => transaction.type === "BUY" && FinoStateContract.isTransactionCompleted(transaction))
+      .filter((transaction) => FinoStateContract.isTransactionCompleted(transaction))
       .map((transaction) => ({ currency: transaction.currency, date: transaction.date })),
-  ].filter(
-    (record) => record.date && /^[A-Z]{3}$/.test(String(record.currency || '').toUpperCase()) && String(record.currency).toUpperCase() !== 'UAH',
-  );
-  const currencies = [...new Set(["USD", ...purchaseRecords.map((record) => String(record.currency).toUpperCase())])];
+    ...(stateStore.selectSales() || []).map(sale => ({ currency: sale.currency, date: sale.sellDate })),
+    ...(stateStore.selectPayments() || []).filter(payment => FinoStateContract.isPaymentCompleted(payment))
+      .map(payment => ({ currency: payment.currency, date: payment.receivedDate || String(payment.receivedAt || '').slice(0, 10) || payment.date })),
+  ].filter(record => validDate(record.date)).map(record => ({ ...record, currency: String(record.currency || 'UAH').toUpperCase() }));
+  const allPurchaseDates = records.map(record => record.date);
+  const currencies = [...new Set(['USD', ...records.map(record => record.currency).filter(code => /^[A-Z]{3}$/.test(code) && code !== 'UAH')])];
 
   await Promise.all(currencies.map(async (currency) => {
-    const dates = (currency === "USD" ? allPurchaseDates : purchaseRecords
+    const dates = (currency === "USD" ? allPurchaseDates : records
       .filter((record) => String(record.currency).toUpperCase() === currency)
       .map((record) => record.date)).sort();
     if (!dates.length) return;
     const firstDate = new Date(`${dates[0]}T00:00:00`);
     firstDate.setDate(firstDate.getDate() - 7);
-    const today = getDateString(new Date());
     const endDate = today;
 
     try {
@@ -92,9 +90,12 @@ async function loadPurchaseExchangeRates() {
       if (!stateStore.isCurrent(snapshot)) return;
       const rates = (result.values || [])
         .map((item) => ({ date: String(item.datetime || "").slice(0, 10), rate: normalizeNumber(item.close) }))
-        .filter((item) => item.date && item.rate > 0)
+        .filter((item) => validDate(item.date) && item.rate > 0)
         .sort((a, b) => a.date.localeCompare(b.date));
-      stateStore.setUI({ purchaseExchangeRates: { ...stateStore.selectUI('purchaseExchangeRates'), [currency]: rates } });
+      const previous = stateStore.selectUI('purchaseExchangeRates')?.[currency];
+      const merged = new Map((Array.isArray(previous) ? previous : []).filter(point => point && validDate(point.date) && Number.isFinite(Number(point.rate)) && Number(point.rate) > 0).map(point => [point.date, point]));
+      rates.forEach(point => merged.set(point.date, point));
+      stateStore.setUI({ purchaseExchangeRates: { ...stateStore.selectUI('purchaseExchangeRates'), [currency]: [...merged.values()].sort((a, b) => a.date.localeCompare(b.date)) } });
       localStorage.setItem(cacheKey, JSON.stringify(stateStore.selectUI('purchaseExchangeRates')));
     } catch (error) {
       console.warn(`Could not load historical ${currency}/UAH rates:`, FinoErrors.diagnostics(error));

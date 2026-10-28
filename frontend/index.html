@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Comic+Relief:wght@400;700&amp;family=DM+Sans:wght@400;500;600;700&amp;family=Inter:wght@400;500;600;700&amp;family=Montserrat:wght@400;500;600;700&amp;family=Oswald:wght@400;500;600;700&amp;family=Roboto+Mono:wght@400;500;600;700&amp;family=Roboto:wght@400;500;700&amp;display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/css/style.css?v=20261017-flat-switch" />
+  <link rel="stylesheet" href="/css/style.css?v=20261028-history-spacing" />
   <link rel="stylesheet" href="/css/rebalance.css?v=20261018-usd-hover" />
   <link rel="stylesheet" href="/css/asset-detail.css" />
   <link rel="stylesheet" href="/css/portfolio-share.css" />
@@ -328,20 +328,44 @@
           <div class="panel-header">
             <div>
               <h2>Portfolio investment dynamics</h2>
-              <p id="portfolio-history-description">Portfolio value by month</p>
+              <p id="portfolio-history-description">Portfolio value by week</p>
             </div>
-            <label class="portfolio-history-mode">
-              <select id="portfolio-history-mode" aria-label="Portfolio investment dynamics">
-                <option value="value">Portfolio value</option>
-                <option value="profit">Cumulative portfolio profit</option>
-                <option value="earned">Money earned by month</option>
-                <option value="invested">Invested by month</option>
+            <div class="portfolio-history-controls">
+              <label class="portfolio-history-mode">
+                <select id="portfolio-history-mode" aria-label="Portfolio investment dynamics">
+                  <option value="value">Portfolio value</option>
+                  <option value="profit">Cumulative portfolio profit</option>
+                  <option value="earned">Money earned by month</option>
+                  <option value="invested">Invested by month</option>
+                </select>
+              </label>
+              <label class="portfolio-history-currency">
+                <select id="portfolio-history-currency" aria-label="Currency">
+                  <option value="UAH" translate="no">UAH — ₴</option>
+                  <option value="USD" translate="no">USD — $</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <div class="portfolio-history-period" role="group" aria-label="Chart period">
+            <label><span>Period</span>
+              <select id="portfolio-history-period">
+                <option value="all">All time</option>
+                <option value="30d">Last 30 days</option>
+                <option value="3m">Last 3 months</option>
+                <option value="6m">Last 6 months</option>
+                <option value="1y">Last year</option>
+                <option value="ytd">Year to date</option>
+                <option value="custom">Custom period</option>
               </select>
             </label>
+            <label data-portfolio-history-custom hidden><span>From</span><input type="date" id="portfolio-history-from" /></label>
+            <label data-portfolio-history-custom hidden><span>To</span><input type="date" id="portfolio-history-to" /></label>
           </div>
           <div class="portfolio-history-chart">
             <canvas id="portfolio-history-chart"></canvas>
           </div>
+          <p id="portfolio-history-note" class="portfolio-history-note" aria-live="polite">Values use the last recorded price and the exchange rate for each date.</p>
         </article>
 
         <article class="panel portfolio-history-panel">
