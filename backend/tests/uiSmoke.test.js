@@ -1581,8 +1581,8 @@ for (const native of [false, true]) {
     await click('expenses'); assert.equal(h.document.querySelector('#wallet-expenses').classList.contains('active'), true);
     h.document.querySelector('#open-investments').click(); await flush();
     assert.equal(bar.dataset.mode, 'investment');
-    assert.deepEqual(routes(), ['dashboard', 'analytics', 'market', 'macroeconomics', 'calendar', 'more']);
-    for (const id of ['dashboard', 'analytics', 'market', 'macroeconomics', 'calendar']) {
+    assert.deepEqual(routes(), ['dashboard', 'analytics', 'market', 'macroeconomics', 'more']);
+    for (const id of ['dashboard', 'analytics', 'market', 'macroeconomics']) {
       await click(id);
       assert.equal(h.document.querySelector(`#${id}-section`).classList.contains('active'), true);
       assert.equal(bar.querySelector('[aria-current="page"]').dataset.mobileRoute, id);
@@ -1596,14 +1596,14 @@ for (const native of [false, true]) {
     await click('more');
     const backdrop = h.document.querySelector('#mobile-more-backdrop');
     assert.equal(backdrop.hidden, false);
-    assert.deepEqual(Array.from(h.document.querySelectorAll('#mobile-more-items button'), button => button.dataset.mobileRoute), ['portfolio', 'transactions', 'rebalance']);
+    assert.deepEqual(Array.from(h.document.querySelectorAll('#mobile-more-items button'), button => button.dataset.mobileRoute), ['calendar', 'portfolio', 'transactions', 'rebalance']);
     assert.equal(Boolean(h.document.querySelector('#investments-app').inert), false);
     assert.equal(Boolean(bar.inert), false);
     assert.equal(h.document.querySelector('#mobile-more-sheet').getAttribute('role'), 'menu');
     assert.equal(bar.querySelector('[data-mobile-route="more"]').getAttribute('aria-expanded'), 'true');
     const last = h.document.querySelector('#mobile-more-items button:last-child'); last.focus();
     last.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
-    assert.equal(h.document.activeElement.dataset.mobileRoute, 'portfolio');
+    assert.equal(h.document.activeElement.dataset.mobileRoute, 'calendar');
     h.window.history.back();
     await settleMobileNavigation(h, () => backdrop.hidden && !h.window.history.state?.finoMobileMore);
     assert.equal(Boolean(h.document.querySelector('#investments-app').inert), false);
@@ -1626,10 +1626,11 @@ for (const native of [false, true]) {
       await settleMobileNavigation(h, () => h.document.querySelector(`#${id}-section`).classList.contains('active'));
       assert.equal(bar.querySelector('[aria-current="page"]').dataset.mobileRoute, 'more');
     }
-    await click('more'); await click('calendar');
+    await click('more');
+    h.document.querySelector('#mobile-more-items [data-mobile-route="calendar"]').click();
     await settleMobileNavigation(h, () => h.document.querySelector('#calendar-section').classList.contains('active'));
     assert.equal(backdrop.hidden, true);
-    assert.equal(bar.querySelector('[aria-current="page"]').dataset.mobileRoute, 'calendar');
+    assert.equal(bar.querySelector('[aria-current="page"]').dataset.mobileRoute, 'more');
     h.document.querySelector('#open-wallet').click(); await flush();
     await click('more');
     assert.deepEqual(Array.from(h.document.querySelectorAll('#mobile-more-items button'), button => button.dataset.mobileRoute), ['archive']);
@@ -1650,7 +1651,7 @@ test('mobile More preserves asset-detail history and choosing a section does not
   await settleMobileNavigation(h, () => h.document.querySelector('#mobile-more-backdrop').hidden);
   assert.equal(h.eval('stateStore.selectUI("assetPage").active'), true);
   h.document.querySelector('#mobile-bottom-nav [data-mobile-route="more"]').click();
-  h.document.querySelector('#mobile-bottom-nav [data-mobile-route="calendar"]').click();
+  h.document.querySelector('#mobile-more-items [data-mobile-route="calendar"]').click();
   await settleMobileNavigation(h, () => h.document.querySelector('#calendar-section').classList.contains('active'));
   assert.equal(h.eval('stateStore.selectUI("assetPage").active'), false);
   assert.equal(h.window.location.hash, '');
