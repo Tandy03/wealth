@@ -1865,6 +1865,13 @@ textarea:focus {
 .paid-loans-archive { margin-top: 16px; }
 .paid-loans-archive > summary { cursor: pointer; font-weight: 600; padding: 10px 0; }
 .paid-loans-archive > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+#paid-loans-list { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.paid-loans-table { width: 100%; min-width: 600px; border-collapse: collapse; font-size: 12px; line-height: 1.35; }
+.paid-loans-table th, .paid-loans-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+.paid-loans-table thead th { color: var(--muted); font-weight: 500; }
+.wallet-shell .paid-loans-table :is(th, td):nth-child(-n+2) { text-align: left; }
+.paid-loans-table tbody th { font-weight: 600; }
+.paid-loans-table .paid-loan-amount, .paid-loans-table .paid-loan-date { white-space: nowrap; }
 .loan-payment { display: flex; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--border); }
 .loan-calendar-header { margin-top: 22px; }
 #add-loan-btn { flex: 0 0 auto; white-space: nowrap; }

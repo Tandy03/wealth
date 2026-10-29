@@ -2,6 +2,8 @@
 export function createI18n({ MutationObserver, NodeFilter, charts, document, localStorage, location }) {
 const languages = ["en", "de", "uk", "es", "pl", "it"];
   const rows = [
+    ["Date added","Hinzugefügt am","Дата додавання","Fecha de registro","Data dodania","Data di aggiunta"],
+    ["Repayment date","Rückzahlungsdatum","Дата погашення","Fecha de reembolso","Data spłaty","Data di rimborso"],
     ["Chart appearance","Diagrammdarstellung","Відображення графіка","Visualización del gráfico","Wygląd wykresu","Visualizzazione del grafico"],
     ["Original","Original","Реальний","Original","Rzeczywisty","Originale"],
     ["Smoothed","Geglättet","Згладжений","Suavizado","Wygładzony","Smussato"],
@@ -533,6 +535,7 @@ Spending by category|Ausgaben nach Kategorie|Витрати за категор�
 Other expenses|Sonstige Ausgaben|Інші витрати|Otros gastos|Inne wydatki|Altre spese
 Cumulative expenses|Kumulierte Ausgaben|Накопичені витрати|Gastos acumulados|Skumulowane wydatki|Spese cumulative
 Cumulative total|Kumulierte Summe|Накопичена сума|Total acumulado|Suma skumulowana|Totale cumulativo
+Cumulative expenses for the selected category by day.|Kumulierte Ausgaben der gewählten Kategorie pro Tag.|Накопичені витрати вибраної категорії за днями.|Gastos acumulados de la categoría seleccionada por día.|Skumulowane wydatki wybranej kategorii według dni.|Spese cumulative della categoria selezionata per giorno.
 Expenses excluding Tithe and Save+invest|Ausgaben ohne Zehnt und Sparen+investieren|Витрати без десятини й заощаджень+інвестицій|Gastos sin diezmo ni ahorro+inversión|Wydatki bez dziesięciny i oszczędności+inwestycji|Spese escluse decima e risparmio+investimenti
 Cumulative expenses excluding Tithe and Save+invest by day.|Kumulierte Ausgaben ohne Zehnt und Sparen+investieren pro Tag.|Накопичені витрати без десятини й заощаджень+інвестицій за днями.|Gastos acumulados sin diezmo ni ahorro+inversión por día.|Skumulowane wydatki bez dziesięciny i oszczędności+inwestycji według dni.|Spese cumulative escluse decima e risparmio+investimenti per giorno.
 Monthly budget usage|Monatliche Budgetnutzung|Використання місячного бюджету|Uso del presupuesto mensual|Wykorzystanie budżetu miesięcznego|Utilizzo del budget mensile

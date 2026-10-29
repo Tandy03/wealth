@@ -146,14 +146,24 @@ function renderLoans(state = stateStore.getState()) {
   };
   const current = loans.filter(loan => !isArchived(loan));
   const archived = loans.filter(isArchived);
+  const showLastPayment = archived.some(loan => loan.lastPaymentDate);
+  const paidRow = loan => {
+    const repaymentDate = (loan.repayments || []).map(payment => payment.date).filter(Boolean).sort().at(-1);
+    const dates = [
+      String(loan.createdAt || "").slice(0, 10),
+      loan.dueDate,
+      ...(showLastPayment ? [loan.lastPaymentDate] : []),
+      repaymentDate,
+    ];
+    return `<tr><th scope="row" translate="no">${escapeHtml(loan.name)}</th><td translate="no">${escapeHtml(loan.institution || "—")}</td><td class="paid-loan-amount">${walletMoney(loan.amount)}</td>${dates.map(date => `<td class="paid-loan-date">${date ? formatWalletDate(date) : "—"}</td>`).join("")}</tr>`;
+  };
   list.innerHTML = current.length ? current.map(row).join("") : '<p class="empty-state">No loans.</p>';
   bindLoanActions(list);
   const archive = document.querySelector("#paid-loans-archive");
   const paidList = document.querySelector("#paid-loans-list");
   if (archive && paidList) {
     archive.hidden = archived.length === 0;
-    paidList.innerHTML = archived.map(row).join("");
-    bindLoanActions(paidList);
+    paidList.innerHTML = archived.length ? `<table class="paid-loans-table" aria-label="${escapeHtml(FinoI18n.t("Paid loans"))}"><thead><tr><th scope="col">Name</th><th scope="col">Institution</th><th scope="col">Amount</th><th scope="col">Date added</th><th scope="col">Due date / first payment</th>${showLastPayment ? '<th scope="col">Last payment</th>' : ""}<th scope="col">Repayment date</th></tr></thead><tbody>${archived.map(paidRow).join("")}</tbody></table>` : "";
   }
   const upcoming = stateStore.selectWallet(state).loans.flatMap((loan) => getLoanSchedule(loan)).filter((payment) => payment.date >= getDateString()).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 12);
   calendar.innerHTML = upcoming.length ? upcoming.map((payment) => { const loan = stateStore.selectWallet(state).loans.find((item) => item.id === payment.loanId); return `<div class="loan-payment"><span>${formatWalletDate(payment.date)} · <span translate="no">${escapeHtml(loan?.name || "Loan")}</span></span><strong>${walletMoney(payment.amount)}</strong></div>`; }).join("") : '<p class="empty-state">No upcoming loan payments.</p>';

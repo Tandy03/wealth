@@ -1735,7 +1735,7 @@ for (const native of [false, true]) {
     assert.equal(input().disabled, true);
     paid.click(); paid.click(); await waitForLoanState(h, loans => loans[0].archived === true);
     assert.equal(h.document.querySelector('#loans-list .loan-row'), null);
-    assert.equal(h.document.querySelector('#paid-loans-list .loan-row strong').textContent, 'Loan');
+    assert.equal(h.document.querySelector('#paid-loans-list .paid-loans-table tbody th').textContent, 'Loan');
     assert.equal(h.document.querySelector('#paid-loans-archive').hidden, false);
     assert.equal(h.document.querySelector('#paid-loans-archive').open, false);
     assert.equal(h.document.querySelector('#paid-loans-archive summary').textContent, 'Погашені позики');
@@ -1751,17 +1751,14 @@ for (const native of [false, true]) {
     assert.equal(restarted.document.querySelector('#loans-list .loan-row'), null);
     assert.equal(restarted.eval('stateStore.selectWallet().loans[0].archived'), true);
     assert.equal(restarted.eval('stateStore.selectWallet().loans[0].repayments.length'), 2);
-    const restore = restarted.document.querySelector('[data-restore-loan="loan"]');
-    assert.equal(restore.textContent, 'Повернути до списку');
-    restore.click(); await waitForLoanState(restarted, loans => loans[0].archived === false);
-    assert.ok(restarted.document.querySelector('#loans-list [data-archive-loan="loan"]'));
-    assert.equal(restarted.document.querySelector('#paid-loans-archive').hidden, true);
-    assert.equal(restarted.eval('stateStore.selectWallet().loans[0].repayments.length'), 2);
+    assert.equal(restarted.document.querySelector('#paid-loans-list .paid-loans-table tbody th').textContent, 'Loan');
+    assert.equal(restarted.document.querySelector('#paid-loans-list [data-edit-loan="loan"]'), null);
+    assert.equal(restarted.document.querySelector('#paid-loans-list [data-restore-loan="loan"]'), null);
     assert.deepEqual(restarted.errors, []);
     assert.deepEqual(h.errors, []);
   });
 
-  test(`existing paid loans can be archived and edited in ${native ? 'native' : 'web'}`, async t => {
+  test(`existing paid loans can be archived and displayed in ${native ? 'native' : 'web'}`, async t => {
     const initial = fixture();
     initial.wallet.loans = [
       { id: 'paid', name: 'Paid loan', amount: 100, balance: 0, method: 'flexible', dueDate: '2099-12-01', status: 'paid', repayments: [{ id: 'repayment', date: '2026-10-01', amount: 100 }] },
@@ -1772,19 +1769,10 @@ for (const native of [false, true]) {
     await waitForLoanState(h, loans => loans[0].archived === true);
     assert.equal(h.document.querySelectorAll('#loans-list .loan-row').length, 1);
     assert.ok(h.document.querySelector('#loans-list [data-repay-loan="active"]'));
-    const edit = () => h.document.querySelector('#paid-loans-list [data-edit-loan="paid"]').click();
-    const form = h.document.querySelector('#loan-form');
-    const submit = async predicate => {
-      form.dispatchEvent(new h.window.Event('submit', { bubbles: true, cancelable: true })); await flush();
-      await waitForLoanState(h, predicate);
-    };
-    edit(); form.elements.name.value = 'Renamed paid loan'; await submit(loans => loans[0].name === 'Renamed paid loan');
     assert.equal(h.eval('stateStore.selectWallet().loans[0].archived'), true);
-    assert.equal(h.document.querySelectorAll('#loans-list .loan-row').length, 1);
-    edit(); form.elements.amount.value = '150'; await submit(loans => loans[0].balance === 50);
-    assert.equal(h.eval('stateStore.selectWallet().loans[0].balance'), 50);
-    assert.equal(h.eval('stateStore.selectWallet().loans[0].archived'), false);
-    assert.ok(h.document.querySelector('#loans-list [data-repay-loan="paid"]'));
+    assert.equal(h.document.querySelector('#paid-loans-list .paid-loans-table tbody th').textContent, 'Paid loan');
+    assert.equal(h.document.querySelector('#paid-loans-list [data-edit-loan="paid"]'), null);
+    assert.equal(h.document.querySelector('#paid-loans-list [data-restore-loan="paid"]'), null);
     assert.equal(h.eval('stateStore.selectWallet().loans[0].repayments.length'), 1);
     assert.deepEqual(h.errors, []);
   });

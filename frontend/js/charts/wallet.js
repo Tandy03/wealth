@@ -58,7 +58,21 @@ function renderWalletPeriodChart(state = stateStore.getState()) {
   const fromInput = document.querySelector("#wallet-period-from");
   const toInput = document.querySelector("#wallet-period-to");
   const totalElement = document.querySelector("#wallet-period-total");
-  const mode = document.querySelector("#wallet-period-mode")?.value || "__total__";
+  const modeSelect = document.querySelector("#wallet-period-mode");
+  const wallet = stateStore.selectWallet(state);
+  const { walletCategories } = createRenderServices(state);
+  const categories = [...new Set([
+    ...walletCategories(),
+    ...Object.values(wallet.months || {}).flatMap((month) => month.customCategories || []),
+    ...(wallet.expenses || []).map((expense) => expense.category),
+  ])].filter((category) => typeof category === "string" && category.trim() && category.trim().toLowerCase() !== "salary").sort((a, b) => a.localeCompare(b));
+  if (modeSelect) {
+    const previousSelection = modeSelect.value;
+    modeSelect.innerHTML = '<option value="__total__">Total</option><option value="__expenses__">Expenses</option>' + categories.map((category) => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`).join("");
+    modeSelect.value = categories.includes(previousSelection) || ["__total__", "__expenses__"].includes(previousSelection) ? previousSelection : "__total__";
+  }
+  const mode = modeSelect?.value || "__total__";
+  const isCategory = mode !== "__total__" && mode !== "__expenses__";
   const caption = document.querySelector("#wallet-period-caption");
   const canvas = document.querySelector("#wallet-period-chart");
   if (!fromInput || !toInput || !totalElement || !canvas) return;
@@ -66,15 +80,16 @@ function renderWalletPeriodChart(state = stateStore.getState()) {
 
   const from = fromInput.value;
   const to = toInput.value;
-  const expenses = (stateStore.selectWallet(state).expenses || []).filter((expense) => {
+  const expenses = (wallet.expenses || []).filter((expense) => {
     const category = String(expense.category || "").trim().toLowerCase();
     const isExpense = category !== "salary";
     const isRegularExpense = isExpense && category !== "tithe" && category !== "save+invest" && category !== "savings";
-    return (mode === "__expenses__" ? isRegularExpense : isExpense) && expense.date >= from && expense.date <= to;
+    const matchesSeries = isCategory ? isExpense && expense.category === mode : mode === "__expenses__" ? isRegularExpense : isExpense;
+    return matchesSeries && expense.date >= from && expense.date <= to;
   });
   const total = expenses.reduce((sum, expense) => sum + normalizeNumber(expense.amount), 0);
   totalElement.textContent = walletMoney(total);
-  if (caption) caption.textContent = mode === "__expenses__" ? "Cumulative expenses excluding Tithe and Save+invest by day." : "Cumulative total expenses by day.";
+  if (caption) caption.textContent = isCategory ? "Cumulative expenses for the selected category by day." : mode === "__expenses__" ? "Cumulative expenses excluding Tithe and Save+invest by day." : "Cumulative total expenses by day.";
 
   const dailyTotals = expenses.reduce((result, expense) => {
     result[expense.date] = (result[expense.date] || 0) + normalizeNumber(expense.amount);
@@ -98,14 +113,14 @@ function renderWalletPeriodChart(state = stateStore.getState()) {
   walletPeriodChart?.destroy();
   walletPeriodChart = new charts.current(canvas, {
     type: "line",
-    data: { labels, datasets: [{ label: mode === "__expenses__" ? "Cumulative expenses" : "Cumulative total", data: cumulativeValues, borderColor: "#49c58b", backgroundColor: "rgba(73,197,139,.14)", fill: true, tension: .22, pointRadius: labels.length > 60 ? 0 : 2, pointHoverRadius: 4, borderWidth: 2 }] },
+    data: { labels, datasets: [{ label: isCategory ? mode : mode === "__expenses__" ? "Cumulative expenses" : "Cumulative total", data: cumulativeValues, borderColor: "#49c58b", backgroundColor: "rgba(73,197,139,.14)", fill: true, tension: .22, pointRadius: labels.length > 60 ? 0 : 2, pointHoverRadius: 4, borderWidth: 2 }] },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       interaction: { intersect: false, mode: "index" },
       plugins: {
         legend: { display: false },
-        title: { display: true, text: mode === "__expenses__" ? "Expenses excluding Tithe and Save+invest" : "Total expenses during the selected period" },
+        title: { display: true, text: isCategory ? mode : mode === "__expenses__" ? "Expenses excluding Tithe and Save+invest" : "Total expenses during the selected period" },
         tooltip: { callbacks: { label: (item) => walletMoney(item.parsed.y) } },
       },
       scales: {
