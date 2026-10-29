@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">fino</string>
+    <string name="title_activity_main">fino</string>
+    <string name="package_name">com.tandy03.fino</string>
+    <string name="custom_url_scheme">com.tandy03.fino</string>
+</resources>

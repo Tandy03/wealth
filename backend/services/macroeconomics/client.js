@@ -1,20 +1,22 @@
+const { providerFetch } = require('../market/fetch');
 const { inflateRawSync } = require("node:zlib");
+const macroModel = require('../../../shared/market-model');
 
 const USER_AGENT = "Wealth-Dashboard/1.0";
 const NBU_BASE = "https://bank.gov.ua/NBUStatService/v1/statdirectory";
-const SSSU_DATA = "https://stat.gov.ua/sdmx/workspaces/default:integration/registry/sdmx/3.0/data/dataflow/SSSU/DF_ANNUAL_NATIONAL_ACCOUNTS/latest/*?startPeriod=2010";
+const SSSU_DATA = macroModel.gdpUrl;
 const MINFIN_PACKAGE = "https://data.gov.ua/api/3/action/package_show?id=4119d762-a5c1-4c4c-9c30-e2abdd383fb4";
 const CACHE_MS = 6 * 60 * 60 * 1000;
+function createClient({ fetchImpl, now = Date.now } = {}) {
 let cache = null;
+let policyRateCache = null;
+let policyPending = null;
+let macroPending = null;
 
-async function request(url, accept = "application/json") {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 25000);
-  try {
-    const response = await fetch(url, { headers: { Accept: accept, "User-Agent": USER_AGENT }, signal: controller.signal });
-    if (!response.ok) throw new Error(`${new URL(url).hostname} returned ${response.status}`);
-    return response;
-  } finally { clearTimeout(timer); }
+async function request(url, accept = "application/json", timeoutMs = 25000) {
+  const response = await providerFetch(url, { headers: { Accept: accept, "User-Agent": USER_AGENT } }, { timeoutMs, fetchImpl });
+  if (!response.ok) throw new Error(`${new URL(url).hostname} returned ${response.status}`);
+  return response;
 }
 
 function dateToken(date) {
@@ -23,18 +25,19 @@ function dateToken(date) {
 
 function normalizeDate(value) {
   const text = String(value || "");
+  if (/^\d{8}$/.test(text)) return `${text.slice(0, 4)}-${text.slice(4, 6)}-${text.slice(6, 8)}`;
   const match = text.match(/(\d{2})[.\/-](\d{2})[.\/-](\d{4})/);
   if (match) return `${match[3]}-${match[2]}-${match[1]}`;
   return text.slice(0, 10);
 }
 
 async function getNbuData() {
-  const now = new Date();
-  const start = new Date(now.getFullYear() - 8, 0, 1);
+  const today = new Date(now());
+  const start = new Date(today.getFullYear() - 8, 0, 1);
   const [rates, inflation, budget] = await Promise.all([
     request(`${NBU_BASE}/exchange?json`).then((r) => r.json()),
-    request(`${NBU_BASE}/inflation?period=m&start=${dateToken(start)}&end=${dateToken(now)}&json`).then((r) => r.json()),
-    request(`${NBU_BASE}/budget?period=m&start=${dateToken(start)}&end=${dateToken(now)}&json`).then((r) => r.json()),
+    request(`${NBU_BASE}/inflation?period=m&start=${dateToken(start)}&end=${dateToken(today)}&json`).then((r) => r.json()),
+    request(`${NBU_BASE}/budget?period=m&start=${dateToken(start)}&end=${dateToken(today)}&json`).then((r) => r.json()),
   ]);
   const wanted = new Set(["USD", "EUR", "GBP"]);
   const exchangeRates = rates.filter((row) => wanted.has(String(row.cc).toUpperCase())).map((row) => ({ code: row.cc, name: row.txten || row.txt, rate: Number(row.rate), date: normalizeDate(row.exchangedate) }));
@@ -50,8 +53,6 @@ async function getNbuData() {
   const inflationSeries = {
     annual: pick("prices_price_cpi_", "PCCM_"),
     monthly: pick("prices_price_cpi_", "PCPM_"),
-    core: pick("prices_price_ci_", "PCCM_"),
-    ppi: national.filter((row) => row.id_api === "prices_price_ppi_" && row.tzep === "PCCM_" && row.mcrk110 === "BCDE").map((row) => ({ date: normalizeDate(row.dt), value: inflationValue(row) })).filter((row) => row.date && Number.isFinite(row.value)),
   };
   const state = budget.filter((row) => row.mcr200p === "SBU");
   const budgetMatchers = {
@@ -63,26 +64,26 @@ async function getNbuData() {
   return { exchangeRates, inflation: inflationSeries, budget: budgetSeries };
 }
 
+async function getPolicyRate() {
+  if (policyRateCache && now() - policyRateCache.updatedAt < CACHE_MS) return policyRateCache.data;
+  if (!policyPending) policyPending = (async () => {
+    const today = new Date(now());
+    const start = new Date(today.getFullYear() - 3, 0, 1);
+    const rows = await request(`${NBU_BASE}/key?period=d&start=${dateToken(start)}&end=${dateToken(today)}&json`, "application/json", macroModel.policyTimeoutMs).then(response => response.json());
+    const data = macroModel.policyRate(rows);
+    policyRateCache = { updatedAt: now(), data };
+    return data;
+  })().finally(() => { policyPending = null; });
+  return policyPending;
+}
+
 function parseCsv(text) {
-  const rows = []; let row = []; let field = ""; let quoted = false;
-  for (let i = 0; i < text.length; i += 1) {
-    const char = text[i];
-    if (char === '"') { if (quoted && text[i + 1] === '"') { field += '"'; i += 1; } else quoted = !quoted; }
-    else if (char === "," && !quoted) { row.push(field); field = ""; }
-    else if ((char === "\n" || char === "\r") && !quoted) { if (char === "\r" && text[i + 1] === "\n") i += 1; row.push(field); if (row.some(Boolean)) rows.push(row); row = []; field = ""; }
-    else field += char;
-  }
-  row.push(field); if (row.some(Boolean)) rows.push(row);
-  return rows;
+  return macroModel.parseCsv(text);
 }
 
 async function getGdp() {
   const text = await request(SSSU_DATA, "text/csv").then((r) => r.text());
-  const rows = parseCsv(text.replace(/^\uFEFF/, ""));
-  const headers = rows.shift() || [];
-  const objects = rows.map((values) => Object.fromEntries(headers.map((key, index) => [key, values[index]])));
-  const select = (priceType) => objects.filter((row) => row.INDICATOR === "GDP_CUR_PRC" && row.PRICE_TYPE === priceType && row.REGION === "UA00000000000000000" && row.BREAKDOWN_CATEGORY === "_T" && row.BREAKDOWN === "_T" && row.SECTOR_ECONOMY === "S_1" && row.FREQ === "A").map((row) => ({ date: row.TIME_PERIOD, value: Number(row.OBS_VALUE) })).filter((row) => Number.isFinite(row.value));
-  return { nominal: select("CURR_PRICES"), realIndex: select("IDX_VOL_PY") };
+  return macroModel.gdp(text);
 }
 
 function zipEntries(buffer) {
@@ -172,11 +173,16 @@ async function getDebt() {
 }
 
 async function settle(name, promise) {
-  try { return { name, data: await promise }; } catch (error) { return { name, error: error.message || `Could not load ${name}` }; }
+  try { return { name, data: await promise }; } catch (error) { return { name, error: require('../../../shared/errors').publicError(error, { fallbackCategory: 'remote_unavailable' }).payload.error }; }
 }
 
 async function getMacroeconomics() {
-  if (cache && Date.now() - cache.updatedAt < CACHE_MS) return { ...cache.payload, cached: true };
+  const cacheMs = cache && Object.keys(cache.payload.errors || {}).length ? 30000 : CACHE_MS;
+  if (cache && now() - cache.updatedAt < cacheMs) return { ...cache.payload, cached: true };
+  if (!macroPending) macroPending = loadMacroeconomics().finally(() => { macroPending = null; });
+  return macroPending;
+}
+async function loadMacroeconomics() {
   const results = await Promise.all([settle("nbu", getNbuData()), settle("gdp", getGdp()), settle("debt", getDebt())]);
   const payload = { updatedAt: new Date().toISOString(), sources: { nbu: "NBU", gdp: "State Statistics Service of Ukraine", debt: "Ministry of Finance of Ukraine / data.gov.ua" }, errors: {} };
   results.forEach((result) => { if (result.error) payload.errors[result.name] = result.error; else if (result.name === "nbu") Object.assign(payload, result.data); else payload[result.name] = result.data; });
@@ -185,8 +191,10 @@ async function getMacroeconomics() {
     const gdp = nominalByYear.get(String(point.date).slice(0, 4));
     if (gdp > 0 && point.total != null) point.debtToGdp = (point.total * 1000 / gdp) * 100;
   });
-  cache = { updatedAt: Date.now(), payload };
+  cache = { updatedAt: now(), payload };
   return payload;
 }
 
-module.exports = { getMacroeconomics, parseCsv, debtFromCsv, debtHistoryFromCsv, zipEntries };
+return { getMacroeconomics, getPolicyRate, getGdp, parseCsv, debtFromCsv, debtHistoryFromCsv, zipEntries };
+}
+module.exports = { ...createClient(), createClient };

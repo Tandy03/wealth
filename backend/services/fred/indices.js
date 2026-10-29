@@ -1,3 +1,4 @@
+const { providerFetch } = require('../market/fetch');
 const FRED_BASE_URL = process.env.FRED_BASE_URL || "https://api.stlouisfed.org";
 const CACHE_TTL_MS = 15 * 60 * 1000;
 const cache = new Map();
@@ -48,16 +49,19 @@ async function getIndexHistory({ symbol, startDate, endDate }) {
   const timeout = setTimeout(() => controller.abort(), 12000);
 
   try {
-    const response = await fetch(url, { headers: { Accept: "application/json" }, signal: controller.signal });
+    const response = await providerFetch(url, { headers: { Accept: "application/json" }, signal: controller.signal });
     const payload = await response.json().catch(() => null);
     if (response.status === 429) throw new FredApiError("FRED API request limit reached. Try again later.", "FRED_RATE_LIMITED", 429);
     if (!response.ok || payload?.error_code) {
-      throw new FredApiError(payload?.error_message || "FRED request failed.", "FRED_API_ERROR", response.status >= 400 ? response.status : 502);
+      throw new FredApiError("FRED request failed.", "FRED_API_ERROR", response.status >= 400 ? response.status : 502);
+    }
+    if (!Array.isArray(payload?.observations)) {
+      // An HTML error page with HTTP 200 is a provider failure, not an
+      // authoritative answer that the requested history does not exist.
+      throw new FredApiError("FRED returned an invalid response.", "FRED_API_ERROR", 502);
     }
 
-    const observations = Array.isArray(payload?.observations)
-      ? payload.observations.filter((item) => item?.value !== "." && Number.isFinite(Number(item?.value)))
-      : [];
+    const observations = payload.observations.filter((item) => item?.value !== "." && Number.isFinite(Number(item?.value)));
     if (!observations.length) {
       throw new FredApiError(`FRED returned no ${index.name} history for this period.`, "INDEX_HISTORY_NOT_FOUND", 404);
     }

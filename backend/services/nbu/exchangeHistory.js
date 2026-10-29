@@ -1,3 +1,4 @@
+const { providerFetch } = require('../market/fetch');
 const NBU_HISTORY_URL = process.env.NBU_HISTORY_URL || "https://bank.gov.ua/NBU_Exchange/exchange_site";
 const CACHE_TTL_MS = 60 * 60 * 1000;
 const cache = new Map();
@@ -7,14 +8,6 @@ class NbuExchangeError extends Error {
     super(message);
     this.status = status;
   }
-}
-
-function isoDate(value, fallback) {
-  const date = String(value || fallback || "").slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`))) {
-    throw new NbuExchangeError("A valid date is required.", 400);
-  }
-  return date;
 }
 
 function compactDate(value) {
@@ -29,9 +22,7 @@ function nbuDateToIso(value) {
 async function getNbuCurrencyHistory({ code, startDate, endDate }) {
   const currency = String(code || "").trim().toUpperCase();
   if (!/^[A-Z]{3}$/.test(currency) || currency === "UAH") throw new NbuExchangeError("A valid foreign currency code is required.", 400);
-  const today = new Date().toISOString().slice(0, 10);
-  const end = isoDate(endDate, today);
-  const start = isoDate(startDate, `${Number(end.slice(0, 4)) - 1}${end.slice(4)}`);
+  const { startDate: start, endDate: end } = require('../../validators/requests').currencyHistoryRange({ startDate, endDate });
   if (start > end) throw new NbuExchangeError("startDate cannot be later than endDate.", 400);
 
   const cacheKey = `${currency}:${start}:${end}`;
@@ -49,7 +40,7 @@ async function getNbuCurrencyHistory({ code, startDate, endDate }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12000);
   try {
-    const response = await fetch(url, { headers: { Accept: "application/json", "User-Agent": "Wealth-Dashboard/1.0" }, signal: controller.signal });
+    const response = await providerFetch(url, { headers: { Accept: "application/json", "User-Agent": "Wealth-Dashboard/1.0" }, signal: controller.signal });
     if (!response.ok) throw new NbuExchangeError(`NBU API returned ${response.status}.`);
     const payload = await response.json();
     if (!Array.isArray(payload) || !payload.length) throw new NbuExchangeError(`No NBU rates found for ${currency}.`, 404);

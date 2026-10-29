@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "entry": "/js/main.js",
+  "applicationGlobalWrites": [],
+  "platformGlobals": ["Capacitor"],
+  "adapters": [
+    { "owner": "backend/scripts/sharedBrowserModules.cjs", "purpose": "Build-only ESM adaptation of unchanged shared browser branches", "consumers": ["shared/*.js", "shared/portfolio/*.js"], "removal": "When shared ships native ESM; not a runtime application-global adapter" },
+    { "owner": "backend/scripts/sharedBrowserModules.cjs + frontend/vendor/chart.umd.js", "purpose": "Local Chart.js wrapped in a private module scope for Vite dev and production", "consumers": ["frontend/js/main.js"], "removal": "When the vendored library is replaced by its ESM distribution" }
+  ]
+}

@@ -9,6 +9,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(`Google authorization failed: ${error.message}`);
+  require('../utils/observability').logEvent('auth.failed', { code: error.code || 'AUTHORIZATION_REQUIRED' });
   process.exitCode = 1;
 });

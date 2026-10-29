@@ -1,0 +1,45 @@
+:root { --mobile-nav-height: calc(68px + env(safe-area-inset-bottom, 0px)); }
+.mobile-bottom-nav, .mobile-more-backdrop { display: none; }
+@media (max-width: 700px) {
+  html { scroll-padding-bottom: calc(var(--mobile-nav-height) + 12px); }
+  .app-shell > .sidebar { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; padding: max(10px, env(safe-area-inset-top, 0px)) max(14px, env(safe-area-inset-right, 0px)) 10px max(14px, env(safe-area-inset-left, 0px)); }
+  .app-shell > .sidebar .nav, #investments-app .nav-scroll-hint { display: none; }
+  .app-shell > .sidebar .app-mode-switch { width: min(70%, 230px); margin: 0; }
+  .app-shell > .sidebar .sidebar-settings-button { position: static; display: grid; flex: 0 0 36px; width: 36px; height: 36px; padding: 0; margin: 0; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+  .app-shell > .sidebar .sidebar-settings-button svg { width: 19px; height: 19px; }
+  .app-shell > .main { padding-bottom: calc(var(--mobile-nav-height) + 12px); }
+  .mobile-bottom-nav { position: fixed; z-index: 60; bottom: 0; left: max(10px, env(safe-area-inset-left, 0px)); right: max(10px, env(safe-area-inset-right, 0px)); display: grid; grid-template-columns: repeat(var(--mobile-nav-columns, 5), minmax(0, 1fr)); align-items: stretch; gap: 2px; min-height: 68px; padding: 6px 5px calc(6px + env(safe-area-inset-bottom, 0px)); border: 1px solid var(--border); border-bottom: 0; border-radius: 22px 22px 0 0; background: var(--surface); box-shadow: 0 -6px 26px color-mix(in srgb, var(--bg) 32%, transparent); }
+  #mobile-bottom-nav:empty { display: none; }
+  .mobile-nav-button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-width: 0; min-height: 55px; padding: 5px 2px; border: 0; border-radius: 15px; background: transparent; color: var(--muted); font: inherit; transition: background .18s ease, color .18s ease, transform .18s ease; }
+  .mobile-nav-icon { display: grid; place-items: center; flex-shrink: 0; width: 28px; height: 25px; }
+  .mobile-nav-icon svg { display: block; width: 23px; height: 23px; }
+  .mobile-nav-label { display: block; max-width: 100%; font-size: clamp(9px, 2.6vw, 11px); line-height: 1.15; font-weight: 500; text-align: center; overflow-wrap: anywhere; }
+  .mobile-nav-button.active, .mobile-nav-button.is-open { background: color-mix(in srgb, var(--accent) 14%, var(--surface)); color: var(--text); }
+  .mobile-nav-button.active .mobile-nav-icon, .mobile-nav-button.is-open .mobile-nav-icon { color: var(--accent); }
+  .mobile-nav-button:active { transform: scale(.95); }
+  .mobile-nav-button:focus-visible, .mobile-more-popover button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .mobile-more-backdrop { position: fixed; inset: 0; z-index: 90; display: block; pointer-events: none; }
+  .mobile-more-backdrop::before { content: ""; position: absolute; inset: 0 0 var(--mobile-menu-overlay-bottom, var(--mobile-nav-height)); pointer-events: auto; }
+  .mobile-more-popover { position: absolute; right: max(var(--mobile-menu-right, 12px), env(safe-area-inset-right, 0px)); bottom: var(--mobile-menu-bottom, calc(var(--mobile-nav-height) + 10px)); width: min(250px, calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px))); max-height: min(var(--mobile-menu-height, 70dvh), calc(100dvh - var(--mobile-nav-height) - 24px - env(safe-area-inset-top, 0px))); padding: 6px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); color: var(--text); box-shadow: var(--shadow); pointer-events: auto; transform-origin: bottom right; animation: mobile-popover-in .18s ease-out; }
+  .mobile-more-popover::after { content: ""; position: absolute; bottom: -6px; right: var(--mobile-menu-arrow-right, 20px); width: 10px; height: 10px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); background: var(--surface); transform: rotate(45deg); pointer-events: none; }
+  .mobile-more-items { position: relative; display: grid; max-height: max(0px, min(calc(var(--mobile-menu-height, 70dvh) - 14px), calc(100dvh - var(--mobile-nav-height) - 38px - env(safe-area-inset-top, 0px)))); overflow-y: auto; overscroll-behavior: contain; }
+  .mobile-more-item { display: flex; align-items: center; gap: 12px; min-height: 48px; width: 100%; padding: 10px; border: 0; border-radius: 9px; background: transparent; color: var(--text); text-align: start; transition: background .18s ease, color .18s ease; }
+  .mobile-more-item + .mobile-more-item { border-top: 1px solid var(--border); }
+  .mobile-more-item .mobile-nav-label { font-size: 14px; text-align: start; line-height: 1.25; }
+  .mobile-more-item .mobile-nav-icon { width: 24px; height: 24px; }
+  .mobile-more-item .mobile-nav-icon svg { width: 21px; height: 21px; }
+  .mobile-more-item .mobile-nav-icon { color: var(--muted); }
+  .mobile-more-item.active { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
+  .mobile-more-item.active .mobile-nav-icon { color: var(--accent); }
+  :root[data-theme="analog"] .mobile-nav-button { color: color-mix(in srgb, var(--text) 85%, var(--muted)); }
+  :root[data-theme="analog"] .mobile-nav-button.active, :root[data-theme="analog"] .mobile-nav-button.is-open, :root[data-theme="analog"] .mobile-more-item.active { color: var(--text); background: color-mix(in srgb, var(--accent) 14%, var(--surface-2)); }
+  :root[data-theme="analog"] .mobile-nav-button.active .mobile-nav-icon, :root[data-theme="analog"] .mobile-nav-button.is-open .mobile-nav-icon, :root[data-theme="analog"] .mobile-more-item.active .mobile-nav-icon { color: color-mix(in srgb, var(--text) 70%, var(--accent)); }
+  :root[data-theme="analog"] .mobile-more-item .mobile-nav-icon { color: color-mix(in srgb, var(--text) 70%, var(--muted)); }
+  :root[data-theme="analog"] .mobile-nav-button:focus-visible, :root[data-theme="analog"] .mobile-more-popover button:focus-visible { outline-color: var(--text); }
+  :root:has(.modal-backdrop.open) .mobile-bottom-nav { visibility: hidden; pointer-events: none; }
+  @media (hover: hover) { .mobile-nav-button:hover { background: var(--surface-2); } .mobile-more-item:hover { background: var(--surface-2); } }
+}
+@keyframes mobile-popover-in { from { transform: translateY(5px) scale(.98); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .mobile-nav-button, .mobile-more-item, .mobile-more-backdrop, .mobile-more-popover { transition: none; animation: none; }
+}

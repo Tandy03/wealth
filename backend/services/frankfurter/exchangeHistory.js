@@ -1,3 +1,4 @@
+const { providerFetch } = require('../market/fetch');
 const FRANKFURTER_BASE_URL = process.env.FRANKFURTER_BASE_URL || "https://api.frankfurter.dev";
 const CACHE_TTL_MS = 60 * 60 * 1000;
 const cache = new Map();
@@ -41,7 +42,7 @@ async function getExchangeHistory({ ticker = "USEU", startDate, endDate }) {
   const timeout = setTimeout(() => controller.abort(), 12000);
 
   try {
-    const response = await fetch(url, { headers: { Accept: "application/json" }, signal: controller.signal });
+    const response = await providerFetch(url, { headers: { Accept: "application/json" }, signal: controller.signal });
     const payload = await response.json().catch(() => null);
     if (!response.ok) throw new FrankfurterError(payload?.message || `Frankfurter API returned ${response.status}.`, response.status);
     if (!Array.isArray(payload)) throw new FrankfurterError("Frankfurter returned invalid exchange-rate history.");

@@ -1,0 +1,6 @@
+{
+  "apiVersion": 1,
+  "minClientVersion": 1,
+  "release": "2026-10-20.1",
+  "capabilities": ["health", "twelve", "fred", "binance", "binanceCatalog", "inzhurCatalog", "macroeconomics", "policyRate"]
+}

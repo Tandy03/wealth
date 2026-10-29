@@ -3,16 +3,61 @@
   "version": "1.0.0",
   "description": "Personal investment portfolio tracker",
   "main": "backend/server.js",
+  "engines": {
+    "node": "^22.13.0 || >=24.0.0"
+  },
   "scripts": {
     "start": "node backend/server.js",
-    "dev": "node --watch backend/server.js",
+    "dev": "node --watch backend/dev.mjs",
     "google-auth": "node backend/scripts/googleAuth.js",
-    "test": "node --test backend/tests/*.test.js"
+    "test": "node --test --test-concurrency=4 backend/tests/*.test.js",
+    "test:ui": "node --test backend/tests/uiSmoke.test.js",
+    "lint": "eslint frontend/js shared",
+    "test:recovery": "node --test backend/tests/portfolioRecovery.test.js",
+    "check:frontend": "node backend/scripts/checkFrontendContract.js && npm run check:state-mutations",
+    "check:state-mutations": "eslint --config backend/scripts/lint/financialState.config.cjs frontend/js --quiet --no-warn-ignored",
+    "proxy:smoke": "node backend/scripts/proxySmoke.js",
+    "smoke:serve": "node backend/scripts/uiSmokeServer.js",
+    "mobile:config": "node backend/scripts/generateMobileConfig.js",
+    "mobile:check": "node backend/scripts/checkMobileReadiness.js",
+    "mobile:prepare": "npm run build:frontend && node backend/scripts/prepareMobileAssets.js",
+    "capacitor:copy:before": "npm run mobile:prepare",
+    "mobile:sync": "npm run mobile:config && npm run mobile:prepare && npx cap sync android",
+    "mobile:open": "npx cap open android",
+    "mobile:build": "npm run mobile:sync && cd android && gradlew.bat assembleDebug",
+    "mobile:apk": "npm run mobile:build",
+    "build:frontend": "node backend/scripts/buildFrontend.mjs",
+    "build:frontend:test": "node backend/scripts/buildFrontend.mjs --tests",
+    "pretest": "npm run build:frontend && npm run build:frontend:test",
+    "pretest:ui": "npm run build:frontend:test",
+    "prestart": "npm run build:frontend",
+    "presmoke:serve": "npm run build:frontend",
+    "prebuild:frontend": "node backend/scripts/prepareTestConfig.js"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/network": "^8.0.1",
+    "@capacitor/preferences": "^8.0.1",
     "@google-cloud/local-auth": "^3.0.1",
-    "cors": "^2.8.5",
-    "express": "^5.1.0",
-    "googleapis": "^178.0.0"
+    "cors": "^2.8.6",
+    "express": "^5.3.0",
+    "googleapis": "^178.1.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.3",
+    "eslint": "10.13.0",
+    "jsdom": "^29.1.1",
+    "vite": "8.3.5",
+    "espree": "11.2.0"
+  },
+  "overrides": {
+    "gaxios@6": {
+      "uuid": "11.1.1"
+    },
+    "xcode": {
+      "uuid": "11.1.1"
+    }
   }
 }
